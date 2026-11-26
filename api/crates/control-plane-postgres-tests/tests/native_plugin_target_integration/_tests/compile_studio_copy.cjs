@@ -5,7 +5,7 @@ const path = require('node:path');
 const { createRequire } = require('node:module');
 const root = process.argv[2];
 const webRequire = createRequire(path.join(root, 'web/package.json'));
-const ts = webRequire('typescript');
+const ts = webRequire('typescript-legacy');
 require.extensions['.ts'] = (module, filename) => {
   const source = fs.readFileSync(filename, 'utf8');
   const output = ts.transpileModule(source, {

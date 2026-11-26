@@ -806,19 +806,37 @@ where
                     // A rejected tool result must not consume the round: park
                     // the attempt so a corrected delivery can re-acquire it.
                     if command.responses_continuation.is_none() {
-                        let _ = self.park_tool_round_attempt(attempt).await;
+                        let resume_attempt_id = attempt.id;
+                        if let Err(park_error) = self.park_tool_round_attempt(attempt).await {
+                            tracing::warn!(
+                                flow_run_id = %flow_run.id,
+                                callback_task_id = %callback_task.id,
+                                resume_attempt_id = %resume_attempt_id,
+                                error = %park_error,
+                                "failed to park tool round callback resume attempt after rejected tool result"
+                            );
+                        }
                     }
                     return Err(error);
                 }
                 let error_payload = json!({ "message": error.to_string() });
-                let _ = self
+                if let Err(fail_error) = self
                     .repository
                     .fail_waiting_callback_published_run(
                         flow_run.id,
                         error_payload.clone(),
                         OffsetDateTime::now_utc(),
                     )
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        flow_run_id = %flow_run.id,
+                        callback_task_id = %callback_task.id,
+                        resume_attempt_id = %attempt.id,
+                        error = %fail_error,
+                        "failed to mark waiting callback published run as failed during callback resume recovery"
+                    );
+                }
                 let finished = self
                     .repository
                     .finish_published_callback_resume_attempt(

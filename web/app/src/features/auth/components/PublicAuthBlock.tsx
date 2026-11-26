@@ -42,6 +42,7 @@ export interface PublicAuthBlockProps {
   instance: PublicLoginEntry;
   loginEntrySelector?: { request: () => void } | null;
   onAuthenticated: (session: PasswordSignInResponse) => void | Promise<void>;
+  invitationToken?: string;
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
@@ -110,6 +111,7 @@ function PublicAuthBlockRuntime({
   instance,
   loginEntrySelector = null,
   onAuthenticated,
+  invitationToken,
   nativeCompiler = publicAuthCompilation.compile,
   nativeCompilerWorkerFactory,
   nativeModuleRegistryFactory
@@ -202,6 +204,7 @@ function PublicAuthBlockRuntime({
           const unavailable = createFrontstageUnavailableBlockContext(plan);
           const capabilities = createPublicAuthNativeBlockContextCapabilities({
             loginEntryId: instance.id,
+            invitationToken,
             requestId,
             instanceEpoch: renderEpoch,
             isCurrentInstance: () =>
@@ -219,7 +222,8 @@ function PublicAuthBlockRuntime({
               const response = await dispatchPublicAuthApi(
                 effect.method,
                 effect.path,
-                effect.request
+                effect.request,
+                invitationToken
               );
               if (
                 isAuthenticationCompletionPath(effect.path) &&
@@ -242,7 +246,8 @@ function PublicAuthBlockRuntime({
                 inputs: createPublicAuthInputs(
                   instance.id,
                   instance.public_variables,
-                  Boolean(loginEntrySelector)
+                  Boolean(loginEntrySelector),
+                  invitationToken
                 ),
                 ...capabilities
               },
@@ -266,6 +271,7 @@ function PublicAuthBlockRuntime({
     },
     [
       block,
+      invitationToken,
       loginEntrySelector,
       instance,
       nativeCompiler,
@@ -329,6 +335,7 @@ function PublicAuthBlockRuntime({
           loginEntryId={instance.id}
           loginEntrySelector={loginEntrySelector}
           onAuthenticated={onAuthenticated}
+          invitationToken={invitationToken}
         />
       ) : null}
     </Space>

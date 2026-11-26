@@ -217,3 +217,151 @@ async fn inner_panic_cleanup_survives_disappearance_of_owned_parent_database() {
     );
     admin.close().await;
 }
+
+#[tokio::test]
+async fn ac_001_create_migrated_clones_template_schema_and_preserves_template_on_drop() {
+    let base_url = base_database_url();
+    let (template_name, _) = super::migration_template_identity();
+    let expected_migrations = super::MIGRATOR
+        .iter()
+        .filter(|migration| !migration.migration_type.is_down_migration())
+        .count() as i64;
+
+    let database = PostgresTestSchema::create_migrated(&base_url)
+        .await
+        .unwrap();
+    let database_name = database.database_name().to_owned();
+    let schema_name = database.schema_name().to_owned();
+    let test_pool = database.connect().await.unwrap();
+
+    let (actual_database, actual_schema): (String, String) =
+        sqlx::query_as("select current_database(), current_schema()")
+            .fetch_one(&test_pool)
+            .await
+            .unwrap();
+    assert_eq!(actual_database, database_name);
+    assert_eq!(actual_schema, schema_name);
+
+    let seed_schema_exists: bool =
+        sqlx::query_scalar("select exists(select 1 from pg_namespace where nspname = 'test_seed')")
+            .fetch_one(&test_pool)
+            .await
+            .unwrap();
+    assert!(
+        !seed_schema_exists,
+        "template seed schema must be renamed to the per-test schema"
+    );
+
+    let applied_before: i64 = sqlx::query_scalar("select count(*) from _sqlx_migrations")
+        .fetch_one(&test_pool)
+        .await
+        .unwrap();
+    assert_eq!(applied_before, expected_migrations);
+
+    let rerun_started = std::time::Instant::now();
+    super::MIGRATOR.run(&test_pool).await.unwrap();
+    let rerun_elapsed = rerun_started.elapsed();
+    assert!(
+        rerun_elapsed < std::time::Duration::from_secs(5),
+        "re-running MIGRATOR on a template-cloned schema should be a fast no-op, took {rerun_elapsed:?}"
+    );
+
+    let applied_after: i64 = sqlx::query_scalar("select count(*) from _sqlx_migrations")
+        .fetch_one(&test_pool)
+        .await
+        .unwrap();
+    assert_eq!(applied_after, expected_migrations);
+
+    let admin_options = PgConnectOptions::from_str(&base_url)
+        .unwrap()
+        .database("postgres");
+    let admin = PgPoolOptions::new()
+        .max_connections(2)
+        .connect_with(admin_options)
+        .await
+        .unwrap();
+
+    let template_flags: (bool, bool) =
+        sqlx::query_as("select datistemplate, datallowconn from pg_database where datname = $1")
+            .bind(template_name)
+            .fetch_one(&admin)
+            .await
+            .unwrap();
+    assert_eq!(
+        template_flags,
+        (true, false),
+        "migration template database must be sealed with IS_TEMPLATE=true ALLOW_CONNECTIONS=false"
+    );
+    assert!(database_exists(&admin, &database_name).await);
+
+    test_pool.close().await;
+    drop(test_pool);
+
+    assert!(
+        !database_exists(&admin, &database_name).await,
+        "dropping the test pool must remove test_backup_<uuid>"
+    );
+    assert!(
+        database_exists(&admin, template_name).await,
+        "dropping the test pool must preserve test_tpl_<hash>"
+    );
+    admin.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn ac_001_concurrent_create_migrated_produces_isolated_clones() {
+    let base_url = base_database_url();
+    let (template_name, _) = super::migration_template_identity();
+
+    let mut tasks = Vec::new();
+    for idx in 0..4_u32 {
+        let url = base_url.clone();
+        tasks.push(tokio::spawn(async move {
+            let schema = PostgresTestSchema::create_migrated(&url).await.unwrap();
+            let db_name = schema.database_name().to_owned();
+            let schema_name = schema.schema_name().to_owned();
+            let pool = schema.connect().await.unwrap();
+            let code = format!("tenant-{idx}");
+            let mut conn = pool.acquire().await.unwrap();
+            sqlx::query("insert into tenants (id, code, name) values ($1, $2, $3)")
+                .bind(uuid::Uuid::now_v7())
+                .bind(code.clone())
+                .bind(code.clone())
+                .execute(&mut *conn)
+                .await
+                .unwrap();
+            let count: i64 = sqlx::query_scalar("select count(*) from tenants where code = $1")
+                .bind(code)
+                .fetch_one(&mut *conn)
+                .await
+                .unwrap();
+            drop(conn);
+            assert_eq!(count, 1);
+            pool.close().await;
+            drop(pool);
+            (db_name, schema_name)
+        }));
+    }
+
+    let mut db_names = std::collections::BTreeSet::new();
+    let mut schema_names = std::collections::BTreeSet::new();
+    for task in tasks {
+        let (db_name, schema_name) = task.await.unwrap();
+        assert!(db_names.insert(db_name));
+        assert!(schema_names.insert(schema_name));
+    }
+
+    let admin_options = PgConnectOptions::from_str(&base_url)
+        .unwrap()
+        .database("postgres");
+    let admin = PgPoolOptions::new()
+        .max_connections(2)
+        .connect_with(admin_options)
+        .await
+        .unwrap();
+    for db_name in &db_names {
+        wait_for_database_removed(&admin, db_name).await;
+    }
+    assert!(database_exists(&admin, template_name).await);
+    admin.close().await;
+}

@@ -42,6 +42,7 @@ fn external_auth_entry_action_comes_from_active_definition_and_safe_public_proje
     assert!(!json.to_string().contains("credential-canary"));
     let output =
         login_entries_interface::PublicLoginEntriesOutput::test_new(PublicLoginEntriesResponse {
+            onboarding_mode: None,
             default_login_entry_id: Uuid::nil(),
             login_entries: vec![public],
         });

@@ -103,3 +103,5 @@ pub mod event_center;
 
 #[path = "extension_services/record_permissions/mod.rs"]
 pub mod record_permissions;
+
+pub mod run_archive;

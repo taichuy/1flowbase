@@ -129,7 +129,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         .is_none());
 
     let other_csrf = switch_workspace(&app, &cookie, &csrf, &other_workspace_id.to_string()).await;
-    let (_, other_page_payload) = create_page(
+    let (other_page_status, other_page_payload) = create_page(
         &app,
         &cookie,
         &other_csrf,
@@ -139,18 +139,36 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         "a",
     )
     .await;
-    let other_page_id = other_page_payload["data"]["page"]["id"].as_str().unwrap();
-    let other_tab_id = other_page_payload["data"]["default_tab"]["id"]
-        .as_str()
+    assert_eq!(
+        other_page_status,
+        StatusCode::FORBIDDEN,
+        "{other_page_payload}"
+    );
+    let (author, actor_user_id) = frontstage_fixture_author(&database_url).await;
+    let other = author
+        .create_page(control_plane::frontstage::CreateFrontstagePageCommand {
+            actor_user_id,
+            workspace_id: other_workspace_id,
+            title: Some("Other Workspace Page".into()),
+            icon: None,
+            tooltip: None,
+            parent_id: None,
+            rank: Some("a".into()),
+            placement: domain::frontstage::FrontstageNavigationPlacement::Sidebar,
+            slug: None,
+        })
+        .await
         .unwrap();
+    let other_page_id = other.page.id.to_string();
+    let other_tab_id = other.default_tab.unwrap().id.to_string();
     let csrf = switch_workspace(&app, &cookie, &other_csrf, &workspace_id).await;
     let (cross_workspace_status, _) = save_page_content(
         &app,
         &cookie,
         &csrf,
         &workspace_id,
-        other_page_id,
-        other_tab_id,
+        &other_page_id,
+        &other_tab_id,
         json!({ "version": 1 }),
     )
     .await;

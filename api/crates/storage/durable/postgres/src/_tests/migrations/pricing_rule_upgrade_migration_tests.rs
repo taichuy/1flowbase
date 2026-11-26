@@ -34,12 +34,14 @@ async fn pricing_cleanup_replaces_generated_model_rules_with_one_global_fallback
     let pool = database.connect().await.unwrap();
     before_migrator().run(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
-    let tenant = store.upsert_root_tenant().await.unwrap();
+    let tenant_id = postgres_test_support::insert_historical_root_tenant(store.pool())
+        .await
+        .unwrap();
     let workspace_id = domain::DEFAULT_SCOPE_ID;
     postgres_test_support::insert_historical_workspace(
         store.pool(),
         workspace_id,
-        tenant.id,
+        tenant_id,
         "Pricing migration",
     )
     .await

@@ -31,6 +31,7 @@ mod tests {
             &settings,
             [
                 ConsoleOperationRegistration {
+                    root_workspace_only: false,
                     operation_id: "middleware.simple".to_string(),
                     authorization_profile_id: None,
                     owner: owner.clone(),
@@ -44,6 +45,7 @@ mod tests {
                     authorization: ConsoleAuthorization::Simple,
                 },
                 ConsoleOperationRegistration {
+                    root_workspace_only: false,
                     operation_id: "middleware.row".to_string(),
                     authorization_profile_id: None,
                     owner: owner.clone(),
@@ -60,6 +62,7 @@ mod tests {
                     },
                 },
                 ConsoleOperationRegistration {
+                    root_workspace_only: false,
                     operation_id: "middleware.authenticated".to_string(),
                     authorization_profile_id: None,
                     owner,

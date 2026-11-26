@@ -284,7 +284,7 @@ impl ApplicationOrchestrationAdapter {
                     let result = match outcome.result {
                         Ok(imported) => {
                             let application_id = imported.application.id.to_string();
-                            match to_import_response_with(&self.store, self.bootstrap_workspace_id, &locale, imported).await {
+                            match to_import_response_with(&self.store, self.bootstrap_workspace_id, &locale, imported, actor).await {
                                 Ok(result) => {
                                     response.succeeded_count += 1;
                                     ApplicationArchiveImportEntryResponse::Succeeded {
@@ -462,6 +462,7 @@ impl ApplicationOrchestrationAdapter {
                         self.bootstrap_workspace_id,
                         &locale,
                         imported,
+                        actor,
                     )
                     .await?,
                 ));
@@ -538,7 +539,7 @@ impl ApplicationOrchestrationAdapter {
                 self.bootstrap_workspace_id,
                 &locale,
                 state,
-                user_id,
+                actor,
             )
             .await?,
         ))

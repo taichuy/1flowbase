@@ -1,4 +1,3 @@
-import { CreateDataBlockMenu } from '../components/data-blocks/CreateDataBlockMenu';
 import { DataBlockPageProvider } from '../components/data-blocks/DataBlockPageProvider';
 import {
   createTableBlockConfig,
@@ -14,8 +13,15 @@ import { useFrontstageDesignPersistence } from './frontstage-page/controllers/us
 import { useFrontstagePageRefresh } from './frontstage-page/controllers/use-frontstage-page-refresh';
 import { Alert, Button, Divider, Drawer, Empty, Modal, Typography } from 'antd';
 import type { CSSProperties, FC, ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from 'react';
+import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime/browser';
 import type { ConsoleFrontstageBlockRuntimeLayer } from '@1flowbase/api-client';
 
 import { useAuthStore } from '../../../state/auth-store';
@@ -23,15 +29,16 @@ import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-m
 import type { FrontstagePageContent } from '../api/page-content';
 import { fetchFrontstageBlockDeleteImpact } from '../api/block-tree';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
-import {
-  JsxStudioRunPanel,
-  type JsxStudioRunBlockContextInput
-} from '../components/jsx-studio/JsxStudioRunPanel';
+import type { JsxStudioRunBlockContextInput } from '../components/jsx-studio/JsxStudioRunPanel';
 import {
   PageCanvas,
   type FrontstagePageCanvasRuntimeContext
 } from '../components/PageCanvas';
-import { FrontstageJsxStudioDrawer } from '../components/jsx-studio/FrontstageJsxStudioDrawer';
+import {
+  loadFrontstageStudio,
+  loadFrontstageStudioRunPanel,
+  prepareFrontstageStudio
+} from '../lib/jsx-studio/studio-demand';
 import { useBlockI18n } from '../hooks/runtime-i18n/use-block-i18n';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
 import { useFrontstagePageCanvasNativePreparations } from '../hooks/use-frontstage-page-canvas-native-preparations';
@@ -78,7 +85,6 @@ import { findMatchingFrontstageBlockCatalogEntry } from './frontstage-page/block
 import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
-import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMenu';
 import { FrontstageWorkspaceShell } from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
 import {
   useFrontstageWorkspace,
@@ -86,6 +92,27 @@ import {
 } from './frontstage-page/workspace-shell/workspace-context';
 import { useFrontstageRetentionProtection } from './frontstage-page/runtime-session/retention-protection';
 import './frontstage-page.css';
+
+const FrontstageJsxStudioDrawer = lazy(() =>
+  loadFrontstageStudio().then((module) => ({
+    default: module.FrontstageJsxStudioDrawer
+  }))
+);
+const JsxStudioRunPanel = lazy(() =>
+  loadFrontstageStudioRunPanel().then((module) => ({
+    default: module.JsxStudioRunPanel
+  }))
+);
+const CreateDataBlockMenu = lazy(() =>
+  import('../components/data-blocks/CreateDataBlockMenu').then((module) => ({
+    default: module.CreateDataBlockMenu
+  }))
+);
+const PageWorkspaceActionMenu = lazy(() =>
+  import('./frontstage-page/PageWorkspaceActionMenu').then((module) => ({
+    default: module.PageWorkspaceActionMenu
+  }))
+);
 
 const EMPTY_RUNTIME_DEMANDS: FrontstageRuntimeDemandByBlockId = Object.freeze(
   {}
@@ -151,6 +178,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
   } = useFrontstageWorkspace(pageId);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isJsxStudioOpen, setIsJsxStudioOpen] = useState(false);
+  const [hasActivatedJsxStudio, setHasActivatedJsxStudio] = useState(false);
   const [draggingBlockIds, setDraggingBlockIds] = useState<ReadonlySet<string>>(
     () => new Set()
   );
@@ -635,6 +663,8 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     return {
       onEditCode: (blockId: string) => {
         setSelectedBlockId(blockId);
+        void prepareFrontstageStudio().catch(() => undefined);
+        setHasActivatedJsxStudio(true);
         setIsJsxStudioOpen(true);
       },
       onDelete: (blockId: string) => {
@@ -969,6 +999,9 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       </section>
     );
   };
+  const effectiveContentPresentation =
+    activePageContent?.page.contentPresentation ??
+    selectedPageNode?.content_presentation;
   const frontstageTabContent = (
     <FrontstageRuntimeActivityContext value={Boolean(runtimeVisible)}>
       {runtimeValidationError ? (
@@ -1011,7 +1044,10 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       ) : null}
       <div
         style={{
-          visibility: !runtimeVisible ? 'hidden' : undefined
+          visibility:
+            (activePageContent || nestedAssemblyPageLayer) && !runtimeVisible
+              ? 'hidden'
+              : undefined
         }}
       >
         {nestedAssemblyPageLayer ? (
@@ -1092,17 +1128,19 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       ) : null}
       {renderAssemblyOverlays()}
       {canEnterDesignMode && isDesignMode && selectedPageNode ? (
-        <CreateDataBlockMenu
-          workspaceId={workspaceId}
-          entries={creatableBlockCatalog.items}
-          error={creatableBlockCatalog.error}
-          onRetry={() => {
-            void creatableBlockCatalog.refetch();
-          }}
-          disabled={!canAddBlock || creatableBlockCatalog.loading}
-          loading={isBlockSavePending || creatableBlockCatalog.loading}
-          onCreate={handleAddBlock}
-        />
+        <Suspense fallback={null}>
+          <CreateDataBlockMenu
+            workspaceId={workspaceId}
+            entries={creatableBlockCatalog.items}
+            error={creatableBlockCatalog.error}
+            onRetry={() => {
+              void creatableBlockCatalog.refetch();
+            }}
+            disabled={!canAddBlock || creatableBlockCatalog.loading}
+            loading={isBlockSavePending || creatableBlockCatalog.loading}
+            onCreate={handleAddBlock}
+          />
+        </Suspense>
       ) : null}
     </FrontstageRuntimeActivityContext>
   );
@@ -1161,22 +1199,24 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
                 ) : null}
                 {canEditPageTree ? (
                   <div className="frontstage-page-workspace__page-action">
-                    <PageWorkspaceActionMenu
-                      show_title={selectedPageNode.show_title}
-                      onTitleChange={handlePageTitleChange}
-                      disabled={isOperationPending || isPageContentSavePending}
-                      refreshing={isPageRefreshPending}
-                      tabsEnabled={
-                        selectedPageNode.content_presentation === 'tabs'
-                      }
-                      layoutMode={
-                        blockCompositionState?.document.layoutMode ?? 'auto'
-                      }
-                      onEdit={() => handleRenameNode(selectedPageNode)}
-                      onRefresh={() => void handlePageRefresh()}
-                      onTabsEnabledChange={handlePageTabsEnabledChange}
-                      onLayoutModeChange={handlePageLayoutModeChange}
-                    />
+                    <Suspense fallback={null}>
+                      <PageWorkspaceActionMenu
+                        show_title={selectedPageNode.show_title}
+                        onTitleChange={handlePageTitleChange}
+                        disabled={isOperationPending || isPageContentSavePending}
+                        refreshing={isPageRefreshPending}
+                        tabsEnabled={
+                          selectedPageNode.content_presentation === 'tabs'
+                        }
+                        layoutMode={
+                          blockCompositionState?.document.layoutMode ?? 'auto'
+                        }
+                        onEdit={() => handleRenameNode(selectedPageNode)}
+                        onRefresh={() => void handlePageRefresh()}
+                        onTabsEnabledChange={handlePageTabsEnabledChange}
+                        onLayoutModeChange={handlePageLayoutModeChange}
+                      />
+                    </Suspense>
                   </div>
                 ) : null}
               </header>
@@ -1220,12 +1260,15 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
                 {operationStatusText}
               </Typography.Text>
             ) : null}
-            {selectedPageId && tabId && onNavigateTab && activePageContent ? (
+            {selectedPageId &&
+            tabId &&
+            onNavigateTab &&
+            effectiveContentPresentation ? (
               <FrontstagePageTabs
                 workspaceId={workspaceId}
                 pageId={selectedPageId}
                 tabId={tabId}
-                presentation={activePageContent.page.contentPresentation}
+                presentation={effectiveContentPresentation}
                 isDesignMode={canEnterDesignMode && isDesignMode}
                 onNavigateTab={onNavigateTab}
               >
@@ -1236,38 +1279,47 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
             )}
           </div>
         </section>
-        {selectedBlock && selectedPageId ? (
-          <FrontstageJsxStudioDrawer
-            open={
-              runtimeActive && isJsxStudioOpen && canShowSelectedBlockActions
-            }
-            initialSection="code"
-            workspaceId={workspaceId}
-            pageId={selectedPageId}
-            tabId={tabId}
-            block={selectedBlock}
-            pageBlocks={runtimeBlocks}
-            catalogEntry={matchingJsBlockCatalogEntry}
-            catalogEntries={blockCatalog.items}
-            onClose={() => setIsJsxStudioOpen(false)}
-            onSaveBlock={saveStudioBlock}
-            onSaveBlockTitle={saveStudioBlockTitle}
-            runPanel={({ blockId, code, runRevision }) => {
-              const activeStudioBlock = runtimeBlocks.find(
-                (candidate) => candidate.id === blockId
-              );
-              return runRevision === null || !activeStudioBlock ? undefined : (
-                <JsxStudioRunPanel
-                  block={activeStudioBlock}
-                  code={code}
-                  createBlockContext={createTrialBlockContext}
-                  onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
-                  onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
-                  revision={`run:${runRevision}`}
-                />
-              );
-            }}
-          />
+        {hasActivatedJsxStudio && selectedBlock && selectedPageId ? (
+          <Suspense fallback={null}>
+            <FrontstageJsxStudioDrawer
+              open={
+                runtimeActive && isJsxStudioOpen && canShowSelectedBlockActions
+              }
+              initialSection="code"
+              workspaceId={workspaceId}
+              pageId={selectedPageId}
+              tabId={tabId}
+              block={selectedBlock}
+              pageBlocks={runtimeBlocks}
+              catalogEntry={matchingJsBlockCatalogEntry}
+              catalogEntries={blockCatalog.items}
+              onClose={() => setIsJsxStudioOpen(false)}
+              onSaveBlock={saveStudioBlock}
+              onSaveBlockTitle={saveStudioBlockTitle}
+              runPanel={({ blockId, code, runRevision }) => {
+                const activeStudioBlock = runtimeBlocks.find(
+                  (candidate) => candidate.id === blockId
+                );
+                return runRevision === null ||
+                  !activeStudioBlock ? undefined : (
+                  <Suspense fallback={null}>
+                    <JsxStudioRunPanel
+                      block={activeStudioBlock}
+                      code={code}
+                      createBlockContext={createTrialBlockContext}
+                      onPrepareDraftRun={
+                        jsBlockCapabilityHandlers?.prepareDraftRun
+                      }
+                      onRevokeDraftRun={
+                        jsBlockCapabilityHandlers?.revokeDraftRun
+                      }
+                      revision={`run:${runRevision}`}
+                    />
+                  </Suspense>
+                );
+              }}
+            />
+          </Suspense>
         ) : null}
       </>
     </DataBlockPageProvider>

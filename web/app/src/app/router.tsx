@@ -1,4 +1,3 @@
-import { McpAuthorizePage } from '../features/auth/pages/mcp-authorization/McpAuthorizePage';
 import {
   navigationQueryStaleTime,
   selectNavigationQueryScope
@@ -14,8 +13,13 @@ import {
   useRouterState
 } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Result } from 'antd';
-import { Suspense, lazy, useState, type ReactNode } from 'react';
+import {
+  Suspense,
+  lazy,
+  useLayoutEffect,
+  useState,
+  type ReactNode
+} from 'react';
 
 import {
   applicationDetailQueryKey,
@@ -29,6 +33,7 @@ import {
 } from '../features/frontstage/api/page-tree';
 import type { MeSectionKey } from '../features/me/lib/me-sections';
 import { RouteGuard } from '../routes/route-guards';
+import { LazyRouteResult } from '../routes/LazyRouteResult';
 import { SessionGuard } from '../routes/session-guard';
 import {
   FRONTSTAGE_PAGE_BLOCK_CHILD_PATH,
@@ -36,12 +41,26 @@ import {
   FRONTSTAGE_SLUG_PAGE_PATH,
   FRONTSTAGE_SLUG_PATH
 } from '../routes/route-config';
+import { WorkspaceShellSkeleton } from '../features/auth/components/anonymous-loading/WorkspaceShellSkeleton';
 import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
 import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions/extensions';
 import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
+import {
+  isApplicationI18nReady,
+  isShellTopbarI18nReady,
+  prepareApplicationI18n,
+  prepareShellTopbarI18n
+} from '../shared/i18n/app-i18n';
+import { resolveAuthenticatedLocale } from '../shared/i18n/initial-locale';
+import {
+  getResolvedAppShellFrame,
+  getResolvedFrontstageWorkspacePage,
+  loadAppShellFrameModule,
+  loadFrontstageWorkspacePageModule
+} from './bootstrap/authenticated-shell-preload';
 import { recoverDevModuleGraph } from './bootstrap/dev-module-recovery';
 
 let applicationDetailPageFlight:
@@ -66,7 +85,7 @@ if (/^\/applications\/[^/]+(?:\/|$)/u.test(window.location.pathname)) {
   void loadApplicationDetailPage();
 }
 const AppShellFrame = lazy(() =>
-  import('../app-shell/AppShellFrame').then((module) => ({
+  loadAppShellFrameModule().then((module) => ({
     default: module.AppShellFrame
   }))
 );
@@ -75,10 +94,17 @@ const HomeRedirect = lazy(() =>
     default: module.HomeRedirect
   }))
 );
-const FrontstageWorkspacePage = lazy(() =>
-  import('../features/frontstage/pages/FrontstageWorkspacePage').then(
-    (module) => ({ default: module.FrontstageWorkspacePage })
+const AuthenticatedSignInRedirect = lazy(() =>
+  import('../features/auth/pages/AuthenticatedSignInRedirect').then(
+    (module) => ({
+      default: module.AuthenticatedSignInRedirect
+    })
   )
+);
+const FrontstageWorkspacePage = lazy(() =>
+  loadFrontstageWorkspacePageModule().then((module) => ({
+    default: module.FrontstageWorkspacePage
+  }))
 );
 const MePage = lazy(() =>
   import('../features/me/pages/MePage').then((module) => ({
@@ -90,31 +116,85 @@ const SettingsPage = lazy(() =>
     default: module.SettingsPage
   }))
 );
+const McpAuthorizePage = lazy(() =>
+  import('../features/auth/pages/mcp-authorization/McpAuthorizePage').then(
+    (module) => ({ default: module.McpAuthorizePage })
+  )
+);
 
 function NotFoundPage() {
-  return <Result status="404" title={i18nText('app', 'auto.page_not_found')} />;
+  return (
+    <LazyRouteResult
+      status="404"
+      title={i18nText('app', 'auto.page_not_found')}
+    />
+  );
+}
+
+function ShellLoadingFallback() {
+  return <WorkspaceShellSkeleton mode="full" />;
 }
 
 function RouteLoadingFallback() {
-  return <LoadingState fullscreen />;
+  return <WorkspaceShellSkeleton mode="canvas-only" />;
 }
 
-function LazyRouteBoundary({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
+function LazyRouteBoundary({
+  children,
+  preferCompactFallback = false
+}: {
+  children: ReactNode;
+  preferCompactFallback?: boolean;
+}) {
+  return (
+    <Suspense
+      fallback={
+        preferCompactFallback ? (
+          <LoadingState compact />
+        ) : (
+          <RouteLoadingFallback />
+        )
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
+
+function ShellCommitMarker({ onCommit }: { onCommit: () => void }) {
+  useLayoutEffect(() => {
+    onCommit();
+  }, [onCommit]);
+  return null;
 }
 
 function ShellLayout() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname
   });
+  const [hasCommittedShell, setHasCommittedShell] = useState(() =>
+    Boolean(getResolvedAppShellFrame())
+  );
+  const ActiveShellFrame = getResolvedAppShellFrame() ?? AppShellFrame;
 
   return (
     <SessionGuard>
-      <LazyRouteBoundary>
-        <AppShellFrame pathname={pathname} useRouterLinks>
-          <Outlet />
-        </AppShellFrame>
-      </LazyRouteBoundary>
+      <Suspense
+        fallback={
+          hasCommittedShell ? (
+            <LoadingState fullscreen />
+          ) : (
+            <ShellLoadingFallback />
+          )
+        }
+      >
+        <ShellCommitMarker onCommit={() => setHasCommittedShell(true)} />
+        <ActiveShellFrame pathname={pathname} useRouterLinks>
+          <LazyRouteBoundary preferCompactFallback={hasCommittedShell}>
+            <Outlet />
+          </LazyRouteBoundary>
+        </ActiveShellFrame>
+      </Suspense>
     </SessionGuard>
   );
 }
@@ -126,10 +206,10 @@ function ApplicationIndexRedirect() {
     queryKey: applicationDetailQueryKey(applicationId),
     queryFn: () => fetchApplicationDetail(applicationId)
   });
-  if (detail.isPending) return <LoadingState />;
+  if (detail.isPending) return <LoadingState compact />;
   if (detail.isError)
     return (
-      <Result
+      <LazyRouteResult
         status="error"
         title={i18nText('applications', 'auto.application_load_failed')}
       />
@@ -156,17 +236,38 @@ function ApplicationSectionRoute({
 }) {
   return (
     <RouteGuard routeId="application-detail">
-      <LazyRouteBoundary>
-        <ApplicationDetailPage
-          applicationId={applicationId}
-          requestedSectionKey={requestedSectionKey}
-        />
-      </LazyRouteBoundary>
+      <ApplicationDetailPage
+        applicationId={applicationId}
+        requestedSectionKey={requestedSectionKey}
+      />
     </RouteGuard>
   );
 }
 
+function ensureRouteApplicationI18n({
+  location
+}: {
+  location: { pathname: string };
+}) {
+  const locale = resolveAuthenticatedLocale(useAuthStore.getState().me);
+  if (isApplicationI18nReady(locale, location.pathname)) {
+    return undefined;
+  }
+  return prepareApplicationI18n(locale, location.pathname).then(
+    () => undefined
+  );
+}
+
 const rootRoute = createRootRoute({
+  beforeLoad: ({ location }) => {
+    const locale = resolveAuthenticatedLocale(useAuthStore.getState().me);
+    if (isShellTopbarI18nReady(locale, location.pathname)) {
+      return undefined;
+    }
+    return prepareShellTopbarI18n(locale, location.pathname).then(
+      () => undefined
+    );
+  },
   component: () => <Outlet />,
   notFoundComponent: NotFoundPage
 });
@@ -181,13 +282,30 @@ const shellRoute = createRoute({
 const homeRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/',
-  component: () => (
-    <RouteGuard routeId="home">
-      <LazyRouteBoundary>
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { invite?: string } => ({
+    ...(typeof search.invite === 'string' && search.invite.trim().length > 0
+      ? { invite: search.invite.trim() }
+      : {})
+  }),
+  component: () => {
+    const { invite } = homeRoute.useSearch();
+    if (invite) {
+      return (
+        <Navigate
+          to="/sign-in"
+          search={{ login_entry_id: undefined, invite }}
+          replace
+        />
+      );
+    }
+    return (
+      <RouteGuard routeId="home">
         <HomeRedirect />
-      </LazyRouteBoundary>
-    </RouteGuard>
-  )
+      </RouteGuard>
+    );
+  }
 });
 
 const applicationIndexRoute = createRoute({
@@ -309,17 +427,15 @@ function renderSettingsRoute(
 ) {
   return (
     <RouteGuard routeId="settings">
-      <LazyRouteBoundary>
-        <SettingsPage
-          requestedSectionKey={requestedSectionKey}
-          modelProviderTab={modelProviderTab}
-          rolePermissionTab={rolePermissionTab}
-          networkCenterPage={networkCenterPage}
-          extensionCenterCategory={extensionCenterCategory}
-          extensionCenterCursor={extensionCenterCursor}
-          extensionCenterQ={extensionCenterQ}
-        />
-      </LazyRouteBoundary>
+      <SettingsPage
+        requestedSectionKey={requestedSectionKey}
+        modelProviderTab={modelProviderTab}
+        rolePermissionTab={rolePermissionTab}
+        networkCenterPage={networkCenterPage}
+        extensionCenterCategory={extensionCenterCategory}
+        extensionCenterCursor={extensionCenterCursor}
+        extensionCenterQ={extensionCenterQ}
+      />
     </RouteGuard>
   );
 }
@@ -327,9 +443,7 @@ function renderSettingsRoute(
 function renderMeRoute(requestedSectionKey?: MeSectionKey) {
   return (
     <RouteGuard routeId="me">
-      <LazyRouteBoundary>
-        <MePage requestedSectionKey={requestedSectionKey} />
-      </LazyRouteBoundary>
+      <MePage requestedSectionKey={requestedSectionKey} />
     </RouteGuard>
   );
 }
@@ -362,29 +476,29 @@ function FrontStageSlugRoute({
   const rootNode = pageTreeQuery.data?.find(
     (node) => node.placement === 'topbar' && node.slug === slug
   );
-  if (sessionStatus === 'unknown') return <RouteLoadingFallback />;
+  if (sessionStatus === 'unknown') return <LoadingState compact />;
   if (sessionStatus === 'anonymous') {
     return (
       <SessionGuard>
-        <RouteLoadingFallback />
+        <LoadingState compact />
       </SessionGuard>
     );
   }
   if (!workspaceId) return <Navigate to="/" replace />;
-  if (pageTreeQuery.isLoading) return <RouteLoadingFallback />;
+  if (pageTreeQuery.isLoading) return <LoadingState compact />;
   if (!rootNode) return <NotFoundPage />;
+  const ActiveWorkspacePage =
+    getResolvedFrontstageWorkspacePage() ?? FrontstageWorkspacePage;
   return (
     <SessionGuard>
-      <LazyRouteBoundary>
-        <FrontstageWorkspacePage
-          workspaceId={workspaceId}
-          pageId={pageId}
-          tabRef={tabRef}
-          blockId={blockId}
-          blockInputSearch={blockInputSearch}
-          rootNode={rootNode}
-        />
-      </LazyRouteBoundary>
+      <ActiveWorkspacePage
+        workspaceId={workspaceId}
+        pageId={pageId}
+        tabRef={tabRef}
+        blockId={blockId}
+        blockInputSearch={blockInputSearch}
+        rootNode={rootNode}
+      />
     </SessionGuard>
   );
 }
@@ -812,14 +926,28 @@ const frontstageSlugPageTabRoute = createRoute({
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
-  validateSearch: (search: Record<string, unknown>) => ({
-    login_entry_id:
-      typeof search.login_entry_id === 'string' &&
-      search.login_entry_id.trim().length > 0
-        ? search.login_entry_id
-        : undefined
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { login_entry_id?: string; invite?: string } => ({
+    ...(typeof search.login_entry_id === 'string' &&
+    search.login_entry_id.trim().length > 0
+      ? { login_entry_id: search.login_entry_id }
+      : {}),
+    ...(typeof search.invite === 'string' && search.invite.trim().length > 0
+      ? { invite: search.invite.trim() }
+      : {})
   }),
-  component: () => <Navigate to="/" replace />
+  component: () => {
+    const { invite } = signInRoute.useSearch();
+    if (!invite) {
+      return <Navigate to="/" replace />;
+    }
+    return (
+      <LazyRouteBoundary>
+        <AuthenticatedSignInRedirect invite={invite} />
+      </LazyRouteBoundary>
+    );
+  }
 });
 
 const mcpAuthorizeRoute = createRoute({
@@ -831,67 +959,79 @@ const mcpAuthorizeRoute = createRoute({
   }),
   component: () => {
     const { request_id } = mcpAuthorizeRoute.useSearch();
-    return <McpAuthorizePage requestId={request_id} />;
+    return (
+      <LazyRouteBoundary>
+        <McpAuthorizePage requestId={request_id} />
+      </LazyRouteBoundary>
+    );
   }
 });
 
+const shellChildRoutes = [
+  homeRoute,
+  applicationIndexRoute,
+  applicationCollectorRoute,
+  applicationOrchestrationRoute,
+  applicationApiRoute,
+  applicationLogsRoute,
+  applicationMonitoringRoute,
+  applicationStatisticsRoute,
+  // Keep embedded apps hidden because the roadmap is distant and may change.
+  settingsIndexRoute,
+  settingsDocsRoute,
+  settingsApiKeyAuthenticationRoute,
+  settingsAuthCenterRoute,
+  settingsSystemRoute,
+  settingsSystemRuntimeRoute,
+  settingsHostInfrastructureRoute,
+  settingsMemoryObservationRoute,
+  settingsI18nRoute,
+  settingsApplicationsRoute,
+  settingsBackupsRoute,
+  settingsExtensionCenterRoute,
+  settingsExtensionCenterCategoryRoute,
+  settingsFilesRoute,
+  settingsDataModelsRoute,
+  settingsModelProvidersRoute,
+  settingsModelProviderInstancesRoute,
+  settingsModelProviderRequestLogsRoute,
+  settingsModelProviderPricingRoute,
+  settingsNetworkCenterProxyTypesRoute,
+  settingsNetworkCenterProxyPoolsRoute,
+  settingsNetworkCenterRoutingRulesRoute,
+  settingsMcpManagementRoute,
+  settingsUiManagementRoute,
+  settingsUiManagementBlocksRoute,
+  settingsUiManagementTemplatesRoute,
+  settingsUiManagementComponentsRoute,
+  settingsUiManagementRoutesRoute,
+  settingsMembersRoute,
+  settingsRolesRoute,
+  settingsRolesDynamicRoutesRoute,
+  settingsRolesTableGeneralPolicyRoute,
+  settingsRolesTableSinglePolicyRoute,
+  settingsRolesConsolePolicyRoute,
+  settingsRolesPluginPolicyRoute,
+  settingsRolesOtherPolicyRoute,
+  settingsDynamicRoute,
+  meIndexRoute,
+  meProfileRoute,
+  meSecurityRoute,
+  frontstageSlugRoute,
+  frontstageSlugPageRoute.addChildren([
+    frontstageSlugPageBlockRoute,
+    frontstageSlugPageTabRoute
+  ])
+] as const;
+
+for (const route of shellChildRoutes) {
+  (
+    route.options as { beforeLoad?: typeof ensureRouteApplicationI18n }
+  ).beforeLoad ??= ensureRouteApplicationI18n;
+}
+
 const routeTree = rootRoute.addChildren([
-  shellRoute.addChildren([
-    homeRoute,
-    applicationIndexRoute,
-    applicationCollectorRoute,
-    applicationOrchestrationRoute,
-    applicationApiRoute,
-    applicationLogsRoute,
-    applicationMonitoringRoute,
-    applicationStatisticsRoute,
-    // Keep embedded apps hidden because the roadmap is distant and may change.
-    settingsIndexRoute,
-    settingsDocsRoute,
-    settingsApiKeyAuthenticationRoute,
-    settingsAuthCenterRoute,
-    settingsSystemRoute,
-    settingsSystemRuntimeRoute,
-    settingsHostInfrastructureRoute,
-    settingsMemoryObservationRoute,
-    settingsI18nRoute,
-    settingsApplicationsRoute,
-    settingsBackupsRoute,
-    settingsExtensionCenterRoute,
-    settingsExtensionCenterCategoryRoute,
-    settingsFilesRoute,
-    settingsDataModelsRoute,
-    settingsModelProvidersRoute,
-    settingsModelProviderInstancesRoute,
-    settingsModelProviderRequestLogsRoute,
-    settingsModelProviderPricingRoute,
-    settingsNetworkCenterProxyTypesRoute,
-    settingsNetworkCenterProxyPoolsRoute,
-    settingsNetworkCenterRoutingRulesRoute,
-    settingsMcpManagementRoute,
-    settingsUiManagementRoute,
-    settingsUiManagementBlocksRoute,
-    settingsUiManagementTemplatesRoute,
-    settingsUiManagementComponentsRoute,
-    settingsUiManagementRoutesRoute,
-    settingsMembersRoute,
-    settingsRolesRoute,
-    settingsRolesDynamicRoutesRoute,
-    settingsRolesTableGeneralPolicyRoute,
-    settingsRolesTableSinglePolicyRoute,
-    settingsRolesConsolePolicyRoute,
-    settingsRolesPluginPolicyRoute,
-    settingsRolesOtherPolicyRoute,
-    settingsDynamicRoute,
-    meIndexRoute,
-    meProfileRoute,
-    meSecurityRoute,
-    frontstageSlugRoute,
-    frontstageSlugPageRoute.addChildren([
-      frontstageSlugPageBlockRoute,
-      frontstageSlugPageTabRoute
-    ])
-  ]),
+  shellRoute.addChildren([...shellChildRoutes]),
   signInRoute,
   mcpAuthorizeRoute
 ]);

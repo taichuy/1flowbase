@@ -16,6 +16,7 @@ fn compiled_console_policy_contract_exposes_canonical_read_surface() {
     let catalog = CompiledConsolePolicyCatalog {
         complete: true,
         groups: vec![CompiledConsolePolicyGroup {
+            root_workspace_only: false,
             group: ConsolePolicyGroup::other("settings").expect("valid policy group"),
             full_operations: vec![operation.clone()],
         }],

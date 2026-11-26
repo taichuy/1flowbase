@@ -18,9 +18,11 @@ use crate::{
 };
 
 mod block_tree;
+mod bootstrap_read;
 mod navigation;
 
 pub use block_tree::*;
+pub use bootstrap_read::*;
 
 pub struct CreateFrontstageGroupCommand {
     pub actor_user_id: Uuid,
@@ -660,35 +662,6 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
         ensure_page_record(&page)
-    }
-
-    async fn ensure_page_visible(
-        &self,
-        actor: &domain::ActorContext,
-        actor_user_id: Uuid,
-        workspace_id: Uuid,
-        page_id: Uuid,
-    ) -> Result<()> {
-        if actor.is_root {
-            return Ok(());
-        }
-
-        let pages = self.repository.list_frontstage_pages(workspace_id).await?;
-        let page = pages
-            .iter()
-            .find(|page| page.id == page_id)
-            .ok_or(ControlPlaneError::NotFound("frontstage_page"))?;
-        ensure_page_record(page)?;
-
-        let visibility_rules = self
-            .visibility_rules_for_actor(actor, actor_user_id, workspace_id)
-            .await?;
-        let visibility_context = FrontstagePageVisibilityContext::new(&pages, &visibility_rules);
-        if visibility_context.is_visible(page_id) {
-            return Ok(());
-        }
-
-        Err(ControlPlaneError::NotFound("frontstage_page").into())
     }
 
     async fn ensure_page_tab_visible(

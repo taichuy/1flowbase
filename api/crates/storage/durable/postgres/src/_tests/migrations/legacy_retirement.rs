@@ -73,17 +73,24 @@ async fn checksums(pool: &PgPool) -> Vec<(i64, Vec<u8>)> {
 
 async fn seed_money(pool: &PgPool) {
     let store = crate::PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "Retirement money")
+    let tenant_id = postgres_test_support::insert_historical_root_tenant(pool)
         .await
         .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(
+        pool,
+        workspace_id,
+        tenant_id,
+        "Retirement money",
+    )
+    .await
+    .unwrap();
     let user = Uuid::now_v7();
     sqlx::query("insert into users(id,account,email,password_hash,name,nickname,status) values($1,$2,$3,'fixture','Retirement','Retirement','active')")
         .bind(user).bind(format!("retirement-{user}")).bind(format!("{user}@example.test")).execute(pool).await.unwrap();
     store
         .execute_credit_command(&CreditCommandInput {
-            workspace_id: workspace.id,
+            workspace_id,
             user_id: user,
             amount: "10.25".into(),
             credit_unit: "USD".into(),
@@ -100,7 +107,7 @@ async fn seed_money(pool: &PgPool) {
         .unwrap();
     store
         .reserve_credit(&ReserveCreditInput {
-            workspace_id: workspace.id,
+            workspace_id,
             user_id: user,
             amount: "1".into(),
             flow_run_id: None,

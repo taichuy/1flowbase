@@ -145,7 +145,7 @@ test('uses backend pages and exposes only safe, plain-text log detail', async ()
   await waitFor(() =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   );
-  await click(screen.getByTitle('2'));
+  await click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
   await screen.findByText('Second page channel');
   expect(
     calls.some(

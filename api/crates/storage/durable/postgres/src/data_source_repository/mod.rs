@@ -417,8 +417,9 @@ impl DataSourceRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .bind(input.instance_id)
         .bind(input.defaults.data_model_status.as_str())
-        .fetch_one(self.pool())
-        .await?;
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::NotFound("data_source_instance"))?;
 
         map_instance(row)
     }

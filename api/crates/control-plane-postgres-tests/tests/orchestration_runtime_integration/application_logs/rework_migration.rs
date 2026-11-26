@@ -6,7 +6,7 @@ use std::borrow::Cow;
 // selection on both read projections after the forward-only migration.
 #[tokio::test]
 async fn requested_model_snapshot_migration_backfills_summary_and_task() {
-    let pool = isolated_database().await.connect().await.unwrap();
+    let pool = unmigrated_database().await.connect().await.unwrap();
     let prior = Migrator {
         migrations: Cow::Owned(
             sqlx::migrate!("../storage/durable/postgres/migrations")
@@ -62,7 +62,7 @@ async fn requested_model_snapshot_migration_backfills_summary_and_task() {
 // read-only projection, and retirement. Fresh installation is covered by rework.rs.
 #[tokio::test]
 async fn issue_2032_rework_migrates_populated_five_tables_into_original_logs() {
-    let pool = isolated_database().await.connect().await.unwrap();
+    let pool = unmigrated_database().await.connect().await.unwrap();
     let prior = Migrator {
         migrations: Cow::Owned(
             sqlx::migrate!("../storage/durable/postgres/migrations")

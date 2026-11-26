@@ -1,4 +1,4 @@
-import { Drawer } from 'antd';
+import { Drawer, type DrawerProps } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useId, useState } from 'react';
 
@@ -23,6 +23,7 @@ export interface ResizableDrawerProps {
   rootClassName?: string;
   bodyClassName?: string;
   zIndex?: number;
+  getContainer?: DrawerProps['getContainer'];
 }
 
 const DEFAULT_WIDTH = 720;
@@ -48,7 +49,8 @@ export function ResizableDrawer({
   rootClassName,
   title,
   viewportGutter = 0,
-  zIndex
+  zIndex,
+  getContainer
 }: ResizableDrawerProps) {
   const titleId = useId();
   const storageKey = pageWidthStorageKey();
@@ -94,6 +96,7 @@ export function ResizableDrawer({
       destroyOnHidden={destroyOnClose}
       extra={extra}
       footer={footer}
+      getContainer={getContainer}
       maxSize={maxWidth}
       open={open}
       placement="right"

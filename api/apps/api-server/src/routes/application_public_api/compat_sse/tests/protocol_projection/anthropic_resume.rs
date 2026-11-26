@@ -117,6 +117,7 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
         provider_runtime: base_state.provider_runtime.clone(),
         native_resource_import: base_state.native_resource_import.clone(),
         runtime_event_stream_projection: base_state.runtime_event_stream_projection.clone(),
+        local_terminal_disabled: base_state.local_terminal_disabled,
         terminal_jobs: Default::default(),
         process_started_at: base_state.process_started_at,
         runtime_activity: base_state.runtime_activity.clone(),

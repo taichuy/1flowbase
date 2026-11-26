@@ -1,7 +1,7 @@
 {
   "backend": {
-    "cargoJobs": 1,
-    "cargoTestThreads": 1,
+    "cargoJobs": "auto",
+    "cargoTestThreads": "auto",
     "incremental": false
   },
   "frontend": {

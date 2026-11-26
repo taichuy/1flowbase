@@ -107,7 +107,7 @@ pub(in crate::managed_services) async fn snapshot(
         host::record_pointer(&source.operation)?,
         serde_json::json!(source.key.record),
     )?;
-    let inspection = broker::inspection(&source.key).lock_owned().await;
+    let inspection = broker::global().inspection(&source.key).lock_owned().await;
     // Every queued caller still performs its own current Kernel/row admission
     // and revision check. A shared permit never conveys another caller's grant.
     let principal = source.admit(&principal, &source_payload).await?;
@@ -116,7 +116,7 @@ pub(in crate::managed_services) async fn snapshot(
         return Ok(SnapshotLookup::Ready(value));
     }
     loop {
-        if let Some(entry) = broker::active(&source.key) {
+        if let Some(entry) = broker::global().active(&source.key) {
             let mut notices = entry.notices.subscribe();
             entry.refresh_revision(&revision);
             // The producer owns this wait. Do not queue new members or cadence
@@ -142,8 +142,8 @@ pub(in crate::managed_services) async fn snapshot(
                     .map_err(|_| Error::UpstreamUnavailable("managed_service_source_stopped"))?;
             }
         }
-        let guard = broker::serial(&source.key).lock_owned().await;
-        if broker::active(&source.key).is_some() {
+        let guard = broker::global().serial(&source.key).lock_owned().await;
+        if broker::global().active(&source.key).is_some() {
             drop(guard);
             continue;
         }

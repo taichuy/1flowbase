@@ -68,6 +68,21 @@ pub trait ContributionAuthorityLease: Send {
     fn snapshot(&self) -> &PluginContributionAuthoritySnapshot;
     fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot];
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord>;
+    /// Current facts read on this lease's connection. System-workspace leases include the
+    /// provider inventory under the system fence; workspace leases retain their scoped facts.
+    /// Consumer grants remain in snapshot(); provider facts never confer consumer authority.
+    fn installations(&self) -> &std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord>;
+
+    /// Execute Host-validated plugin data against this lease's transaction. Authority
+    /// remains fenced until the data and any receipt commit together. No second pool checkout.
+    fn commit_plugin_data<'a>(
+        self: Box<Self>,
+        binding: &'a extension_contracts::PluginDataBinding,
+        request: &'a extension_contracts::PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a>
+    where
+        Self: 'a;
+
     /// Reuse this lease's connection. Hold shared channel/binding locks until release/commit;
     /// callers must not borrow another repository connection while the authority lease is held.
     fn load_communication_command_context<'a>(
@@ -153,6 +168,32 @@ pub trait PluginContributionAuthorityRepository: Send + Sync {
         &self,
         subject: &ManagedContributionSubject,
     ) -> Result<Box<dyn ContributionAuthorityLease>>;
+    /// Read-only admission for one frozen contribution, fenced against grant, revoke,
+    /// and lifecycle changes. Does not require the provider installation inventory.
+    async fn lock_contribution_execution_authority(
+        &self,
+        subject: &ManagedContributionSubject,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        self.lock_contribution_authority(subject).await
+    }
+    /// Resource callbacks inspect authority, but do not mutate its grants or selection.
+    /// Readers may overlap; grant/revoke/lifecycle writers must wait for every lease.
+    /// Keep this guard through the actual data/credential operation, including writes.
+    async fn lock_managed_callback_authority(
+        &self,
+        subject: &ManagedContributionSubject,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        self.lock_contribution_authority(subject).await
+    }
+    /// Same read fence for Host-owned record existence and live-provider observations.
+    async fn lock_installation_resource_authority(
+        &self,
+        installation_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        self.lock_installation_contribution_authority(installation_id, workspace_id)
+            .await
+    }
     /// Read-only authority guard for authentication HTTP exchanges. Concurrent reads may
     /// overlap; authority writers must wait until every guard is released or dropped.
     /// Consumers only inspect facts and release this guard; they must not commit effects.

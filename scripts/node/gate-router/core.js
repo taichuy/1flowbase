@@ -1,4 +1,6 @@
 const { spawnSync } = require('node:child_process');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
 const { API_SOURCE_OWNERS } = require('../testing/contracts/api-source-owners.js');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
@@ -22,6 +24,11 @@ const { BACKEND_SHARDS } = require('../verify/backend-targets.js');
 const CHECK_SCOPE_BY_PACKAGE = new Map(BACKEND_SHARDS.flatMap(({ key, packages }) =>
   packages.map((packageName) => [packageName, `repo-backend-check-${key}`])
 ));
+
+const BACKEND_CHECK_SCOPES = BACKEND_SHARDS.map(({ key }) => `repo-backend-check-${key}`);
+const BACKEND_BASE_SCOPES = ['repo-backend-static', 'repo-backend-fmt'];
+const BACKEND_SPECIAL_SCOPES = ['repo-backend-image-llm-vision', 'repo-backend-official-i18n-seed'];
+const ALL_BACKEND_SCOPES = [...BACKEND_BASE_SCOPES, ...BACKEND_SPECIAL_SCOPES, ...BACKEND_CHECK_SCOPES];
 
 const ROUTE_DEFINITIONS = [
   {
@@ -118,10 +125,16 @@ function parseCliArgs(argv = []) {
   }
 
   let mode = 'branch';
-  let baseRef = DEFAULT_BASE_REF;
+  let baseRef;
+  let prPlan = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+
+    if (arg === '--pr-plan-json') {
+      prPlan = true;
+      continue;
+    }
 
     if (arg === '--staged') {
       mode = 'staged';
@@ -149,17 +162,20 @@ function parseCliArgs(argv = []) {
   return {
     help: false,
     mode,
-    baseRef,
+    baseRef: baseRef ?? (prPlan ? null : DEFAULT_BASE_REF),
+    ...(prPlan && { prPlan }),
   };
 }
 
 function buildGitDiffArgs({ mode, baseRef }) {
-  const commonArgs = ['diff', '--name-only', '--diff-filter=ACDMRTUXB'];
+  const commonArgs = ['diff', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB'];
 
   if (mode === 'staged') {
     return [...commonArgs, '--cached'];
   }
 
+  // CI compares the exact candidate and base trees, including force-pushed changes.
+  if (mode === 'candidate') return [...commonArgs, '-z', baseRef, 'HEAD', '--'];
   return [...commonArgs, `${baseRef}...HEAD`];
 }
 
@@ -170,7 +186,7 @@ function readChangedFiles({
   env = process.env,
   spawnSyncImpl = spawnSync,
 }) {
-  if (env[CHANGED_FILES_ENV] !== undefined) {
+  if (mode !== 'candidate' && env[CHANGED_FILES_ENV] !== undefined) {
     return splitChangedFiles(env[CHANGED_FILES_ENV]);
   }
 
@@ -188,7 +204,9 @@ function readChangedFiles({
     throw new Error(result.stderr || result.stdout || 'git diff failed');
   }
 
-  return splitChangedFiles(result.stdout);
+  return mode === 'candidate'
+    ? uniqueSorted(result.stdout.split('\0').filter(Boolean))
+    : splitChangedFiles(result.stdout);
 }
 
 function addRoute(routes, scope) {
@@ -321,6 +339,157 @@ function routeChangedFiles(changedFiles) {
   return ROUTE_DEFINITIONS.filter((route) => routes.has(route.scope));
 }
 
+const dependencyGraphs = new Map();
+
+function parseCargoLock(lock) {
+  // Read Cargo's generated package tables, not the unused patches or metadata.
+  // Dependency references include version and source when needed to disambiguate.
+  const packages = lock.split(/^\[\[package\]\][ \t]*\r?$/mu).slice(1).map((section) => {
+    const block = section.split(/^\[/mu, 1)[0];
+    const readField = (key) => {
+      const literal = new RegExp(`^${key}\\s*=\\s*(.+)$`, 'mu').exec(block)?.[1];
+      if (literal === undefined) return undefined;
+      const value = JSON.parse(literal);
+      if (typeof value !== 'string' || !value) throw new Error(`Invalid lock package ${key}`);
+      return value;
+    };
+    const name = readField('name');
+    const version = readField('version');
+    const source = readField('source');
+    if (!name || !version) throw new Error('Missing lock package identity');
+
+    const dependencies = /^dependencies\s*=\s*\[([^\]]*)\]/mu.exec(block);
+    if (!dependencies && /^dependencies\s*=/mu.test(block)) throw new Error('Invalid lock dependency list');
+    const references = JSON.parse(`[${(dependencies?.[1] ?? '').replace(/,\s*$/u, '')}]`);
+    return { name, version, source, references, dependents: new Set() };
+  });
+
+  const byIdentity = new Map();
+  const keyFor = (name, version) => version ? `${name}@${version}` : name;
+  for (const pkg of packages) {
+    for (const key of [pkg.name, keyFor(pkg.name, pkg.version)]) {
+      const matches = byIdentity.get(key) ?? [];
+      matches.push(pkg);
+      byIdentity.set(key, matches);
+    }
+  }
+  function resolveLocal({ name, version }) {
+    const matches = (byIdentity.get(keyFor(name, version)) ?? []).filter((pkg) => !pkg.source);
+    return matches.length === 1 ? matches[0] : null;
+  }
+  if ([...CHECK_SCOPE_BY_PACKAGE.keys()].some((name) => !resolveLocal({ name }))) {
+    throw new Error('Lockfile is missing an unambiguous identity for a check-shard package');
+  }
+  for (const pkg of packages) {
+    for (const reference of pkg.references) {
+      const parts = /^(\S+)(?: (\S+)(?: \((.+)\))?)?$/u.exec(reference);
+      if (!parts) throw new Error(`Invalid lock dependency ${reference}`);
+      const [, name, version, source] = parts;
+      const matches = (byIdentity.get(keyFor(name, version)) ?? []).filter((candidate) =>
+        !source || (candidate.source?.startsWith('git+')
+          ? candidate.source.split('#', 1)[0] : candidate.source) === source);
+      if (!matches.length) throw new Error(`Unresolved lock dependency ${reference}`);
+      for (const dependency of matches) dependency.dependents.add(pkg);
+    }
+  }
+  return { resolveLocal };
+}
+
+function readDependencyGraph(repoRoot) {
+  const root = path.resolve(repoRoot);
+  if (!dependencyGraphs.has(root)) {
+    let graph = null;
+    try {
+      graph = parseCargoLock(readFileSync(path.join(root, 'api/Cargo.lock'), 'utf8'));
+    } catch {
+      // No reliable graph: the PR planner must keep every check shard.
+    }
+    dependencyGraphs.set(root, graph);
+  }
+  return dependencyGraphs.get(root);
+}
+
+function readManifestPackage(repoRoot, file) {
+  // Read the nearest manifest to handle nested owners (e.g. storage/durable/core)
+  // and directories whose names differ from their Cargo package names.
+  for (let directory = path.posix.dirname(file); directory.startsWith('api/'); directory = path.posix.dirname(directory)) {
+    let manifest;
+    try {
+      manifest = readFileSync(path.join(repoRoot, directory, 'Cargo.toml'), 'utf8');
+    } catch (error) {
+      if (error.code !== 'ENOENT') return null;
+      continue;
+    }
+    const packageTable = manifest.split(/^\[package\][ \t]*\r?$/mu)[1]?.split(/^\[/mu, 1)[0];
+    const readString = (key) => new RegExp(`^[ \t]*${key}[ \t]*=[ \t]*(?:"([^"\n]+)"|'([^'\n]+)')`, 'mu')
+      .exec(packageTable ?? '')?.slice(1).find(Boolean);
+    const name = readString('name');
+    return name ? { name, version: readString('version') } : null;
+  }
+  return null;
+}
+
+function getImpactedCheckScopes(repoRoot, backendFiles) {
+  const manifests = backendFiles.map((file) => readManifestPackage(repoRoot, file));
+  if (manifests.some((manifest) => !manifest)) return null;
+  const graph = readDependencyGraph(repoRoot);
+  if (!graph) return BACKEND_CHECK_SCOPES;
+  const pending = new Set(manifests.map(graph.resolveLocal));
+  if (pending.has(null)) return null;
+
+  const impacted = new Set();
+  // A Set iterator visits new entries in insertion order, keeping the closure
+  // cycle-safe and traversing packages even if they have no check shard.
+  for (const pkg of pending) {
+    if (!pkg.source) impacted.add(CHECK_SCOPE_BY_PACKAGE.get(pkg.name));
+    for (const dependent of pkg.dependents) pending.add(dependent);
+  }
+  return BACKEND_CHECK_SCOPES.filter((scope) => impacted.has(scope));
+}
+
+function buildPrVerifyPlan({ changedFiles = [], repoRoot = getRepoRoot() } = {}) {
+  const files = changedFiles.filter((file) => !isIgnoredPath(file));
+  const backendFiles = files.filter((file) => file.startsWith('api/'));
+  const globalPath = files.length === 0 || files.some((file) =>
+    !/^(?:api|web|docs)\//u.test(file) || /(?:[./-]lock(?:b|file)?(?:\.ya?ml|\.json)?|shrinkwrap\.(?:ya?ml|json))$/iu.test(file)
+    || /^api\/(?:Cargo\.toml|\.cargo\/|rust-toolchain)/u.test(file));
+  const impacted = !globalPath && backendFiles.length ? getImpactedCheckScopes(repoRoot, backendFiles) : [];
+  const global = globalPath || impacted === null;
+  const webSeed = files.some((file) => isFrontendFile(file)
+    && /(?:i18n|locales?)[-_.\/].*seed|seed[-_.\/].*(?:i18n|locales?)/iu.test(file));
+  const tooling = global || webSeed || files.some(isToolingFile);
+  const frontend = global || files.some(isFrontendFile);
+  let backendScopes = [];
+  if (global || webSeed) {
+    backendScopes = [...ALL_BACKEND_SCOPES];
+  } else if (backendFiles.length) {
+    const specialistPaths = backendFiles.some((file) => /i18n|locale|seed|image|llm|vision|model/iu.test(file));
+    backendScopes = [
+      ...BACKEND_BASE_SCOPES,
+      ...(specialistPaths ? BACKEND_SPECIAL_SCOPES : []),
+      ...impacted,
+    ];
+  }
+  const expectedScopes = [
+    ...(tooling ? ['repo-tooling'] : []),
+    ...(frontend ? ['repo-frontend-pr'] : []),
+    ...backendScopes,
+    // The reusable workflow always produces a SHA-bound receipt, even for no impact.
+    'foundation-contracts',
+  ];
+  return { tooling, frontend, backendScopes, expectedScopes, allFoundations: global,
+    selectedFoundations: buildFoundationPlan({ changedFiles: files, foundation: global ? 'all' : 'auto' }).selectedFoundations };
+}
+
+function readPrVerifyPlan({ baseRef, repoRoot, ...options }) {
+  if (!/^(?!0+$)[0-9a-f]{40}$/u.test(baseRef ?? '')) return buildPrVerifyPlan();
+  try {
+    return buildPrVerifyPlan({ repoRoot, changedFiles: readChangedFiles({ ...options, repoRoot, baseRef, mode: 'candidate' }) });
+  } catch {
+    return buildPrVerifyPlan();
+  }
+}
+
 function buildAdvisoryMessage({ mode, changedFiles, routes }) {
   if (!routes.length) {
     return '';
@@ -353,7 +522,7 @@ function buildReadFailureMessage(error) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    'Usage: node scripts/node/tooling.js gate-router [--staged|--branch] [--base-ref <ref>]\n'
+    'Usage: node scripts/node/tooling.js gate-router [--staged|--branch] [--base-ref <ref>] [--pr-plan-json]\n'
       + 'Prints non-blocking quality gate suggestions for changed files.\n'
   );
 }
@@ -369,6 +538,11 @@ async function main(argv = [], deps = {}) {
   const repoRoot = deps.repoRoot || getRepoRoot();
   const env = deps.env || process.env;
   const writeStdout = deps.writeStdout || ((text) => process.stdout.write(text));
+  if (options.prPlan) {
+    const plan = readPrVerifyPlan({ repoRoot, baseRef: options.baseRef, env, spawnSyncImpl: deps.spawnSyncImpl });
+    writeStdout(`${JSON.stringify(plan)}\n`);
+    return 0;
+  }
   let changedFiles = [];
 
   try {
@@ -401,6 +575,8 @@ async function main(argv = [], deps = {}) {
 module.exports = {
   buildAdvisoryMessage,
   buildGitDiffArgs,
+  buildPrVerifyPlan,
+  readPrVerifyPlan,
   main,
   parseCliArgs,
   readChangedFiles,

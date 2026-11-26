@@ -5,6 +5,8 @@ mod file_template;
 mod model_queries;
 mod naming;
 
+#[cfg(test)]
+pub(crate) use naming::sample_hir as sample_hir_for_test;
 pub use naming::RuntimeTableNamePolicy;
 
 use anyhow::Result;
@@ -88,10 +90,17 @@ fn platform_runtime_field_records(
 
 #[async_trait]
 impl ModelDefinitionRepository for PgControlPlaneStore {
+    async fn runtime_bootstrap_workspace_id(&self) -> Result<Uuid> {
+        crate::workspace_repository::bootstrap_workspace_id(self.pool()).await
+    }
+
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,
     ) -> Result<domain::ActorContext> {
+        if let Some(actor) = self.request_actor_for_user(actor_user_id)? {
+            return Ok(actor);
+        }
         let workspace_id = workspace_id_for_user(self.pool(), actor_user_id).await?;
         let tenant_id = tenant_id_for_workspace(self.pool(), workspace_id).await?;
         AuthRepository::load_actor_context(self, actor_user_id, tenant_id, workspace_id, None).await

@@ -21,6 +21,7 @@ export interface ConsoleFrontstageBlockNodeSummary {
 
 export interface ConsoleFrontstageBlockNode extends ConsoleFrontstageBlockNodeSummary {
   code_ref: string;
+  source_sha256?: string | null;
   input_mapping: Record<string, string>;
   output_mapping: Record<string, string>;
   runtime_descriptor: unknown;

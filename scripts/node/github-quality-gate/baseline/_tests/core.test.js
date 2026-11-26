@@ -148,3 +148,17 @@ test('CLI fails visibly without publishing a guessed baseline', () => {
   assert.equal(wrote, false);
   assert.match(error, /No complete passing receipt/u);
 });
+
+
+test('scheduled baseline reaches page five past green single-scope runs', () => {
+  const pages = [];
+  const client = {
+    listRuns(page, perPage) {
+      pages.push(page);
+      return page === 5 ? [run] : Array.from({ length: perPage }, () => ({ ...run, id: page }));
+    },
+    readReceipt(item) { return item.id === run.id ? receipt() : receipt({ scope: 'repo-tooling' }); },
+  };
+  assert.equal(selectScheduledBaseline({ client, candidate, branch: 'latest' }).baseSha, previous);
+  assert.deepEqual(pages, [1, 2, 3, 4, 5]);
+});

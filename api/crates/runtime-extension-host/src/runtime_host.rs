@@ -90,6 +90,7 @@ pub struct RuntimeExtensionHost {
     pub(crate) file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
     pub(crate) execution_gate_registry: crate::execution_gate_host::ExecutionGateRegistry,
+    pub(crate) workspace_governance: Option<Arc<dyn extension_contracts::WorkspaceGovernancePort>>,
     pub(crate) execution_gate: Option<Arc<dyn extension_contracts::PluginExecutionGateAuthority>>,
     pub(crate) plugin_ephemeral: Option<Arc<dyn extension_contracts::PluginEphemeralPort>>,
     managed_hash_budget: Arc<tokio::sync::Semaphore>,
@@ -198,6 +199,7 @@ impl RuntimeExtensionHost {
             plugin_credentials: None,
             execution_gate_registry: Default::default(),
             execution_gate: None,
+            workspace_governance: None,
             plugin_ephemeral: None,
             managed_hash_budget: Arc::new(tokio::sync::Semaphore::new(4)),
         })
@@ -232,6 +234,14 @@ impl RuntimeExtensionHost {
         port: Arc<dyn runtime_core::runtime_backend::FileImportPort>,
     ) -> Self {
         self.file_import = Some(port);
+        self
+    }
+
+    pub fn with_workspace_governance(
+        mut self,
+        port: Arc<dyn extension_contracts::WorkspaceGovernancePort>,
+    ) -> Self {
+        self.workspace_governance = Some(port);
         self
     }
 

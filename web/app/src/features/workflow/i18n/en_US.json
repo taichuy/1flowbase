@@ -11,7 +11,6 @@
     "trigger_variables": "Trigger Variables",
     "workflow_test_run": "Test Run",
     "workflow_test_run_execute": "Run",
-    "workflow_test_run_failed": "Workflow test run failed",
     "workflow_test_run_unavailable": "This workflow does not have an available trigger or authenticated session.",
     "workflow_action_bar": "Workflow actions",
     "more_publish_actions": "More publish actions",

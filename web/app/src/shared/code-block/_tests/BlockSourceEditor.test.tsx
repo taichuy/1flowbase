@@ -219,3 +219,33 @@ test('projects source diagnostics into Monaco markers and clears them', async ()
     )
   );
 });
+
+test('loads current source declarations without blocking editing, then hydrates new-import completion', async () => {
+  const current = { source: 'current', filePath: 'file:///current.d.ts', content: 'export const current: string;' };
+  const next = { source: 'new-import', filePath: 'file:///next.d.ts', content: 'export const next: string;' };
+  const loader = { loadForSource: vi.fn(async () => [current]), loadAll: vi.fn(async () => [current, next]) };
+  const dispose = vi.fn();
+  const addExtraLib = vi.fn(() => ({ dispose }));
+  const registerCompletionItemProvider = vi.fn((_language: string, _provider: unknown) => ({ dispose: vi.fn() }));
+  const model = { uri: { toString: () => 'file:///source.tsx' } };
+  const editor = { getModel: () => model, hasTextFocus: () => true, trigger: vi.fn() };
+  const monaco = {
+    MarkerSeverity: { Error: 8 }, editor: { setModelMarkers: vi.fn() },
+    languages: { registerCompletionItemProvider, typescript: {
+      typescriptDefaults: { addExtraLib, setCompilerOptions: vi.fn() }
+    } }
+  };
+  const view = render(<BlockSourceEditor ariaLabel="source" path="file:///source.tsx" value="import 'current'" onChange={vi.fn()} declarationLoader={loader} />);
+  await waitFor(() => expect(editorHarness.props).not.toBeNull());
+  act(() => editorHarness.props?.onMount?.(editor, monaco));
+  await waitFor(() => expect(addExtraLib).toHaveBeenCalledWith(current.content, current.filePath));
+  expect(loader.loadAll).not.toHaveBeenCalled();
+  const provider = registerCompletionItemProvider.mock.calls[0]?.[1] as unknown as {
+    provideCompletionItems(model: unknown, position: unknown, context: unknown, token: unknown): Promise<unknown>;
+  };
+  await act(async () => { await provider.provideCompletionItems(model, {}, {}, { isCancellationRequested: false }); });
+  expect(addExtraLib).toHaveBeenCalledWith(next.content, next.filePath);
+  await waitFor(() => expect(editor.trigger).toHaveBeenCalledWith('native-declarations', 'editor.action.triggerSuggest', {}));
+  view.unmount();
+  expect(dispose).toHaveBeenCalledTimes(2);
+});

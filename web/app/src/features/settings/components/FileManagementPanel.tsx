@@ -19,7 +19,7 @@ import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 
 import { useAuthStore } from '../../../state/auth-store';
-import { useConsoleOperationAccess } from '../../../state/console-operation-access';
+import { useConsoleOperationAccess, useProjectedConsoleOperationAccess } from '../../../state/console-operation-access';
 import {
   deleteSettingsFileStorage,
   deleteSettingsFileTable,
@@ -74,14 +74,15 @@ function useFileManagementController({
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const can = useConsoleOperationAccess();
-  const canListStorages = canViewStorages && can('file_storages.list');
+  const canUseHostOperation = useProjectedConsoleOperationAccess();
+  const canListStorages = canViewStorages;
   const canListTables = canViewTables && can('file_tables.list');
   const canCreateTable = canCreateTables && can('file_tables.create');
-  const canBindTables = can('file_tables.storage.bind');
+  const canBindTables = canUseHostOperation('file_tables.storage.bind');
   const canDeleteTables = can('file_tables.delete');
-  const canCreateStorage = isRoot && can('file_storages.create');
-  const canUpdateStorage = isRoot && can('file_storages.update');
-  const canDeleteStorage = isRoot && can('file_storages.delete');
+  const canCreateStorage = isRoot && canUseHostOperation('file_storages.create');
+  const canUpdateStorage = isRoot && canUseHostOperation('file_storages.update');
+  const canDeleteStorage = isRoot && canUseHostOperation('file_storages.delete');
 
   const [storageSearch, setStorageSearch] = useState('');
   const [tableSearch, setTableSearch] = useState('');

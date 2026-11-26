@@ -26,6 +26,14 @@ pub(in super::super) async fn call_inner(
     let Some(tool_id) = string_argument(arguments, "tool_id") else {
         return Ok(VirtualToolOutcome::invalid("Invalid tool_id"));
     };
+    if actor.current_workspace_id != dependencies.bootstrap_workspace_id
+        && root_workspace_only_tool(dependencies, catalog, scope, tool_id)
+    {
+        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+            "permission_denied",
+        )
+        .into());
+    }
     let allow_assistant_client = match assistant_client {
         Some(client) => client.has_frontstage_capability_bundle().await,
         None => false,
@@ -322,6 +330,30 @@ pub(in super::super) async fn call_inner(
     }
 }
 
+pub(super) fn root_workspace_only_tool(
+    dependencies: &RuntimeInternalToolInvokerDependencies,
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+    tool_id: &str,
+) -> bool {
+    let is_restricted = |id: &str| dependencies.root_workspace_only_interfaces.contains(id);
+    visible_tool(catalog, scope, tool_id, false).is_some_and(|(_, tool)| {
+        tool.execution_target
+            .interface_id()
+            .is_some_and(is_restricted)
+    }) || dependencies
+        .managed_services
+        .iter()
+        .filter(|service| service.root_workspace_only)
+        .any(|service| {
+            service.declaration.operations.iter().any(|op| {
+                op.mcp.as_ref().is_some_and(|mcp| {
+                    tool_id == format!("plugin.{}.{}", service.plugin_code, mcp.name)
+                })
+            })
+        })
+}
+
 test_support_item! { pub(super), [
 
 ]
@@ -391,8 +423,16 @@ pub(super) fn target_failure(
         ("outcome".to_string(), json!("failed")),
         ("retry_original".to_string(), json!(false)),
     ]);
+    let message =
+        if target_code.as_deref() == Some(crate::error_response::LOCAL_TERMINAL_DISABLED_CODE) {
+            let message = crate::error_response::LOCAL_TERMINAL_DISABLED_MESSAGE;
+            data.insert("reason".to_string(), json!(message));
+            message
+        } else {
+            "Tool execution failed"
+        };
     if let Some(code) = target_code {
         data.insert("target_code".to_string(), json!(code));
     }
-    VirtualToolOutcome::failed("Tool execution failed", Value::Object(data))
+    VirtualToolOutcome::failed(message, Value::Object(data))
 }

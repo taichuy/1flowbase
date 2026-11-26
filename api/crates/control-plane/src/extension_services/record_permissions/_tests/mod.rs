@@ -35,6 +35,28 @@ impl RecordPermissionRepository for Memory {
     ) -> Result<Option<RecordPermissionPolicy>> {
         Ok(self.0.lock().unwrap().policies.get(&identity(key)).cloned())
     }
+    async fn get_record_permissions_batch(
+        &self,
+        workspace_id: Uuid,
+        resource: &RecordPermissionResourceKey,
+        record_ids: &[String],
+    ) -> Result<std::collections::BTreeMap<String, RecordPermissionPolicy>> {
+        let state = self.0.lock().unwrap();
+        Ok(record_ids
+            .iter()
+            .filter_map(|id| {
+                let key = RecordPermissionKey {
+                    workspace_id,
+                    resource: resource.clone(),
+                    record_id: id.clone(),
+                };
+                state
+                    .policies
+                    .get(&identity(&key))
+                    .map(|policy| (id.clone(), policy.clone()))
+            })
+            .collect())
+    }
     async fn replace_record_permissions(
         &self,
         key: &RecordPermissionKey,
@@ -350,4 +372,78 @@ async fn editor_capability_requires_view_and_replace_but_each_api_keeps_its_own_
         .is_err());
     permit_management(&service);
     assert!(service.can_manage_permissions(&actor).await.unwrap());
+}
+
+#[tokio::test]
+async fn record_capabilities_batch_preserves_order_duplicates_and_root_semantics() {
+    let (service, actor, key, role) = fixture();
+    permit_management(&service);
+    service
+        .replace(&actor, &key, &restricted(role), &["open".into()])
+        .await
+        .unwrap();
+    let mut empty_policy_key = key.clone();
+    empty_policy_key.record_id = "host-denied".into();
+    service
+        .replace(
+            &actor,
+            &empty_policy_key,
+            &ReplaceRecordPermissions {
+                mode: RecordPermissionMode::Restricted,
+                grants: Vec::new(),
+                expected_revision: None,
+            },
+            &["open".into()],
+        )
+        .await
+        .unwrap();
+    let ids = vec![
+        "host-unrestricted".into(),
+        key.record_id.clone(),
+        empty_policy_key.record_id,
+        key.record_id.clone(),
+    ];
+    let eligible = vec!["view".into(), "open".into()];
+    let root = ActorContext::root(Uuid::new_v4(), actor.current_workspace_id, "root");
+    for actor in [&actor, &root] {
+        let mut expected = Vec::new();
+        for id in &ids {
+            expected.push(
+                service
+                    .capabilities(
+                        actor,
+                        &RecordPermissionKey {
+                            record_id: id.clone(),
+                            ..key.clone()
+                        },
+                        &eligible,
+                    )
+                    .await
+                    .unwrap(),
+            );
+        }
+        let items = service
+            .capabilities_batch(actor, &key.resource, &ids, &eligible)
+            .await
+            .unwrap();
+        assert_eq!(items, expected);
+        assert_eq!(items[1], items[3]);
+        assert_eq!(items[0].allowed_actions, eligible);
+        assert_eq!(
+            items[1].allowed_actions,
+            if actor.is_root {
+                eligible.clone()
+            } else {
+                vec!["open".into()]
+            }
+        );
+        assert_eq!(
+            items[2].allowed_actions,
+            if actor.is_root {
+                eligible.clone()
+            } else {
+                vec![]
+            }
+        );
+    }
 }

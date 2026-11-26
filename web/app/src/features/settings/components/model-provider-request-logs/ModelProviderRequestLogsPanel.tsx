@@ -665,30 +665,9 @@ export function ModelProviderRequestLogsPanel() {
             selectedRowKeys: selectedAttemptIds,
             onChange: (keys) =>
               setSelectedAttemptIds(keys.map((key) => String(key))),
-            getCheckboxProps: (record) => ({
-              id: `request-log-selection-${record.attempt_id}`
-            }),
-            renderCell: (_checked, record, _index, originNode) => (
-              <>
-                {originNode}
-                <label
-                  htmlFor={`request-log-selection-${record.attempt_id}`}
-                  style={{
-                    border: 0,
-                    clip: 'rect(0 0 0 0)',
-                    height: 1,
-                    margin: -1,
-                    overflow: 'hidden',
-                    padding: 0,
-                    position: 'absolute',
-                    whiteSpace: 'nowrap',
-                    width: 1
-                  }}
-                >
-                  {i18nText('settings', 'auto.request_log_select_record')}
-                </label>
-              </>
-            )
+            getCheckboxProps: () => ({
+              'aria-label': i18nText('settings', 'auto.request_log_select_record')
+            })
           }}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>

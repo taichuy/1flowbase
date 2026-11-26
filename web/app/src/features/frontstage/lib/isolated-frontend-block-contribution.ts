@@ -1,7 +1,7 @@
 import {
   sha256Text,
   validateIsolatedFrontendBlockSource
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 import type { IsolatedFrontendBlockProgram } from '@1flowbase/page-protocol';
 
 import type { FrontstageBlockCatalogEntry } from '../api/block-catalog';

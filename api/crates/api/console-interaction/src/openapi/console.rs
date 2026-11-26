@@ -69,6 +69,7 @@ struct Paths84;
     crate::routes::session::delete_session,
     crate::routes::session::revoke_all_sessions,
     crate::routes::session::switch_workspace,
+    crate::routes::session::redeem_invitation,
     crate::routes::session::switch_active_role,
 ))]
 struct Paths91;
@@ -109,6 +110,7 @@ struct Paths136;
 
 #[derive(OpenApi)]
 #[openapi(paths(
+    crate::routes::frontstage::bootstrap::get_frontstage_bootstrap,
     crate::routes::frontstage::list_frontstage_pages,
     crate::routes::frontstage::create_frontstage_group,
     crate::routes::frontstage::create_frontstage_page,
@@ -222,9 +224,11 @@ struct Schemas84;
 #[derive(OpenApi)]
 #[openapi(components(schemas(
     crate::routes::session::SwitchWorkspaceBody,
+    crate::routes::session::RedeemWorkspaceInvitationBody,
     crate::routes::session::SwitchActiveRoleBody,
     crate::routes::session::AvailableRoleResponse,
     crate::routes::session::SessionResponse,
+    crate::routes::frontstage::bootstrap::FrontstageBootstrapResponse,
     crate::routes::frontstage::CreateFrontstageGroupBody,
     crate::routes::frontstage::CreateFrontstagePageBody,
     crate::routes::frontstage::FrontstageUiTemplateResponse,

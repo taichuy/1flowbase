@@ -4,7 +4,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from '@testing-library/react';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -43,6 +44,9 @@ vi.mock(
   '../../hooks/use-frontstage-page-canvas-native-preparations',
   () => runtimeSessionsHook
 );
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
 vi.mock('@monaco-editor/react', () => ({
   default: ({ value }: { value?: string }) => (
     <textarea aria-label="JSX source" readOnly value={value} />
@@ -222,10 +226,20 @@ describe('FrontStagePage trial panel link', () => {
     renderFrontStagePage();
 
     activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '区块 cta' }));
-    fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
+    const blockSlot = await screen.findByRole('button', { name: '区块 cta' });
+    await act(async () => {
+      fireEvent.click(blockSlot);
+      await vi.dynamicImportSettled();
+    });
+    const editBlock = await within(blockSlot).findByRole('button', {
+      name: '编辑区块'
+    });
+    await act(async () => {
+      fireEvent.click(editBlock);
+      await vi.dynamicImportSettled();
+    });
     expect(
-      await screen.findByRole('dialog', { name: 'TSX 编辑器' })
+      await screen.findByRole('dialog', { name: 'TSX 编辑器' }, { timeout: 5_000 })
     ).toBeInTheDocument();
 
     // Exit design mode — Drawer should close

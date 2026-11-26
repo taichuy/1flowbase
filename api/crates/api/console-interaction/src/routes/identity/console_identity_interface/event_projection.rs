@@ -71,7 +71,7 @@ struct ApiKeysEvent<'a> {
 
 impl ApiInput for ConsoleIdentityInput {
     fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
-        (operation.interface_id == "console.identity.me.change-password").then(|| json!({"type":"object","properties":{"body":{"type":"object","properties":{},"additionalProperties":false}},"required":["body"],"additionalProperties":false}))
+        matches!(operation.interface_id.as_str(), "console.identity.me.change-password" | "console.workspaces.invitations.redeem").then(|| json!({"type":"object","properties":{"body":{"type":"object","properties":{},"additionalProperties":false}},"required":["body"],"additionalProperties":false}))
     }
     fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
@@ -85,7 +85,9 @@ impl ApiInput for ConsoleIdentityInput {
             Self::SwitchRole { role_code } => json!({"body":{"role_code":role_code}}),
             Self::PatchMe(body) => json!({"body":event::to_value(body)?}),
             Self::PatchMeMeta(body) => json!({"body":event::to_value(body)?}),
-            Self::ChangePassword(_) => json!({"body":{}}),
+            Self::ChangePassword(_) | Self::RedeemWorkspaceInvitation { .. } => {
+                json!({"body":{}})
+            }
             Self::CreateUserApiKey(body) => json!({"body":event::to_value(body)?}),
             Self::RevokeUserApiKey { api_key_id } => json!({"path":{"api_key_id":api_key_id}}),
         })
@@ -95,6 +97,7 @@ impl ApiOutput for ConsoleIdentityOutput {
     fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "console.identity.session.get"
+            | "console.workspaces.invitations.redeem"
             | "console.identity.session.switch-workspace"
             | "console.identity.session.switch-role" => {
                 Some(event::schema::<SessionEvent<'static>>())

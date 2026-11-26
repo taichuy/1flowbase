@@ -144,6 +144,11 @@ pub struct ReconcileSystemModelFieldInput {
 
 #[async_trait]
 pub trait ModelDefinitionRepository: Send + Sync {
+    /// Workspace in which a root session may exercise global runtime access.
+    async fn runtime_bootstrap_workspace_id(&self) -> anyhow::Result<Uuid> {
+        Ok(domain::DEFAULT_SCOPE_ID)
+    }
+
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

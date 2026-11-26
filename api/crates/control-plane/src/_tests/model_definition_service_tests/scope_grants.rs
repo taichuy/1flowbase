@@ -244,7 +244,7 @@ async fn runtime_scope_grant_loader_keeps_grant_owner_as_lower_boundary() {
 }
 
 #[tokio::test]
-async fn root_runtime_scope_grant_loader_prefers_system_grant_over_workspace_overlay() {
+async fn root_runtime_scope_grant_loader_clamps_system_grant_outside_bootstrap() {
     let actor_user_id = Uuid::now_v7();
     let workspace_id = Uuid::now_v7();
     let model_id = Uuid::now_v7();
@@ -269,22 +269,33 @@ async fn root_runtime_scope_grant_loader_prefers_system_grant_over_workspace_ove
             .with_grant(system_grant);
     let service = ModelDefinitionService::new(repository);
 
-    let grant = service
-        .load_runtime_scope_grant(
-            &ActorContext::root(actor_user_id, workspace_id, "root"),
-            model_id,
-            runtime_core::runtime_acl::RuntimeDataAction::View,
-        )
-        .await
-        .unwrap()
-        .expect("root should use the system grant when one exists");
-
-    assert_eq!(grant.scope_kind, DataModelScopeKind::System);
-    assert_eq!(grant.scope_id, SYSTEM_SCOPE_ID);
-    assert_eq!(
-        grant.permission_profile,
-        domain::ScopeDataModelPermissionProfile::SystemAll
-    );
+    for (active_workspace_id, kind, scope_id, profile) in [
+        (
+            workspace_id,
+            DataModelScopeKind::Workspace,
+            workspace_id,
+            domain::ScopeDataModelPermissionProfile::ScopeAll,
+        ),
+        (
+            domain::DEFAULT_SCOPE_ID,
+            DataModelScopeKind::System,
+            SYSTEM_SCOPE_ID,
+            domain::ScopeDataModelPermissionProfile::SystemAll,
+        ),
+    ] {
+        let grant = service
+            .load_runtime_scope_grant(
+                &ActorContext::root(actor_user_id, active_workspace_id, "root"),
+                model_id,
+                runtime_core::runtime_acl::RuntimeDataAction::View,
+            )
+            .await
+            .unwrap()
+            .expect("root should have a grant");
+        assert_eq!(grant.scope_kind, kind);
+        assert_eq!(grant.scope_id, scope_id);
+        assert_eq!(grant.permission_profile, profile);
+    }
 }
 
 #[tokio::test]
@@ -849,7 +860,7 @@ async fn explicit_system_view_resolves_existing_system_grants_without_expanding_
             true,
             true,
             RuntimeDataAction::View,
-            Some(domain::ScopeDataModelPermissionProfile::SystemAll),
+            Some(domain::ScopeDataModelPermissionProfile::ScopeAll),
         ),
         (
             "per-model system read",
@@ -860,7 +871,7 @@ async fn explicit_system_view_resolves_existing_system_grants_without_expanding_
             true,
             true,
             RuntimeDataAction::View,
-            Some(domain::ScopeDataModelPermissionProfile::SystemAll),
+            Some(domain::ScopeDataModelPermissionProfile::ScopeAll),
         ),
         (
             "workspace remains isolated",

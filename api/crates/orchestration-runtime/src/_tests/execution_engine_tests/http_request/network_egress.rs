@@ -120,3 +120,93 @@ async fn http_request_invalid_egress_is_rejected_before_network_access() {
         assert!(result.error_payload.is_some());
     }
 }
+
+#[tokio::test]
+async fn http_request_direct_fallback_reuses_client_pool_and_honors_per_request_timeout() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let accepted_connections = Arc::new(AtomicUsize::new(0));
+    let accepted_clone = Arc::clone(&accepted_connections);
+
+    let server = tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                break;
+            };
+            accepted_clone.fetch_add(1, Ordering::SeqCst);
+            tokio::spawn(async move {
+                let mut buf = [0_u8; 2048];
+                while let Ok(read) = socket.read(&mut buf).await {
+                    if read == 0 {
+                        break;
+                    }
+                    let req_text = String::from_utf8_lossy(&buf[..read]);
+                    if req_text.contains("GET /slow ") {
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                        break;
+                    }
+                    let response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok";
+                    if socket.write_all(response).await.is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+    });
+
+    let fast_plan = http_request_plan(
+        json!({
+            "url": format!("http://{addr}/fast"),
+            "timeout_ms": 5000,
+            "verify_ssl": true,
+            "network_egress": { "mode": "direct" }
+        }),
+        BTreeMap::new(),
+    );
+    for _ in 0..2 {
+        let result = crate::execution_engine::execute_http_request_node(
+            &fast_plan.nodes["node-http"],
+            &Default::default(),
+            &Default::default(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(result.error_payload.is_none());
+        assert_eq!(result.output_payload["body"], "ok");
+    }
+    assert_eq!(
+        accepted_connections.load(Ordering::SeqCst),
+        1,
+        "shared direct client should reuse the keep-alive TCP connection across node executions"
+    );
+
+    let slow_plan = http_request_plan(
+        json!({
+            "url": format!("http://{addr}/slow"),
+            "timeout_ms": 40,
+            "verify_ssl": true,
+            "network_egress": { "mode": "direct" }
+        }),
+        BTreeMap::new(),
+    );
+    let slow_result = crate::execution_engine::execute_http_request_node(
+        &slow_plan.nodes["node-http"],
+        &Default::default(),
+        &Default::default(),
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(
+        slow_result.error_payload.is_some(),
+        "per-request timeout_ms must still fire on the shared client"
+    );
+    server.abort();
+}

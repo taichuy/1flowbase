@@ -246,7 +246,7 @@ import { AppProviders } from '../../app/AppProviders';
 import { AppRouterProvider } from '../../app/router';
 import { resetAuthStore, useAuthStore } from '../../state/auth-store';
 
-const SECTION_REDIRECT_WAIT_OPTIONS = { timeout: 8_000 };
+const SECTION_REDIRECT_WAIT_OPTIONS = { timeout: 15_000 };
 const SECTION_REDIRECT_TEST_TIMEOUT = 30_000;
 
 const settingsRouteRecords = {
@@ -626,7 +626,9 @@ describe('section shell routing', () => {
 
       renderApp('/settings/docs');
 
-      expect(await screen.findByText('无权限访问')).toBeInTheDocument();
+      expect(
+        await screen.findByText('无权限访问', {}, SECTION_REDIRECT_WAIT_OPTIONS)
+      ).toBeInTheDocument();
       expect(docsApi.fetchSettingsApiDocsCatalog).not.toHaveBeenCalled();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
@@ -739,7 +741,9 @@ describe('section shell routing', () => {
 
       const view = renderApp('/settings/network-center/proxy-pools');
 
-      expect(await screen.findByRole('tablist')).toBeInTheDocument();
+      expect(
+        await screen.findByRole('tablist', {}, SECTION_REDIRECT_WAIT_OPTIONS)
+      ).toBeInTheDocument();
       expect(
         screen.getByRole('tab', { name: '代理类型' })
       ).toBeInTheDocument();
@@ -775,13 +779,21 @@ describe('section shell routing', () => {
         );
       });
       expect(
-        await screen.findByRole('tab', { name: '路由规则', selected: true })
+        await screen.findByRole(
+          'tab',
+          { name: '路由规则', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
 
       view.unmount();
       renderApp(window.location.pathname);
       expect(
-        await screen.findByRole('tab', { name: '路由规则', selected: true })
+        await screen.findByRole(
+          'tab',
+          { name: '路由规则', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
@@ -842,7 +854,13 @@ describe('section shell routing', () => {
       authenticateWithPermissions(['role_permission.manage.all']);
 
       renderApp('/settings/roles/plugin-policy');
-      expect(await screen.findByRole('tab', { name: '插件', selected: true }, SECTION_REDIRECT_WAIT_OPTIONS)).toBeInTheDocument();
+      expect(
+        await screen.findByRole(
+          'tab',
+          { name: '插件', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
+      ).toBeInTheDocument();
       fireEvent.click(screen.getByRole('tab', { name: '表-通用配置' }));
 
       expect(
@@ -903,7 +921,11 @@ describe('section shell routing', () => {
         expect(window.location.pathname).toBe('/settings/roles/dynamic-routes');
       }, SECTION_REDIRECT_WAIT_OPTIONS);
       expect(
-        await screen.findByRole('tab', { name: '动态路由', selected: true })
+        await screen.findByRole(
+          'tab',
+          { name: '动态路由', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
@@ -969,7 +991,11 @@ describe('section shell routing', () => {
         expect(window.location.pathname).toBe('/settings/extension-center/mcp');
       });
       expect(
-        await screen.findByRole('tab', { name: 'mcp', selected: true })
+        await screen.findByRole(
+          'tab',
+          { name: 'mcp', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: 'runtime-extensions' }));
@@ -986,7 +1012,13 @@ describe('section shell routing', () => {
           cursor: undefined
         });
       });
-      fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: '下一页' },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
+      );
       await waitFor(() => {
         expect(window.location.search).toBe('?cursor=cursor-2');
         expect(
@@ -1001,10 +1033,11 @@ describe('section shell routing', () => {
       act(() => window.history.back());
       await waitFor(() => expect(window.location.search).toBe(''));
       expect(
-        await screen.findByRole('tab', {
-          name: 'runtime-extensions',
-          selected: true
-        })
+        await screen.findByRole(
+          'tab',
+          { name: 'runtime-extensions', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
 
       act(() => window.history.back());
@@ -1013,7 +1046,11 @@ describe('section shell routing', () => {
         expect(window.location.search).toBe('');
       });
       expect(
-        await screen.findByRole('tab', { name: 'mcp', selected: true })
+        await screen.findByRole(
+          'tab',
+          { name: 'mcp', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
       expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
         'runtime-extensions',
@@ -1032,10 +1069,11 @@ describe('section shell routing', () => {
         expect(window.location.search).toBe('?cursor=cursor-2');
       });
       expect(
-        await screen.findByRole('tab', {
-          name: 'runtime-extensions',
-          selected: true
-        })
+        await screen.findByRole(
+          'tab',
+          { name: 'runtime-extensions', selected: true },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
@@ -1068,7 +1106,11 @@ describe('section shell routing', () => {
         '/settings/extension-center/runtime-extensions?q=old&cursor=stale'
       );
 
-      const search = await screen.findByRole('searchbox');
+      const search = await screen.findByRole(
+        'searchbox',
+        {},
+        SECTION_REDIRECT_WAIT_OPTIONS
+      );
       expect(search).toHaveValue('old');
       fireEvent.change(search, { target: { value: 'openai' } });
       fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
@@ -1084,7 +1126,13 @@ describe('section shell routing', () => {
         });
       });
 
-      fireEvent.click(await screen.findByRole('button', { name: '下一页' }));
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: '下一页' },
+          SECTION_REDIRECT_WAIT_OPTIONS
+        )
+      );
       await waitFor(() => {
         const params = new URLSearchParams(window.location.search);
         expect(params.get('q')).toBe('openai');

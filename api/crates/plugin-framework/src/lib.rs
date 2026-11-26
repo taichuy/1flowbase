@@ -40,6 +40,7 @@ pub use data_source_package::*;
 pub use error::*;
 pub use extension_contracts::authentication_contract::*;
 pub use extension_contracts::notification_contract::*;
+pub use extension_contracts::plugin_resource_contract::*;
 pub use extension_package_runtime::managed_manifest::{
     ManagedContributionExecutionBinding, ManagedContributionPayload, ManagedManifest,
 };

@@ -139,6 +139,7 @@ pub(super) fn extension_source_client(
     connect_timeout: Duration,
     request_timeout: Duration,
 ) -> Client {
+    crate::host::network::network_egress_client::ensure_rustls_ring_provider();
     Client::builder()
         .connect_timeout(connect_timeout)
         .timeout(request_timeout)

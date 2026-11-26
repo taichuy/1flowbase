@@ -1,7 +1,6 @@
 use std::{borrow::Cow, collections::BTreeSet};
 
 use sqlx::{migrate::Migrator, PgPool};
-use storage_durable_postgres::PgControlPlaneStore;
 use uuid::Uuid;
 
 const MIGRATION_VERSION: i64 = 20260713160000;
@@ -243,6 +242,17 @@ async fn final_settings_historical_pool() -> PgPool {
         .await
         .unwrap();
     pool
+}
+
+async fn seed_historical_settings_workspace(pool: &PgPool, name: &str) -> Uuid {
+    let tenant_id = postgres_test_support::insert_historical_root_tenant(pool)
+        .await
+        .unwrap();
+    let workspace_id = domain::DEFAULT_SCOPE_ID;
+    postgres_test_support::insert_historical_workspace(pool, workspace_id, tenant_id, name)
+        .await
+        .unwrap();
+    workspace_id
 }
 
 async fn insert_role(pool: &PgPool, workspace_id: Uuid, code: &str) -> Uuid {
@@ -542,17 +552,7 @@ async fn seed_final_settings_historical_permissions(pool: &PgPool) {
 #[tokio::test]
 async fn migration_reconciles_members_and_roles_grants_without_touching_other_features() {
     let pool = historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Grant migration",
-    )
-    .await
-    .unwrap();
+    let workspace_id = seed_historical_settings_workspace(&pool, "Grant migration").await;
     seed_historical_permissions(&pool).await;
 
     let members_role = insert_role(&pool, workspace_id, "legacy_members").await;
@@ -628,17 +628,7 @@ async fn migration_reconciles_members_and_roles_grants_without_touching_other_fe
 #[tokio::test]
 async fn migration_rolls_back_all_grants_when_legacy_cleanup_fails() {
     let pool = historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Grant rollback",
-    )
-    .await
-    .unwrap();
+    let workspace_id = seed_historical_settings_workspace(&pool, "Grant rollback").await;
     seed_historical_permissions(&pool).await;
     let role_id = insert_role(&pool, workspace_id, "legacy_members").await;
     grant(&pool, role_id, workspace_id, MEMBERS_VISIBILITY).await;
@@ -680,17 +670,8 @@ async fn migration_rolls_back_all_grants_when_legacy_cleanup_fails() {
 #[tokio::test]
 async fn migration_reconciles_four_explicit_settings_features_and_preserves_other_seven() {
     let pool = explicit_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Explicit settings migration",
-    )
-    .await
-    .unwrap();
+    let workspace_id =
+        seed_historical_settings_workspace(&pool, "Explicit settings migration").await;
     seed_explicit_settings_historical_permissions(&pool).await;
 
     let auth_role = insert_role(&pool, workspace_id, "legacy_auth_center").await;
@@ -805,17 +786,8 @@ async fn migration_reconciles_four_explicit_settings_features_and_preserves_othe
 #[tokio::test]
 async fn explicit_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     let pool = explicit_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Explicit settings rollback",
-    )
-    .await
-    .unwrap();
+    let workspace_id =
+        seed_historical_settings_workspace(&pool, "Explicit settings rollback").await;
     seed_explicit_settings_historical_permissions(&pool).await;
     let role_id = insert_role(&pool, workspace_id, "legacy_auth_center").await;
     grant(&pool, role_id, workspace_id, AUTH_CENTER_VISIBILITY).await;

@@ -29,6 +29,62 @@ fn base_env_without_ephemeral_backend() -> Vec<(&'static str, &'static str)> {
 }
 
 #[test]
+fn local_terminal_disabled_defaults_and_explicit_overrides() {
+    for (environment, default) in [
+        (None, false),
+        (Some("development"), false),
+        (Some("dev"), false),
+        (Some("local"), false),
+        (Some("production"), true),
+        (Some("prod"), true),
+    ] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.extend([
+            ("API_ALLOWED_ORIGINS", "https://console.example.com"),
+            ("API_PROVIDER_SECRET_MASTER_KEY", "provider-secret-key"),
+        ]);
+        if let Some(environment) = environment {
+            env.push(("API_ENV", environment));
+        }
+        assert_eq!(
+            ApiConfig::from_env_map(&env)
+                .unwrap()
+                .local_terminal_disabled,
+            default,
+            "{environment:?}"
+        );
+        for (value, expected) in [
+            ("1", true),
+            ("true", true),
+            ("yes", true),
+            ("on", true),
+            ("0", false),
+            ("false", false),
+            ("no", false),
+            ("off", false),
+        ] {
+            env.push(("API_LOCAL_TERMINAL_DISABLED", value));
+            assert_eq!(
+                ApiConfig::from_env_map(&env)
+                    .unwrap()
+                    .local_terminal_disabled,
+                expected,
+                "{environment:?}: {value}"
+            );
+            env.pop();
+        }
+        env.push(("API_LOCAL_TERMINAL_DISABLED", "maybe"));
+        let error = ApiConfig::from_env_map(&env).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("invalid env API_LOCAL_TERMINAL_DISABLED"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn parse_bind_addr_rejects_invalid_candidate() {
     let error = parse_bind_addr(Some("not-a-socket-address"), DEFAULT_API_SERVER_ADDR).unwrap_err();
 
@@ -188,7 +244,10 @@ fn api_config_uses_expected_cookie_defaults() {
 
     assert_eq!(config.cookie_name, "flowbase_console_session");
     assert_eq!(config.session_ttl_days, 7);
-    assert_eq!(config.database_pool_max_connections, 5);
+    let expected_pool_max = std::thread::available_parallelism()
+        .map(|parallelism| (parallelism.get() as u32 * 2).clamp(10, 32))
+        .unwrap_or(16);
+    assert_eq!(config.database_pool_max_connections, expected_pool_max);
 }
 
 #[test]

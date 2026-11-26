@@ -201,6 +201,56 @@ describe('Navigation', () => {
     ).toHaveAttribute('aria-current', 'page');
   });
 
+  test('marks navigation interactive only after both menus and runtime labels are ready', async () => {
+    resetAuthStore();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf',
+      me: null,
+      actor: {
+        id: 'navigation-actor',
+        account: 'member',
+        effective_display_role: 'member',
+        current_workspace_id: 'navigation-workspace'
+      }
+    });
+    performance.clearMarks('1flowbase:NavigationInteractive');
+    let finishPages!: (value: unknown[]) => void;
+    let finishLabels!: (value: unknown) => void;
+    frontstageNavigationApi.fetchFrontstagePageTree.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishPages = resolve;
+      })
+    );
+    runtimeI18nApi.fetchFrontstageRuntimeI18nCatalog.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishLabels = resolve;
+      })
+    );
+    renderNavigation('/templates');
+    await screen.findByRole('link', { name: '子系统' });
+    expect(
+      performance.getEntriesByName('1flowbase:NavigationInteractive')
+    ).toHaveLength(0);
+    await act(async () => finishPages([]));
+    expect(
+      performance.getEntriesByName('1flowbase:NavigationInteractive')
+    ).toHaveLength(0);
+    await act(async () =>
+      finishLabels({
+        locale: 'zh_Hans',
+        messages: {},
+        catalog_revision: 1,
+        digest: 'ready'
+      })
+    );
+    await waitFor(() =>
+      expect(
+        performance.getEntriesByName('1flowbase:NavigationInteractive')
+      ).toHaveLength(1)
+    );
+    performance.clearMarks('1flowbase:NavigationInteractive');
+  });
+
   test('AC-001 renders topbar pages from the same accessible frontstage navigation tree', async () => {
     resetAuthStore();
     useAuthStore.getState().setAuthenticated({

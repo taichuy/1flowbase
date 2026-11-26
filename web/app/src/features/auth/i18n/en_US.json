@@ -6,7 +6,8 @@
     "fallback_password_label": "Password",
     "fallback_submit": "Sign in",
     "fallback_title": "Welcome",
-    "footer": "Powered by 1flowbase"
+    "footer": "Powered by 1flowbase",
+    "invitation_detected": "Workspace invitation detected. Sign in or create an account to join."
   },
   "mcp_oauth": {
     "title": "Authorize MCP connection",
@@ -41,7 +42,9 @@
     "user_disabled": "This local account is disabled. Contact your administrator.",
     "failed": "GitHub sign-in did not complete. Try again or choose another method.",
     "other_methods": "Other sign-in methods",
-    "identity_unlinked": "This GitHub identity was unlinked. Sign in to its original local account using another method, then restore it in Personal information → Security settings → GitHub. A new account will not be created."
+    "identity_unlinked": "This GitHub identity was unlinked. Sign in to its original local account using another method, then restore it in Personal information → Security settings → GitHub. A new account will not be created.",
+    "invitation_required": "New registrations currently require a valid workspace invitation.",
+    "invitation_invalid": "This workspace invitation is invalid, expired, or has already been used."
   },
   "auto": {
     "product_tagline": "AI app base begins from chat history."

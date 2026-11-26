@@ -1,7 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
-const { createRequire } = require("node:module");
 const {
   parseUnit,
   unwrap,
@@ -122,7 +121,83 @@ const GRAPHIC_TAGS = new Set([
   "clipPath",
   "mask",
 ]);
-let typescript;
+const KNOWN_TS_LIBS = new Set([
+  "es5", "es6", "es2015", "es7", "es2016", "es2017", "es2018", "es2019",
+  "es2020", "es2021", "es2022", "es2023", "es2024", "es2025", "esnext",
+  "dom", "dom.iterable", "dom.asynciterable",
+  "webworker", "webworker.importscripts", "webworker.iterable", "webworker.asynciterable",
+  "scripthost",
+  "es2015.core", "es2015.collection", "es2015.generator", "es2015.iterable",
+  "es2015.promise", "es2015.proxy", "es2015.reflect", "es2015.symbol", "es2015.symbol.wellknown",
+  "es2016.array.include", "es2016.intl",
+  "es2017.arraybuffer", "es2017.date", "es2017.object", "es2017.sharedmemory",
+  "es2017.string", "es2017.intl", "es2017.typedarrays",
+  "es2018.asyncgenerator", "es2018.asynciterable", "es2018.intl", "es2018.promise", "es2018.regexp",
+  "es2019.array", "es2019.object", "es2019.string", "es2019.symbol", "es2019.intl",
+  "es2020.bigint", "es2020.date", "es2020.promise", "es2020.sharedmemory",
+  "es2020.string", "es2020.symbol.wellknown", "es2020.intl", "es2020.number",
+  "es2021.promise", "es2021.string", "es2021.weakref", "es2021.intl",
+  "es2022.array", "es2022.error", "es2022.intl", "es2022.object", "es2022.string", "es2022.regexp",
+  "es2023.array", "es2023.collection", "es2023.intl",
+  "es2024.arraybuffer", "es2024.collection", "es2024.object", "es2024.promise",
+  "es2024.regexp", "es2024.sharedmemory", "es2024.string",
+  "es2025.collection", "es2025.float16", "es2025.intl", "es2025.iterator", "es2025.promise", "es2025.regexp",
+  "esnext.array", "esnext.collection", "esnext.symbol", "esnext.asynciterable",
+  "esnext.intl", "esnext.disposable", "esnext.bigint", "esnext.string",
+  "esnext.promise", "esnext.weakref", "esnext.decorators", "esnext.object",
+  "esnext.regexp", "esnext.iterator", "esnext.float16", "esnext.error", "esnext.sharedmemory",
+  "decorators", "decorators.legacy",
+]);
+
+function parseTsconfigJson(source) {
+  let stripped = "";
+  for (let i = 0; i < source.length; ) {
+    if (source[i] === '"') {
+      let end = i + 1;
+      while (end < source.length) {
+        if (source[end] === "\\") end += 2;
+        else if (source[end] === '"') {
+          end++;
+          break;
+        } else end++;
+      }
+      stripped += source.slice(i, end);
+      i = end;
+    } else if (source[i] === "/" && source[i + 1] === "/") {
+      i += 2;
+      while (i < source.length && source[i] !== "\n" && source[i] !== "\r") i++;
+    } else if (source[i] === "/" && source[i + 1] === "*") {
+      const end = source.indexOf("*/", i + 2);
+      if (end < 0) throw new Error("unterminated comment");
+      i = end + 2;
+    } else {
+      stripped += source[i++];
+    }
+  }
+  let normalized = "";
+  for (let i = 0; i < stripped.length; ) {
+    if (stripped[i] === '"') {
+      let end = i + 1;
+      while (end < stripped.length) {
+        if (stripped[end] === "\\") end += 2;
+        else if (stripped[end] === '"') {
+          end++;
+          break;
+        } else end++;
+      }
+      normalized += stripped.slice(i, end);
+      i = end;
+    } else if (stripped[i] === ",") {
+      let next = i + 1;
+      while (next < stripped.length && /\s/.test(stripped[next])) next++;
+      if (stripped[next] === "}" || stripped[next] === "]") i++;
+      else normalized += stripped[i++];
+    } else {
+      normalized += stripped[i++];
+    }
+  }
+  return JSON.parse(normalized);
+}
 
 function step(context) {
   if (++context.steps > 20000)
@@ -564,18 +639,14 @@ function oldApiBaseline(repoRoot, file, context) {
     const source = fs.readFileSync(real, "utf8");
     if (!source.length || source.length > 128 * 1024)
       throw new Error("invalid config size");
-    typescript ||= createRequire(
-      path.resolve(__dirname, "../../../web/package.json"),
-    )("typescript");
-    const parsed = typescript.parseConfigFileTextToJson(real, source);
-    if (
-      parsed.error ||
-      !parsed.config ||
-      typeof parsed.config !== "object" ||
-      Array.isArray(parsed.config)
-    )
+    let body;
+    try {
+      body = parseTsconfigJson(source);
+    } catch {
       throw new Error("invalid compiler config");
-    const body = parsed.config;
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      throw new Error("invalid compiler config");
     let options = {};
     if (body.extends !== undefined) {
       if (
@@ -610,7 +681,7 @@ function oldApiBaseline(repoRoot, file, context) {
     )
       return false;
     const libs = options.lib.map((lib) => lib.toLowerCase());
-    if (!libs.every((lib) => typescript.libMap.has(lib))) return false;
+    if (!libs.every((lib) => KNOWN_TS_LIBS.has(lib))) return false;
     if (libs.some((lib) => /^es(?:202[3-9]|20[3-9]\d|next)(?:\.|$)/.test(lib)))
       return false;
     return libs.some((lib) => /^es(?:5|6|201[5-9]|202[0-2])$/.test(lib));

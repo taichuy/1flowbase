@@ -182,6 +182,7 @@ pub struct ApiState {
     pub provider_runtime: Arc<ApiRuntimeServices>,
     pub runtime_event_stream_projection: Arc<dyn crate::debug_stream_contract::RuntimeEventSsePort>,
     pub native_resource_import: Arc<dyn crate::terminal_host::NativeResourceImportPort>,
+    pub local_terminal_disabled: bool,
     pub terminal_jobs: Arc<crate::local_command::jobs::JobRegistry>,
     pub process_started_at: OffsetDateTime,
     pub runtime_activity: Arc<ApplicationRuntimeActivityTracker>,

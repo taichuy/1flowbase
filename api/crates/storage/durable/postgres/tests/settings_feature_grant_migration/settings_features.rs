@@ -3,17 +3,7 @@ use super::*;
 #[tokio::test]
 async fn migration_reconciles_files_grants_and_preserves_remaining_six_visibilities() {
     let pool = files_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Files settings migration",
-    )
-    .await
-    .unwrap();
+    let workspace_id = seed_historical_settings_workspace(&pool, "Files settings migration").await;
     seed_files_settings_historical_permissions(&pool).await;
 
     let files_role = insert_role(&pool, workspace_id, "legacy_files").await;
@@ -70,17 +60,7 @@ async fn migration_reconciles_files_grants_and_preserves_remaining_six_visibilit
 #[tokio::test]
 async fn files_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     let pool = files_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Files settings rollback",
-    )
-    .await
-    .unwrap();
+    let workspace_id = seed_historical_settings_workspace(&pool, "Files settings rollback").await;
     seed_files_settings_historical_permissions(&pool).await;
     let role_id = insert_role(&pool, workspace_id, "legacy_files").await;
     grant(&pool, role_id, workspace_id, FILES_VISIBILITY).await;
@@ -124,17 +104,8 @@ async fn files_settings_migration_rolls_back_when_legacy_cleanup_fails() {
 #[tokio::test]
 async fn migration_reconciles_data_models_grants_and_preserves_remaining_five_visibilities() {
     let pool = data_models_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Data models settings migration",
-    )
-    .await
-    .unwrap();
+    let workspace_id =
+        seed_historical_settings_workspace(&pool, "Data models settings migration").await;
     seed_data_models_settings_historical_permissions(&pool).await;
 
     let data_models_role = insert_role(&pool, workspace_id, "legacy_data_models").await;
@@ -194,17 +165,8 @@ async fn migration_reconciles_data_models_grants_and_preserves_remaining_five_vi
 #[tokio::test]
 async fn data_models_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     let pool = data_models_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Data models settings rollback",
-    )
-    .await
-    .unwrap();
+    let workspace_id =
+        seed_historical_settings_workspace(&pool, "Data models settings rollback").await;
     seed_data_models_settings_historical_permissions(&pool).await;
     let role_id = insert_role(&pool, workspace_id, "legacy_data_models").await;
     grant(&pool, role_id, workspace_id, DATA_MODELS_VISIBILITY).await;
@@ -248,17 +210,8 @@ async fn data_models_settings_migration_rolls_back_when_legacy_cleanup_fails() {
 #[tokio::test]
 async fn migration_reconciles_model_providers_grants_and_preserves_remaining_four_visibilities() {
     let pool = model_providers_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Model providers settings migration",
-    )
-    .await
-    .unwrap();
+    let workspace_id =
+        seed_historical_settings_workspace(&pool, "Model providers settings migration").await;
     seed_model_providers_settings_historical_permissions(&pool).await;
 
     let legacy_role = insert_role(&pool, workspace_id, "legacy_model_providers").await;
@@ -306,17 +259,8 @@ async fn migration_reconciles_model_providers_grants_and_preserves_remaining_fou
 #[tokio::test]
 async fn model_providers_settings_migration_rolls_back_when_legacy_cleanup_fails() {
     let pool = model_providers_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Model providers settings rollback",
-    )
-    .await
-    .unwrap();
+    let workspace_id =
+        seed_historical_settings_workspace(&pool, "Model providers settings rollback").await;
     seed_model_providers_settings_historical_permissions(&pool).await;
     let role_id = insert_role(&pool, workspace_id, "legacy_model_providers").await;
     grant(&pool, role_id, workspace_id, MODEL_PROVIDERS_VISIBILITY).await;
@@ -360,17 +304,7 @@ async fn model_providers_settings_migration_rolls_back_when_legacy_cleanup_fails
 #[tokio::test]
 async fn final_settings_migration_reconciles_all_remaining_legacy_grants() {
     let pool = final_settings_historical_pool().await;
-    let store = PgControlPlaneStore::new(pool.clone());
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace_id = domain::DEFAULT_SCOPE_ID;
-    postgres_test_support::insert_historical_workspace(
-        store.pool(),
-        workspace_id,
-        tenant.id,
-        "Final settings migration",
-    )
-    .await
-    .unwrap();
+    let workspace_id = seed_historical_settings_workspace(&pool, "Final settings migration").await;
     seed_final_settings_historical_permissions(&pool).await;
 
     let docs_role = insert_role(&pool, workspace_id, "legacy_docs").await;

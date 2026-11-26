@@ -53,12 +53,16 @@ pub struct PublicLoginEntryResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PublicLoginEntriesResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub onboarding_mode: Option<String>,
     pub default_login_entry_id: Uuid,
     pub login_entries: Vec<PublicLoginEntryResponse>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginBody {
+    #[serde(default)]
+    pub invitation_token: Option<String>,
     pub login_entry_id: Option<Uuid>,
     pub identifier: String,
     pub password: String,
@@ -67,6 +71,8 @@ pub struct LoginBody {
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SignUpBody {
+    #[serde(default)]
+    pub invitation_token: Option<String>,
     pub login_entry_id: Uuid,
     pub account: String,
     pub email: String,
@@ -238,6 +244,7 @@ pub async fn list_login_entries(
 }
 
 struct PublicLoginEntriesAdapter {
+    workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     store: MainDurableStore,
     authenticator_registry: Arc<AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
@@ -250,6 +257,7 @@ impl PublicLoginEntriesPort for PublicLoginEntriesAdapter {
         let store = self.store.clone();
         let registry = Arc::clone(&self.authenticator_registry);
         let bootstrap_workspace_id = self.bootstrap_workspace_id;
+        let workspace_policy = self.workspace_policy.clone();
         let node_id = self.node_id.clone();
         let install_root = self.install_root.clone();
         Box::pin(async move {
@@ -267,7 +275,22 @@ impl PublicLoginEntriesPort for PublicLoginEntriesAdapter {
                 .into_iter()
                 .filter_map(|entry| to_public_login_entry(entry, &registry))
                 .collect::<Vec<_>>();
+            let onboarding_mode = workspace_policy
+                .public_onboarding_mode()
+                .await
+                .map_err(ApiError::from)?;
             for entry in &mut login_entries {
+                use extension_contracts::WorkspaceOnboardingModeDto::*;
+                let allow_registration = match onboarding_mode {
+                    Some(PersonalWorkspace | DefaultWorkspace) => Some(true),
+                    Some(Reject) => Some(false),
+                    Some(InviteOnly) | None => None,
+                };
+                if entry.auth_type == "password-local" {
+                    if let Some(allowed) = allow_registration {
+                        entry.public_variables["self_registration_enabled"] = Value::Bool(allowed);
+                    }
+                }
                 entry.title = crate::app_state::project_canonical_display_with(
                     &store,
                     bootstrap_workspace_id,
@@ -284,6 +307,7 @@ impl PublicLoginEntriesPort for PublicLoginEntriesAdapter {
             Ok(PublicLoginEntriesOutput(PublicLoginEntriesResponse {
                 default_login_entry_id,
                 login_entries,
+                onboarding_mode: onboarding_mode.map(|mode| mode.as_str().to_owned()),
             }))
         })
     }
@@ -299,6 +323,7 @@ pub fn compile_public_login_entries_registry(
 }
 
 pub fn public_login_entries_port(
+    workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     store: MainDurableStore,
     authenticator_registry: Arc<AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
@@ -306,6 +331,7 @@ pub fn public_login_entries_port(
     install_root: String,
 ) -> Arc<dyn PublicLoginEntriesPort> {
     Arc::new(PublicLoginEntriesAdapter {
+        workspace_policy,
         store,
         authenticator_registry,
         bootstrap_workspace_id,
@@ -360,6 +386,7 @@ pub async fn sign_in(
             .invoke::<PublicSignInInput, PublicSignInOutput, PublicSignInTargetError>(
                 snapshot,
                 authenticated.into_envelope(PublicSignInInput(LoginCommand {
+                    invitation_token: body.invitation_token,
                     login_entry_id: body
                         .login_entry_id
                         .unwrap_or(domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID),
@@ -419,6 +446,7 @@ pub async fn sign_up(
         &state,
         public_residual_interface::SIGN_UP_BINDING_ID,
         PublicSignUpInput(SignUpCommand {
+            invitation_token: body.invitation_token,
             login_entry_id: body.login_entry_id,
             account: body.account,
             email: body.email,
@@ -447,6 +475,7 @@ pub async fn sign_up(
 }
 
 struct PublicSignUpAdapter {
+    workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     session_ttl_days: i64,
@@ -457,8 +486,10 @@ impl PublicSignUpPort for PublicSignUpAdapter {
         let store = self.store.clone();
         let session_store = Arc::clone(&self.session_store);
         let session_ttl_days = self.session_ttl_days;
+        let policy = self.workspace_policy.identity_context(store.clone());
         Box::pin(async move {
             AuthKernel::new(store, SessionIssuer::new(session_store, session_ttl_days))
+                .with_workspace_policy(policy)
                 .sign_up(input.0)
                 .await
                 .map(PublicSignUpOutput)
@@ -489,11 +520,13 @@ pub fn public_providers_port(
 }
 
 pub fn public_sign_up_port(
+    workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     session_ttl_days: i64,
 ) -> Arc<dyn PublicSignUpPort> {
     Arc::new(PublicSignUpAdapter {
+        workspace_policy,
         store,
         session_store,
         session_ttl_days,

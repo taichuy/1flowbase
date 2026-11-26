@@ -113,6 +113,7 @@ fn external_auth_safe_projections_compile_without_exporting_credential_canaries(
         authorization_url: format!("https://provider.example/authorize?state={SECRET}"),
     };
     let public_input = projection(&interface::PublicInput::Start {
+        invitation_token: None,
         login_entry_id: entry_id,
     });
     let public_output = projection(&interface::PublicOutput::Authorization(output()));
@@ -263,4 +264,47 @@ fn callback_cancellation_and_failures_use_only_finite_safe_redirects() {
         )),
         "/sign-in?auth_error=identity_exists"
     );
+    for (policy_code, expected_redirect) in [
+        (
+            "invitation_required",
+            "/sign-in?auth_error=invitation_required",
+        ),
+        (
+            "invitation_invalid",
+            "/sign-in?auth_error=invitation_invalid",
+        ),
+        (
+            "invitation_expired",
+            "/sign-in?auth_error=invitation_expired",
+        ),
+        (
+            "invitation_exhausted",
+            "/sign-in?auth_error=invitation_exhausted",
+        ),
+        (
+            "invitation_max_uses_reached",
+            "/sign-in?auth_error=invitation_exhausted",
+        ),
+        (
+            "invitation_revoked",
+            "/sign-in?auth_error=invitation_revoked",
+        ),
+        (
+            "invitation_email_mismatch",
+            "/sign-in?auth_error=invitation_email_mismatch",
+        ),
+        (
+            "unlisted_policy_secret",
+            "/sign-in?auth_error=external_auth_failed",
+        ),
+    ] {
+        let err = ApiError(control_plane::auth::workspace_policy_denied(
+            policy_code.to_string(),
+        ));
+        assert_eq!(
+            failure_redirect(&err),
+            expected_redirect,
+            "policy_code={policy_code}"
+        );
+    }
 }

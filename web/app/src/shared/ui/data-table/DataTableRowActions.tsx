@@ -20,8 +20,9 @@ export function DataTableRowActions({
   actions: DataTableRowAction[];
   moreAriaLabel: string;
 }) {
-  const inlineActions = actions.slice(0, 2);
-  const overflowActions = actions.slice(2);
+  const shouldCollapseOverflow = actions.length > 3;
+  const inlineActions = shouldCollapseOverflow ? actions.slice(0, 2) : actions;
+  const overflowActions = shouldCollapseOverflow ? actions.slice(2) : [];
   if (!actions.length) return null;
 
   return (

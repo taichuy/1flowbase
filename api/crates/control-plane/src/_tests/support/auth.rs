@@ -10,12 +10,12 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::ports::{
-    AuthRepository, LoginEntrySettingsRepository, RoleConsolePolicyReader, SessionStore,
-    UpdateProfileInput, UpdateUserMetaInput, WorkspaceRepository,
+    AuthRepository, LoginEntrySettingsRepository, RoleConsolePolicyReader, UpdateProfileInput,
+    UpdateUserMetaInput, WorkspaceRepository,
 };
 use domain::{
     ActorContext, AuditLogRecord, BoundRole, LoginEntryRecord, PermissionDefinition, RoleScopeKind,
-    ScopeContext, SessionRecord, UserRecord, UserStatus, WorkspaceRecord,
+    ScopeContext, UserRecord, UserStatus, WorkspaceRecord,
 };
 
 pub fn password_hash(password: &str) -> String {
@@ -485,52 +485,6 @@ impl RoleConsolePolicyReader for MemoryAuthRepository {
         _actor: &domain::ActorContext,
     ) -> Result<Vec<domain::RoleConsolePolicy>> {
         Ok(self.console_policies.read().await.clone())
-    }
-}
-
-#[derive(Default, Clone)]
-pub struct MemorySessionStore {
-    sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
-    deleted_session_ids: Arc<RwLock<Vec<String>>>,
-}
-
-impl MemorySessionStore {
-    pub fn deleted_session_ids(&self) -> Vec<String> {
-        self.deleted_session_ids
-            .try_read()
-            .expect("deleted_session_ids lock should be free in assertions")
-            .clone()
-    }
-}
-
-#[async_trait]
-impl SessionStore for MemorySessionStore {
-    async fn put(&self, session: SessionRecord) -> Result<()> {
-        self.sessions
-            .write()
-            .await
-            .insert(session.session_id.clone(), session);
-        Ok(())
-    }
-
-    async fn get(&self, session_id: &str) -> Result<Option<SessionRecord>> {
-        Ok(self.sessions.read().await.get(session_id).cloned())
-    }
-
-    async fn delete(&self, session_id: &str) -> Result<()> {
-        self.sessions.write().await.remove(session_id);
-        self.deleted_session_ids
-            .write()
-            .await
-            .push(session_id.to_string());
-        Ok(())
-    }
-
-    async fn touch(&self, session_id: &str, expires_at_unix: i64) -> Result<()> {
-        if let Some(existing) = self.sessions.write().await.get_mut(session_id) {
-            existing.expires_at_unix = expires_at_unix;
-        }
-        Ok(())
     }
 }
 

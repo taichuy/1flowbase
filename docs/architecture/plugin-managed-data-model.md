@@ -35,50 +35,97 @@ business capacity contract: the host does not reject additive schema changes usi
 a fixed table-size threshold. PostgreSQL DDL failures roll back both physical
 changes and ownership publication; retained version membership remains intact.
 
-## Deployment-approved shared resources
+## Provider exports and consumer prerequisites
 
-A system managed-service manifest can reference `shared_resource_contract: example/hosts/v1`.
-The reference grants no authority by itself. The API composition root loads the immutable
-`PLUGIN_SHARED_RESOURCE_CONTRACTS_JSON` deployment registry; an unknown reference or a
-publisher/plugin identity outside its participants fails activation and callbacks.
-An empty registry preserves ordinary plugin isolation. Packages cannot register contracts.
+System managed-service plugins share resources through verified provider declarations and
+explicit consumer prerequisites, not a deployment participant registry. A provider keeps
+its own `data_models`, `record_resources` and credentials and can install, upgrade and
+enable independently. It exposes only selected resources in `resource_exports`:
 
-A registry entry has this shape (names are examples, not built-in exceptions):
-
-```json
-[{
-  "contract_id": "example/hosts/v1",
-  "owner": {"publisher_namespace": "example", "plugin_code": "ssh"},
-  "schema_version": "shared-v1",
-  "participants": [
-    {"publisher_namespace": "example", "plugin_code": "ssh"},
-    {"publisher_namespace": "monitor-publisher", "plugin_code": "monitor"}
-  ],
-  "collections": ["hosts", "credential_staging"],
-  "record_resources": ["hosts"],
-  "record_resource_bindings": {"hosts": {"collection_code": "hosts", "id_field": "id"}},
-  "credentials": true
-}]
+```yaml
+resource_exports:
+  - resource_code: hosts-v1
+    collections:
+      - collection_code: hosts
+        access: read_only
+    record_resources:
+      - resource_code: hosts
+        collection_code: hosts
+        id_field: host_id
+    credentials: read_only
 ```
 
-Every participant declares the complete shared collection schema in `data_models` and
-the exact protected resource-to-collection/identity bindings. A package cannot omit or
-retarget a protected resource to avoid its row policy.
-Activation reconciles it under the configured original owner and fixed schema version,
-including when no other participant is installed. Existing same-version object membership
-is immutable; incompatible types/nullability or partial declarations fail through the
-normal schema ownership adapter. Historical plugin-version projections remain intact.
+An export cannot invent ownership or omit the record protection for an exported
+collection. `read_only` and `read_write` bound collection and credential operations
+separately; omitted credentials remain private. An export is not itself a grant to
+another plugin. No publisher-specific Host exception or environment allowlist is needed.
 
-Data and credential callbacks first validate the original installation, contribution,
-live grants, storage/secrets permission, scope and deadline while holding its authority
-lease. Only then does the host resolve the configured physical owner. The worker cannot
-choose an owner. Credential lookup and encryption AAD continue to use the original
-publisher/plugin/scope/credential tuple, so existing encrypted credentials remain usable.
-A participant's disable/revoke fences its own callbacks; another enabled participant
-retains its own authority and the stable shared schema projection.
+A consumer declares its prerequisite and the resource subset it requests:
 
-Record admission, capability queries, policy editing and SQL row predicates use the
-same effective original owner, resource code and caller workspace. Policy changes revoke
-newly denied streams across active participants of that identity. Operation permissions
-continue to belong to the calling plugin. Registry changes require process restart;
-removing a participant withdraws sharing without mutating persisted data or credentials.
+```yaml
+plugin_dependencies:
+  - publisher_namespace: example
+    plugin_code: ssh
+resource_imports:
+  - provider: {publisher_namespace: example, plugin_code: ssh}
+    resource_code: hosts-v1
+    collections:
+      - collection_code: hosts
+        access: read_only
+    record_resources: [hosts]
+    credentials: read_only
+```
+
+The consumer does not repeat the provider's table schema in `data_models` or create
+another physical table. It may declare local operation/action mappings for imported
+record resources; collection ownership, identity field/type and physical schema resolve
+from the verified provider. Requested rights cannot exceed the provider's export.
+A callback cannot choose a different publisher, provider, scope or physical owner.
+
+### Approval and live authority
+
+Upload/install alone grants no cross-plugin access. Explicit Root enablement uses the
+existing contribution-approval path to materialize the consumer's exact imported
+collection and credential capabilities. Nonroot enablement requires the existing exact
+active grants and must not create missing grants or restore revocations. Imports do not
+replace the consumer's authority subject with the provider's permissions.
+
+Every data/credential callback verifies the live consumer installation, contribution,
+grants, storage/secrets permission, scope and deadline while holding its authority lease.
+Provider discovery uses the same lease transaction's installation inventory. It then
+checks the currently enabled provider and its export before resolving physical access.
+Both export/import access bounds and the consumer's current grants must permit the
+operation. A disabled or revoked consumer cannot retain access through a cached binding.
+
+Authority observations for resource callbacks, execution-gate checks and record admission
+use compatible shared leases. The lease remains held through the actual resource
+operation; grant/revoke, provider selection and lifecycle writers retain the same exclusive
+fence and wait for every reader. Authority reads do not become authority writes merely
+because the separately authorized data operation writes a provider collection. This lets
+concurrent live sources and per-frame record checks overlap without weakening revocation.
+
+Record admission, capability queries, policy editing and SQL predicates use the resolved
+provider identity and protected resource, but retain the real caller's workspace. Operation
+permissions remain those of the consuming plugin. A frozen registration is rejected if
+its live provider resolution no longer matches; it cannot keep stale provider authority.
+
+### Ownership, upgrade and lifecycle
+
+Provider-owned schema reconciliation retains the ordinary stable
+`publisher_namespace/plugin_code` owner and physical names. Imported callbacks use the
+provider's actual schema-version projection; enabling a consumer never creates a
+synthetic shared schema version or adds objects to another version's immutable membership.
+Existing field/type/nullability drift checks still apply. Credential lookup and encryption
+AAD retain the exact original publisher/plugin/scope/credential tuple. For SSH this remains
+`taichuy/ssh`, including existing target and saved jump-host credentials; no copying,
+reencryption or table recreation is required by resource sharing.
+
+Consumer enablement fails with a structured dependency error when the prerequisite is
+missing, disabled, ambiguous, incompatible or lacks the requested export. Errors identify
+the provider/resource, rather than becoming an internal 500. An enabled consumer blocks
+provider disable/uninstall and incompatible provider replacement; the error identifies
+the consumers that must be disabled first. Disabling the consumer releases that protection.
+The authoritative state transition rechecks dependencies in its transaction using the
+system managed-workspace lock, coordinated with callback authority leases, not only an
+unlocked service preflight. Approval and managed-service generation publication take
+effect through the normal enable path without restarting the API.

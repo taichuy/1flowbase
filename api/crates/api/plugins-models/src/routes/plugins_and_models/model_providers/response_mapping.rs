@@ -231,13 +231,32 @@ pub(super) fn to_authenticate_response(
     })
 }
 
+fn i18n_catalog_to_value(
+    i18n_catalog: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, serde_json::Value>,
+    >,
+) -> serde_json::Value {
+    serde_json::Value::Object(
+        i18n_catalog
+            .into_iter()
+            .map(|(locale, entries)| {
+                (
+                    locale,
+                    serde_json::Value::Object(entries.into_iter().collect()),
+                )
+            })
+            .collect(),
+    )
+}
+
 pub(super) fn to_catalog_view_response(
     locale_meta: LocaleMetaResponse,
     catalog: ModelProviderCatalogView,
 ) -> Result<ModelProviderCatalogResponse, ApiError> {
     Ok(ModelProviderCatalogResponse {
         locale_meta,
-        i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),
+        i18n_catalog: i18n_catalog_to_value(catalog.i18n_catalog),
         entries: catalog
             .entries
             .into_iter()
@@ -552,25 +571,16 @@ pub(super) fn to_option_response(
 pub(super) fn to_options_view_response(
     locale_meta: LocaleMetaResponse,
     options: ModelProviderOptionsView,
-    pricing_targets: Vec<ModelProviderPricingTargetResponse>,
+    priced_models: HashSet<(String, String)>,
 ) -> ModelProviderOptionsResponse {
-    let priced_models = pricing_targets
-        .iter()
-        .map(|target| {
-            (
-                target.provider_code.clone(),
-                target.upstream_model_id.clone(),
-            )
-        })
-        .collect::<HashSet<_>>();
     ModelProviderOptionsResponse {
         locale_meta,
-        i18n_catalog: serde_json::to_value(options.i18n_catalog).unwrap(),
+        i18n_catalog: i18n_catalog_to_value(options.i18n_catalog),
         providers: options
             .providers
             .into_iter()
             .map(|option| to_option_response(option, &priced_models))
             .collect(),
-        pricing_targets,
+        pricing_targets: Vec::new(),
     }
 }

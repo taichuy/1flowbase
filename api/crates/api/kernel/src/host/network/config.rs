@@ -37,10 +37,10 @@ impl ApiEnvironment {
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
-    pub plugin_shared_resource_contracts: control_plane::plugin_management::SharedResourceRegistry,
     /// Explicit deployment budget; absent keeps event runtime unavailable without guessing capacity.
     pub event_center_policy: Option<control_plane::event_center::EventCenterRuntimePolicy>,
     pub env: ApiEnvironment,
+    pub local_terminal_disabled: bool,
     pub database_url: String,
     pub database_pool_max_connections: u32,
     pub plugin_upload_max_bytes: usize,
@@ -150,6 +150,11 @@ impl ApiConfig {
                 .ok_or_else(|| anyhow!("missing env {key}"))
         };
         let env = ApiEnvironment::parse(map.get("API_ENV").map(String::as_str))?;
+        let local_terminal_disabled = parse_bool_flag(
+            "API_LOCAL_TERMINAL_DISABLED",
+            map.get("API_LOCAL_TERMINAL_DISABLED"),
+            env == ApiEnvironment::Production,
+        )?;
         let runtime_table_auto_prefix_enabled = parse_bool_flag(
             "API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED",
             map.get("API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED"),
@@ -323,25 +328,19 @@ impl ApiConfig {
                 "invalid env API_PROVIDER_SECRET_MASTER_KEY when API_ENV=production"
             ));
         }
-        let plugin_shared_resource_contracts: control_plane::plugin_management::SharedResourceRegistry = map
-            .get("PLUGIN_SHARED_RESOURCE_CONTRACTS_JSON")
-            .map(|raw| serde_json::from_str(raw)).transpose()
-            .map_err(|error| anyhow!("invalid env PLUGIN_SHARED_RESOURCE_CONTRACTS_JSON: {error}"))?
-            .unwrap_or_default();
-        plugin_shared_resource_contracts.validate()?;
         Ok(Self {
-            plugin_shared_resource_contracts,
             event_center_policy: map
                 .get("API_EVENT_CENTER_POLICY")
                 .map(|raw| serde_json::from_str(raw))
                 .transpose()
                 .map_err(|error| anyhow!("invalid env API_EVENT_CENTER_POLICY: {error}"))?,
             env,
+            local_terminal_disabled,
             database_url: get("API_DATABASE_URL")?,
             database_pool_max_connections: parse_positive_u32(
                 "API_DATABASE_POOL_MAX_CONNECTIONS",
                 map.get("API_DATABASE_POOL_MAX_CONNECTIONS"),
-                5,
+                default_database_pool_max_connections(),
             )?,
             plugin_upload_max_bytes: parse_positive_usize(
                 "API_PLUGIN_UPLOAD_MAX_BYTES",
@@ -789,3 +788,16 @@ fn parse_bool_flag(key: &str, value: Option<&String>, default: bool) -> Result<b
         )),
     }
 }
+
+fn default_database_pool_max_connections() -> u32 {
+    std::thread::available_parallelism()
+        .map(|n| (n.get() as u32 * 2).clamp(10, 32))
+        .unwrap_or(16)
+}
+
+#[cfg(test)]
+#[path = "config/_tests/database_pool.rs"]
+mod database_pool_tests;
+#[cfg(test)]
+#[path = "config/_tests/plugin_resources.rs"]
+mod plugin_resource_tests;

@@ -1,9 +1,8 @@
 //! Host-owned deadline queue. Admission, bindings and retirement are fenced by
 //! the original supervisor and registry; timers never infer transport release.
 use super::*;
-use std::{sync::Weak, time::Duration};
+use std::{cmp::Reverse, collections::BinaryHeap, sync::Weak, time::Duration};
 use tokio::sync::mpsc;
-use tokio_util::time::{delay_queue::Key, DelayQueue};
 
 #[derive(Debug)]
 pub(super) struct ReservedWorker {
@@ -109,14 +108,31 @@ async fn run(
     registry: Weak<StdMutex<ProviderWorkerRegistryState>>,
     mut receiver: mpsc::UnboundedReceiver<WorkerNotifier>,
 ) {
-    let mut deadlines = DelayQueue::<(WorkerNotifier, u64)>::new();
-    let mut keys = HashMap::<(String, u64), Key>::new();
+    let mut deadlines = BinaryHeap::<Reverse<(tokio::time::Instant, u64, (String, u64))>>::new();
+    let mut entries = HashMap::<(String, u64), (u64, WorkerNotifier, u64)>::new();
+    let mut next_sequence = 0_u64;
     loop {
+        if entries.is_empty() {
+            deadlines.clear();
+        } else {
+            while let Some(Reverse((_, sequence, id))) = deadlines.peek() {
+                if entries
+                    .get(id)
+                    .is_some_and(|(active_sequence, _, _)| active_sequence == sequence)
+                {
+                    break;
+                }
+                deadlines.pop();
+            }
+        }
+        let next_deadline = deadlines.peek().map(|Reverse((deadline, _, _))| *deadline);
+
         tokio::select! {
+            biased;
             message = receiver.recv() => {
                 let Some(message) = message else { return; };
                 let id = (message.plugin.clone(), message.generation);
-                if let Some(key) = keys.remove(&id) { deadlines.remove(&key); }
+                entries.remove(&id);
                 let (Some(worker), Some(registry)) = (message.worker.upgrade(), registry.upgrade()) else { continue; };
                 let Ok(state) = operations::lock_provider_worker_registry(&registry) else { continue; };
                 let exited = worker.last_cleanup_receipt().ok().flatten().is_some_and(|receipt| receipt.exited);
@@ -130,13 +146,25 @@ async fn run(
                 if let Ok(Some((revision, idle_since))) = worker.idle_revision() {
                     let grace = if state.idle.demand.get(&message.plugin).is_some_and(|(_, selectable)| *selectable == Some(false)) { Duration::ZERO } else { state.idle.grace };
                     let deadline = if grace.is_zero() { tokio::time::Instant::now() } else { tokio::time::Instant::from_std(idle_since + grace) };
-                    keys.insert(id, deadlines.insert_at((message, revision), deadline));
+                    next_sequence = next_sequence.wrapping_add(1);
+                    let sequence = next_sequence;
+                    entries.insert(id.clone(), (sequence, message, revision));
+                    deadlines.push(Reverse((deadline, sequence, id)));
                 }
             }
-            expired = std::future::poll_fn(|cx| deadlines.poll_expired(cx)), if !deadlines.is_empty() => {
-                let Some(expired) = expired else { continue; };
-                let (message, revision) = expired.into_inner();
-                keys.remove(&(message.plugin.clone(), message.generation));
+            _ = async {
+                if let Some(deadline) = next_deadline {
+                    tokio::time::sleep_until(deadline).await;
+                }
+            }, if next_deadline.is_some() => {
+                let Some(Reverse((_, sequence, id))) = deadlines.pop() else { continue; };
+                let is_active = entries
+                    .get(&id)
+                    .is_some_and(|(active_sequence, _, _)| *active_sequence == sequence);
+                if !is_active {
+                    continue;
+                }
+                let Some((_, message, revision)) = entries.remove(&id) else { continue; };
                 let (Some(worker), Some(workers)) = (message.worker.upgrade(), registry.upgrade()) else { continue; };
                 let retiring = {
                     let Ok(_state) = operations::lock_provider_worker_registry(&workers) else { continue; };

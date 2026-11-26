@@ -1,12 +1,18 @@
 import { useNavigate } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useState } from 'react';
 
-import { switchActiveRole } from '../features/auth/api/session';
+import { fetchCurrentMe } from '../features/auth/api/session';
+import {
+  fetchAccessibleWorkspaces,
+  switchActiveRole,
+  switchWorkspace
+} from '../features/auth/api/session-actions';
 import { i18nText } from '../shared/i18n/text';
 import { useAuthStore } from '../state/auth-store';
+import { navigationQueryStaleTime } from '../state/navigation-query-scope';
 import {
   createAccountMenuClickHandler,
   selectAccountLabel
@@ -24,6 +30,9 @@ function AccountMenuBase({ navigateTo, navigateHome }: AccountMenuBaseProps) {
   const [switchingRoleCode, setSwitchingRoleCode] = useState<string | null>(
     null
   );
+  const [switchingWorkspaceId, setSwitchingWorkspaceId] = useState<
+    string | null
+  >(null);
   const {
     csrfToken,
     actor,
@@ -32,6 +41,17 @@ function AccountMenuBase({ navigateTo, navigateHome }: AccountMenuBaseProps) {
     setAuthenticated,
     setAnonymous
   } = useAuthStore();
+  const workspacesQuery = useQuery({
+    queryKey: [
+      'console-workspaces',
+      actor?.id ?? 'anonymous',
+      actor?.current_workspace_id ?? 'none'
+    ],
+    queryFn: () => fetchAccessibleWorkspaces(),
+    enabled: Boolean(actor?.id && csrfToken),
+    staleTime: navigationQueryStaleTime,
+    retry: false
+  });
   const accountLabel = selectAccountLabel({ me, actor });
   const handleClick = createAccountMenuClickHandler({
     csrfToken,
@@ -40,6 +60,43 @@ function AccountMenuBase({ navigateTo, navigateHome }: AccountMenuBaseProps) {
   });
 
   const handleMenuClick: NonNullable<MenuProps['onClick']> = (event) => {
+    if (event.key.startsWith('workspace:')) {
+      const workspaceId = event.key.slice('workspace:'.length);
+      if (!csrfToken || workspaceId === actor?.current_workspace_id) return;
+      void (async () => {
+        setSwitchingWorkspaceId(workspaceId);
+        try {
+          const session = await switchWorkspace(workspaceId, csrfToken);
+          const refreshedMe = await fetchCurrentMe().catch(() =>
+            me
+              ? {
+                  ...me,
+                  effective_display_role: session.actor.effective_display_role,
+                  permissions: session.active_role_permissions
+                }
+              : null
+          );
+          setAuthenticated({
+            csrfToken: session.csrf_token,
+            actor: session.actor,
+            me: refreshedMe,
+            availableRoles: session.available_roles
+          });
+          queryClient.clear();
+          await navigateHome();
+        } catch {
+          void message.error(
+            i18nText('appShell', 'auto.switch_workspace_failed', {
+              defaultValue: 'Failed to switch workspace'
+            })
+          );
+        } finally {
+          setSwitchingWorkspaceId(null);
+        }
+      })();
+      return;
+    }
+
     if (!event.key.startsWith('role:')) {
       handleClick?.(event);
       return;
@@ -83,7 +140,10 @@ function AccountMenuBase({ navigateTo, navigateHome }: AccountMenuBaseProps) {
         accountLabel,
         availableRoles,
         actor?.effective_display_role,
-        switchingRoleCode
+        switchingRoleCode,
+        workspacesQuery.data ?? [],
+        actor?.current_workspace_id,
+        switchingWorkspaceId
       )}
       onClick={handleMenuClick}
       disabledOverflow

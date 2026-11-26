@@ -51,3 +51,6 @@ pub use agent_logs::*;
 
 pub mod log_query;
 pub use log_query::*;
+
+pub mod run_archive;
+pub use run_archive::*;

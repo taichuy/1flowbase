@@ -200,7 +200,10 @@ function expectedBindings(snapshot: ConsoleMcpInstanceDirectory) {
   );
 }
 
-describe('instance directory confirmed tree and node form', () => {
+// These integration cases mount the management panel, a portaled Antd tree
+// and forms, and exercise deferred saves. Keep coverage-run headroom local to
+// this suite (the default 15-second ceiling still applies elsewhere).
+describe('instance directory confirmed tree and node form', { timeout: 30_000 }, () => {
   setupDirectoryEditorFixture();
   beforeEach(() => {
     identityCommits.enabled = false;

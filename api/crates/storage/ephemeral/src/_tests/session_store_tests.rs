@@ -1,6 +1,6 @@
 use control_plane_contracts::ports::SessionStore;
 use domain::SessionRecord;
-use storage_ephemeral::MemorySessionStore;
+use storage_ephemeral::MokaSessionStore;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -19,7 +19,7 @@ fn fixture_session_with_expiry(expires_at_unix: i64) -> SessionRecord {
 
 #[tokio::test]
 async fn memory_session_store_drops_expired_session_on_get() {
-    let store = MemorySessionStore::new("flowbase:test");
+    let store = MokaSessionStore::new("flowbase:test", 128);
     let expired = fixture_session_with_expiry(OffsetDateTime::now_utc().unix_timestamp() - 1);
 
     store.put(expired).await.unwrap();
@@ -29,7 +29,7 @@ async fn memory_session_store_drops_expired_session_on_get() {
 
 #[tokio::test]
 async fn memory_session_store_touch_extends_expiry() {
-    let store = MemorySessionStore::new("flowbase:test");
+    let store = MokaSessionStore::new("flowbase:test", 128);
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let session = fixture_session_with_expiry(now + 1);
 

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -104,8 +104,14 @@ describe('debug conversation log pagination', () => {
         />
       );
 
-      fireEvent.click(screen.getByRole('tab', { name: '追踪' }));
-      const toolsNode = await screen.findByRole('button', { name: /工具/ });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('tab', { name: '追踪' }));
+      });
+      const toolsNode = await screen.findByRole(
+        'button',
+        { name: /工具/ },
+        { timeout: 5_000 }
+      );
       fireEvent.click(toolsNode);
 
       expect(

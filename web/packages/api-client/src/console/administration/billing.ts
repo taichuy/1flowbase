@@ -101,6 +101,50 @@ export interface ConsolePricingRulesPage {
   page_size: number;
 }
 
+export interface ConsolePricingTargetProvider {
+  provider_code: string;
+  model_count: number;
+}
+
+export interface ConsolePricingTarget {
+  provider_code: string;
+  upstream_model_id: string;
+  input_token_unit_size: number;
+  input_token_unit_price: string;
+  output_token_unit_size: number;
+  output_token_unit_price: string;
+  cache_hit_token_unit_size: number;
+  cache_hit_token_unit_price: string;
+  cache_write_token_unit_size: number;
+  cache_write_token_unit_price: string;
+  effective_from: string;
+  effective_to: string | null;
+  timezone: string;
+  weekday_mask: number;
+  local_time_start: string | null;
+  local_time_end: string | null;
+  rules: ConsolePricingConditionalRule[];
+}
+
+export interface ConsolePricingTargetsFilter {
+  provider_code?: string;
+  provider_query?: string;
+  upstream_model_id?: string;
+  selected_model_id?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ConsolePricingTargetsPage {
+  providers: ConsolePricingTargetProvider[];
+  providers_total_count: number;
+  items: ConsolePricingTarget[];
+  total_count: number;
+  page: number;
+  page_size: number;
+  selected_target: ConsolePricingTarget | null;
+}
+
 export interface ConsoleCreditAccount {
   id: string;
   workspace_id: string;
@@ -163,6 +207,27 @@ export function listConsolePricingRules(
   search.set('page_size', String(filter.page_size ?? 20));
   return apiFetch<ConsolePricingRulesPage>({
     path: `/api/console/settings/billing/pricing-rules?${search.toString()}`,
+    baseUrl
+  });
+}
+
+export function listConsolePricingTargets(
+  filter: ConsolePricingTargetsFilter = {},
+  baseUrl?: string
+) {
+  const search = new URLSearchParams();
+  if (filter.provider_code) search.set('provider_code', filter.provider_code);
+  if (filter.provider_query) search.set('provider_query', filter.provider_query);
+  if (filter.upstream_model_id) {
+    search.set('upstream_model_id', filter.upstream_model_id);
+  }
+  if (filter.selected_model_id) {
+    search.set('selected_model_id', filter.selected_model_id);
+  }
+  search.set('page', String(filter.page ?? 1));
+  search.set('page_size', String(filter.page_size ?? 20));
+  return apiFetch<ConsolePricingTargetsPage>({
+    path: `/api/console/settings/billing/pricing-targets?${search.toString()}`,
     baseUrl
   });
 }

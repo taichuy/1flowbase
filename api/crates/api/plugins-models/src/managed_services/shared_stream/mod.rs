@@ -7,7 +7,7 @@ mod snapshot;
 mod subscribers;
 
 pub(super) use authority::authorize_frame;
-pub(super) use broker::{retire, revoke_record_permissions};
+pub(super) use broker::global;
 pub(super) use snapshot::{snapshot, SnapshotLookup};
 pub(super) use subscribers::subscribe;
 

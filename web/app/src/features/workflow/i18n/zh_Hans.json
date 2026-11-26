@@ -11,7 +11,6 @@
     "trigger_variables": "触发变量",
     "workflow_test_run": "测试运行",
     "workflow_test_run_execute": "运行",
-    "workflow_test_run_failed": "工作流测试运行失败",
     "workflow_test_run_unavailable": "当前工作流尚未配置可用触发器或登录凭证。",
     "workflow_action_bar": "Workflow 操作栏",
     "more_publish_actions": "更多发布操作",

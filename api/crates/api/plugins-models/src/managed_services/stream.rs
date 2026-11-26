@@ -100,7 +100,7 @@ fn streams() -> &'static Mutex<StreamRegistry> {
 }
 }
 pub fn publish_generation(generation: String) {
-    super::shared_stream::retire(None);
+    super::shared_stream::global().retire(None);
     super::record_acl::clear_handles();
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     all.generation = Some(generation);
@@ -113,7 +113,7 @@ pub fn publish_generation(generation: String) {
 }
 test_support_item! { pub(crate), []
 fn revoke_installation(id: uuid::Uuid) {
-    super::shared_stream::retire(Some(id));
+    super::shared_stream::global().retire(Some(id));
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     let entry = all.installations.entry(id).or_default();
     entry.epoch += 1;
@@ -149,7 +149,9 @@ pub(crate) async fn revoke_record_permissions(
     installation: uuid::Uuid,
     key: &domain::RecordPermissionKey,
 ) {
-    super::shared_stream::revoke_record_permissions(installation, key).await;
+    super::shared_stream::global()
+        .revoke_record_permissions(installation, key)
+        .await;
     let candidates = {
         let all = streams().lock().unwrap_or_else(|e| e.into_inner());
         record_candidates(&all, installation, key)
@@ -179,7 +181,7 @@ pub(crate) async fn revoke_record_permissions(
     }
 }
 pub fn revoke_all() {
-    super::shared_stream::retire(None);
+    super::shared_stream::global().retire(None);
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     for entry in all.installations.values_mut() {
         entry.epoch += 1;
@@ -267,22 +269,19 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
         let state = self.state.upgrade();
         let principal = principal.clone();
         let registration = self.registration.clone();
-        let op = self
-            .operations
-            .get(&input.interface_id)
-            .map(|op| op.declaration.clone());
+        let op = self.operations.get(&input.interface_id).cloned();
         Box::pin(async move {
             let prepare = async {
                 let state = state.ok_or(Error::UpstreamUnavailable("managed_service_host"))?;
-                let op = op.ok_or(Error::NotFound("managed_service_operation"))?;
-                let validator = jsonschema::validator_for(&op.input_schema)?;
-                if !validator.is_valid(&input.payload) { return Err(ApiError::from(Error::InvalidInput("managed_service_input"))); }
+                let compiled = op.ok_or(Error::NotFound("managed_service_operation"))?;
+                let op = &compiled.declaration;
+                if !compiled.input.is_valid(&input.payload) { return Err(ApiError::from(Error::InvalidInput("managed_service_input"))); }
                 let event_policy=input.event_policy.clone();
-                let record_permissions = super::record_acl::authorize(&state, &registration, principal.actor(), &op, &input.payload).await?;
+                let record_permissions = super::record_acl::authorize(&state, &registration, principal.actor(), op, &input.payload).await?;
                 let shared = op.stream.as_ref().is_some_and(|stream| stream.shared_source.is_some() || stream.aggregate_source_interface_id.is_some());
                 if shared && matches!(&input.stream, Some(StreamInput::Run { .. })) {
                     let Some(StreamInput::Run {duplex,cancel}) = input.stream else { unreachable!() };
-                    return super::shared_stream::subscribe(state, registration, principal, op, input.payload, duplex, cancel).await;
+                    return super::shared_stream::subscribe(state, registration, principal, compiled, input.payload, duplex, cancel).await;
                 }
                 let (publisher, stream) = interface_runtime::interface_stream_channel(16);
                 match input.stream.ok_or(Error::InvalidInput("managed_service_stream"))? {
@@ -292,7 +291,7 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                             session: session.expose_to_trusted_handler().to_owned(), actor: principal.actor().user_id,
                             origin, installation: registration.installation_id,
                             generation: super::stream_ticket::generation(&state)?, epoch: epoch(registration.installation_id),
-                            operation: op.interface_id, payload: input.payload,
+                            operation: op.interface_id.clone(), payload: input.payload,
                         };
                         let token = super::stream_ticket::store(state.infrastructure.cache_store().as_ref(), &ticket).await?;
                         publisher.finish(InterfaceStreamTerminal::Completed(ManagedServiceOutput(json!({"ticket":token}),super::event_projection::OutputPolicy::TicketIssued(event_policy.clone())))).await.map_err(|_| Error::UpstreamUnavailable("managed_service_stream"))?;
@@ -302,8 +301,7 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                         publisher.finish(InterfaceStreamTerminal::Completed(ManagedServiceOutput(output,super::event_projection::OutputPolicy::BusinessResult(event_policy.clone())))).await.map_err(|_| Error::UpstreamUnavailable("managed_service_stream"))?;
                     }
                     StreamInput::Run { duplex, mut cancel } | StreamInput::Source { duplex, mut cancel } => {
-                        let specification = op.stream.clone().ok_or(Error::InvalidInput("managed_service_stream"))?;
-                        let event_validator = jsonschema::validator_for(&specification.event_schema)?;
+                        let event_validator = compiled.event.clone().ok_or(Error::InvalidInput("managed_service_stream"))?;
                         // The receiver is separately forwarded through the canonical kernel event projection.
                         let runtime = state.provider_runtime.managed_composition()?;
                         let snapshot = match state.extension_boot_snapshot.as_ref().filter(|boot| boot.has_pinned_managed_snapshots()) {
@@ -356,7 +354,7 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                                 }
                             }
                             let terminal = match outcome {
-                                Ok(output) if jsonschema::validator_for(&op.output_schema).is_ok_and(|schema| schema.is_valid(&output)) => InterfaceStreamTerminal::Completed(ManagedServiceOutput(output,super::event_projection::OutputPolicy::BusinessResult(event_policy.clone()))),
+                                Ok(output) if compiled.output.is_valid(&output) => InterfaceStreamTerminal::Completed(ManagedServiceOutput(output,super::event_projection::OutputPolicy::BusinessResult(event_policy.clone()))),
                                 Err(error) => InterfaceStreamTerminal::Failed(interface_runtime::InterfaceTargetFailure::new("managed_service_stream", ConsoleInterfaceTargetError(super::ManagedServiceFailure::from_runtime(&error).map(ApiError::from).unwrap_or_else(|| Error::UpstreamUnavailable("managed_service_stream_execution").into())))),
                             _ => InterfaceStreamTerminal::Failed(interface_runtime::InterfaceTargetFailure::new("managed_service_stream", ConsoleInterfaceTargetError(Error::UpstreamUnavailable("managed_service_stream_execution").into()))),
                             };
@@ -385,23 +383,83 @@ pub(super) fn route_assembly(
     let owner =
         access_control::ConsoleRouteOwnership::ConsoleOperation(operation.interface_id.clone());
     let operation = Arc::new(operation.clone());
+    let client_validator = Arc::new(
+        jsonschema::validator_for(
+            &operation
+                .stream
+                .as_ref()
+                .expect("stream route")
+                .input_schema,
+        )
+        .map_err(|error| error.to_string()),
+    );
     let post_op = operation.clone();
     let installation = service.installation_id;
-    ConsoleRouteAssembly::new().route(&path, console_get(move |State(state): State<Arc<ApiState>>, Path(path): Path<BTreeMap<String,String>>, Query(query): Query<BTreeMap<String,String>>, headers: HeaderMap, ws: WebSocketUpgrade| {
-        let operation = operation.clone();
-        async move { upgrade(state, installation, operation, path, query, headers, ws).await }
-    }, access_control::ConsoleRouteOwnership::Authenticated).post(move |State(state): State<Arc<ApiState>>, Path(path): Path<BTreeMap<String,String>>, headers: HeaderMap, Json(body): Json<Value>| {
-        let operation = post_op.clone();
-        async move {
-            let origin = super::stream_ticket::origin(&headers)?;
-            let stream = console_interface::invoke_server_stream::<ManagedServiceInput,StreamEvent,ManagedServiceOutput>(state.clone(), &format!("http.{}.v1",operation.interface_id), crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {state,headers}, ManagedServiceInput {event_policy:Arc::new(super::event_projection::OperationPolicy::new(&operation)),interface_id:operation.interface_id.clone(),payload:json!({"path":path,"query":{},"body":body}),stream:Some(StreamInput::Ticket {origin})}).await?;
-            let (_,completion) = stream.into_parts();
-            match completion.complete().await.map_err(|_| Error::UpstreamUnavailable("managed_service_ticket"))?.into_parts().0 {
-                InterfaceStreamTerminal::Completed(ManagedServiceOutput(value,_)) => Ok::<_,ApiError>(Json(ApiSuccess::new(value))),
-                _ => Err(Error::UpstreamUnavailable("managed_service_ticket").into())
-            }
-        }
-    }, owner))
+    let upgrade_route = StreamUpgradeRoute {
+        installation,
+        operation,
+        client_validator,
+    };
+    ConsoleRouteAssembly::new().route(
+        &path,
+        console_get(
+            move |State(state): State<Arc<ApiState>>,
+                  Path(path): Path<BTreeMap<String, String>>,
+                  Query(query): Query<BTreeMap<String, String>>,
+                  headers: HeaderMap,
+                  ws: WebSocketUpgrade| {
+                let route = upgrade_route.clone();
+                async move { upgrade(state, route, path, query, headers, ws).await }
+            },
+            access_control::ConsoleRouteOwnership::Authenticated,
+        )
+        .post(
+            move |State(state): State<Arc<ApiState>>,
+                  Path(path): Path<BTreeMap<String, String>>,
+                  headers: HeaderMap,
+                  Json(body): Json<Value>| {
+                let operation = post_op.clone();
+                async move {
+                    let origin = super::stream_ticket::origin(&headers)?;
+                    let stream = console_interface::invoke_server_stream::<
+                        ManagedServiceInput,
+                        StreamEvent,
+                        ManagedServiceOutput,
+                    >(
+                        state.clone(),
+                        &format!("http.{}.v1", operation.interface_id),
+                        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                            state,
+                            headers,
+                        },
+                        ManagedServiceInput {
+                            event_policy: Arc::new(super::event_projection::OperationPolicy::new(
+                                &operation,
+                            )),
+                            interface_id: operation.interface_id.clone(),
+                            payload: json!({"path":path,"query":{},"body":body}),
+                            stream: Some(StreamInput::Ticket { origin }),
+                        },
+                    )
+                    .await?;
+                    let (_, completion) = stream.into_parts();
+                    match completion
+                        .complete()
+                        .await
+                        .map_err(|_| Error::UpstreamUnavailable("managed_service_ticket"))?
+                        .into_parts()
+                        .0
+                    {
+                        InterfaceStreamTerminal::Completed(ManagedServiceOutput(value, _)) => {
+                            Ok::<_, ApiError>(Json(ApiSuccess::new(value)))
+                        }
+                        _ => Err(Error::UpstreamUnavailable("managed_service_ticket").into()),
+                    }
+                }
+            },
+            owner,
+        ),
+    )
 }
 
 async fn revalidate(
@@ -479,15 +537,29 @@ async fn revalidate(
     };
     Ok(admission)
 }
-async fn upgrade(
-    state: Arc<ApiState>,
+#[derive(Clone)]
+struct StreamUpgradeRoute {
     installation: uuid::Uuid,
     operation: Arc<plugin_framework::ManagedServiceOperation>,
+    client_validator: Arc<Result<jsonschema::Validator, String>>,
+}
+
+async fn upgrade(
+    state: Arc<ApiState>,
+    StreamUpgradeRoute {
+        installation,
+        operation,
+        client_validator,
+    }: StreamUpgradeRoute,
     path: BTreeMap<String, String>,
     query: BTreeMap<String, String>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
+    if let Err(error) = client_validator.as_ref() {
+        tracing::warn!(%error, interface = %operation.interface_id, "invalid managed stream client schema");
+        return Err(Error::UpstreamUnavailable("managed_service_stream").into());
+    }
     let generation = crate::generation_dispatch::GenerationDispatch::acquire(&state)?;
     let context = crate::middleware::require_session::require_session(&state, &headers).await?;
     let session = context.cookie_session()?.session_id.clone();
@@ -571,6 +643,7 @@ async fn upgrade(
                     generation,
                     state,
                     operation,
+                    client_validator,
                     headers,
                     session,
                     installation,
@@ -589,6 +662,7 @@ struct SocketSession {
     generation: Arc<crate::generation_dispatch::GenerationDispatch>,
     state: Arc<ApiState>,
     operation: Arc<plugin_framework::ManagedServiceOperation>,
+    client_validator: Arc<Result<jsonschema::Validator, String>>,
     headers: HeaderMap,
     session: String,
     installation: uuid::Uuid,
@@ -613,6 +687,7 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
         generation,
         state,
         operation,
+        client_validator,
         headers,
         session,
         installation,
@@ -624,13 +699,10 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
         lease,
     } = session;
     use futures_util::{SinkExt, StreamExt};
-    let specification = operation
-        .stream
+    let input_validator = client_validator
         .as_ref()
-        .expect("compiled stream operation");
-    let Ok(input_validator) = jsonschema::validator_for(&specification.input_schema) else {
-        return;
-    };
+        .as_ref()
+        .expect("validated before upgrade");
     let (mut writer, mut reader) = socket.split();
     let (outgoing, mut outgoing_frames) =
         mpsc::channel::<(Message, Option<oneshot::Sender<()>>)>(16);
@@ -843,7 +915,7 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
             },
             frame = reader.next() => match frame {
                 Some(Ok(Message::Text(text))) if text.len()<=FRAME_BYTES => {
-                    match parse_client_frame(&text,&input_validator) {
+                    match parse_client_frame(&text,input_validator) {
                         Ok(ClientFrame::Input(value)) => {
                             let Ok(permit) = input_bytes.clone().try_acquire_many_owned(text.len().max(1) as u32) else { break; };
                             if pending_input.send((value,permit)).is_err() { break; }

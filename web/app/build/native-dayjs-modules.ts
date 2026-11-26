@@ -5,15 +5,19 @@ import type { Plugin } from 'vite';
 
 import {
   createDemandResolvedModuleDomain,
-  generateDemandResolvedLoaderRuntime
+  generateDemandResolvedLoaderRuntime,
+  generateDemandResolvedLoadersModule
 } from './native-demand-resolved-modules';
 
 export const NATIVE_DAYJS_MODULES_VIRTUAL_ID =
   'virtual:1flowbase-native-dayjs-modules';
+export const NATIVE_DAYJS_LOADERS_VIRTUAL_ID =
+  'virtual:1flowbase-native-dayjs-loaders';
 export const NATIVE_DAYJS_LEAF_VIRTUAL_PREFIX =
   'virtual:1flowbase-native-dayjs-leaf/';
 
 const RESOLVED_VIRTUAL_ID = `\0${NATIVE_DAYJS_MODULES_VIRTUAL_ID}`;
+const RESOLVED_LOADERS_VIRTUAL_ID = `\0${NATIVE_DAYJS_LOADERS_VIRTUAL_ID}`;
 const DAYJS_PACKAGE_NAME = 'dayjs';
 const JAVASCRIPT_EXTENSIONS = ['.js', '.mjs', '.cjs'] as const;
 
@@ -46,13 +50,15 @@ export function nativeDayjsModulesPlugin({
     resolveId: {
       filter: {
         id: [
-          /^virtual:1flowbase-native-dayjs-modules$/u,
+          /^virtual:1flowbase-native-dayjs-(?:modules|loaders)$/u,
           /^virtual:1flowbase-native-dayjs-leaf\//u,
           /^dayjs(?:$|\/(?:plugin|locale)\/)/u
         ]
       },
       async handler(id, importer, options) {
         if (id === NATIVE_DAYJS_MODULES_VIRTUAL_ID) return RESOLVED_VIRTUAL_ID;
+        if (id === NATIVE_DAYJS_LOADERS_VIRTUAL_ID)
+          return RESOLVED_LOADERS_VIRTUAL_ID;
         const demandResolvedId = demandDomain.resolveId(id);
         if (demandResolvedId) return demandResolvedId;
         if (command !== 'serve') return null;
@@ -67,8 +73,8 @@ export function nativeDayjsModulesPlugin({
     load: {
       filter: {
         id: [
-          /^\x00virtual:1flowbase-native-dayjs-modules$/u,
-          /^\x00virtual:1flowbase-native-dayjs-leaf\//u
+          /virtual:1flowbase-native-dayjs-(?:modules|loaders)$/u,
+          /virtual:1flowbase-native-dayjs-leaf\//u
         ]
       },
       handler(id) {
@@ -76,6 +82,13 @@ export function nativeDayjsModulesPlugin({
           return command === 'serve'
             ? generateNativeDayjsDevModules(inventory)
             : renderNativeDayjsModules(inventory);
+        }
+        if (id === RESOLVED_LOADERS_VIRTUAL_ID) {
+          return generateDemandResolvedLoadersModule({
+            errorLabel: 'dayjs module',
+            modules: inventory,
+            virtualPrefix: NATIVE_DAYJS_LEAF_VIRTUAL_PREFIX
+          });
         }
         return demandDomain.load(id, command);
       }
@@ -235,6 +248,47 @@ function generateNativeDayjsModules(
   inventory: readonly DayjsModuleSource[],
   command: 'build' | 'serve'
 ): string {
+  const moduleSources = inventory.map(({ moduleSource }) => moduleSource);
+  if (command === 'build') {
+    const packageIdentity = inventory[0];
+    if (!packageIdentity) {
+      throw new Error('[native-dayjs-modules] Module inventory is empty.');
+    }
+    return `
+let loaderDomainPromise;
+async function loadLoaderDomain() {
+  loaderDomainPromise ??= import(${JSON.stringify(NATIVE_DAYJS_LOADERS_VIRTUAL_ID)}).catch((error) => {
+    loaderDomainPromise = undefined;
+    throw error;
+  });
+  return loaderDomainPromise;
+}
+
+export const DAYJS_MODULE_DEFINITIONS = Object.freeze(
+  ${JSON.stringify(moduleSources)}.map((module_source) => ({
+    module_source,
+    exports: module_source === 'dayjs' ? ['default'] : ['*']
+  }))
+);
+
+export const DAYJS_DECLARATION_SOURCES = Object.freeze(${JSON.stringify(
+      inventory.flatMap(({ hasDeclaration, moduleSource }) =>
+        hasDeclaration ? [moduleSource] : []
+      )
+    )});
+
+export const DAYJS_PACKAGE = Object.freeze(${JSON.stringify({
+      package_name: packageIdentity.packageName,
+      package_version: packageIdentity.packageVersion,
+      module_count: inventory.length
+    })});
+
+export async function loadDayjsModule(moduleSource) {
+  const domain = await loadLoaderDomain();
+  return domain.loadDemandResolvedModule(moduleSource);
+}
+`;
+  }
   const packageIdentity = inventory[0];
   if (!packageIdentity) {
     throw new Error('[native-dayjs-modules] Module inventory is empty.');

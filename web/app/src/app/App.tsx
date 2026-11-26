@@ -1,7 +1,7 @@
 import { Suspense, lazy } from 'react';
 
 import { AuthBootstrap } from '../features/auth/components/AuthBootstrap';
-import { LoadingState } from '../shared/ui/loading-state/LoadingState';
+import { AnonymousLoadingState } from '../features/auth/components/anonymous-loading/AnonymousLoadingState';
 import { ApplicationBootBoundary } from './ApplicationBootBoundary';
 
 const ApplicationRuntimeBootstrap = lazy(() =>
@@ -14,7 +14,7 @@ export function App() {
   return (
     <ApplicationBootBoundary>
       <AuthBootstrap>
-        <Suspense fallback={<LoadingState fullscreen />}>
+        <Suspense fallback={<AnonymousLoadingState fullscreen />}>
           <ApplicationRuntimeBootstrap />
         </Suspense>
       </AuthBootstrap>

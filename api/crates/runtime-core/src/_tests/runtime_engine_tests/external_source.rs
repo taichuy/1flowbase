@@ -18,6 +18,7 @@ async fn external_source_runtime_crud_dispatches_to_data_source_backend_after_ac
     );
     let actor = ActorContext::scoped(actor_user_id, workspace_id, "member", Vec::<String>::new());
     let grant = RuntimeScopeGrant {
+        bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
         data_model_id: model_id,
         scope_kind: domain::DataModelScopeKind::Workspace,
         scope_id: workspace_id,
@@ -180,6 +181,7 @@ async fn external_source_runtime_rejects_unknown_fields_and_invalid_sort_directi
     );
     let actor = ActorContext::scoped(Uuid::now_v7(), workspace_id, "member", Vec::<String>::new());
     let grant = RuntimeScopeGrant {
+        bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
         data_model_id: model_id,
         scope_kind: domain::DataModelScopeKind::Workspace,
         scope_id: workspace_id,

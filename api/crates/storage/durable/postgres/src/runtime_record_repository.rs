@@ -253,13 +253,12 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         let page = query.page.max(1);
         let page_size = query.page_size.max(1);
         let table_name = quote_identifier(&metadata.physical_table_name)?;
-        let scope_column_name = quote_identifier(&metadata.scope_column_name)?;
         let offset = (page - 1) * page_size;
 
         let mut count_builder = QueryBuilder::<Postgres>::new(format!(
             "select count(*)::bigint from {table_name} where true"
         ));
-        append_scope_clause(&mut count_builder, &scope_column_name, query.scope_id);
+        append_scope_clause(&mut count_builder, metadata, query.scope_id)?;
         append_owner_scope_clause(&mut count_builder, query.owner_user_id);
         append_filter_clause(&mut count_builder, metadata, &query.filter)?;
         let total = self
@@ -275,7 +274,7 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
             "select row_to_json(t) from (select {} from {table_name} where true",
             projected_select_list(metadata)?
         ));
-        append_scope_clause(&mut list_builder, &scope_column_name, query.scope_id);
+        append_scope_clause(&mut list_builder, metadata, query.scope_id)?;
         append_owner_scope_clause(&mut list_builder, query.owner_user_id);
         append_filter_clause(&mut list_builder, metadata, &query.filter)?;
         append_sort_clause(&mut list_builder, metadata, &query.sorts)?;
@@ -326,13 +325,12 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         record_id: &str,
     ) -> Result<Option<Value>> {
         let table_name = quote_identifier(&metadata.physical_table_name)?;
-        let scope_column_name = quote_identifier(&metadata.scope_column_name)?;
         let record_id = parse_record_id(record_id)?;
         let mut builder = QueryBuilder::<Postgres>::new(format!(
             "select row_to_json(t) from (select {} from {table_name} where true",
             projected_select_list(metadata)?
         ));
-        append_scope_clause(&mut builder, &scope_column_name, scope_id);
+        append_scope_clause(&mut builder, metadata, scope_id)?;
         append_owner_scope_clause(&mut builder, owner_user_id);
         builder.push(" and id = ");
         builder.push_bind(record_id);
@@ -491,12 +489,7 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         }
         if payload.is_empty() {
             return self
-                .get_record(
-                    metadata,
-                    metadata_scope_filter(metadata, scope_id),
-                    owner_user_id,
-                    record_id,
-                )
+                .get_record(metadata, scope_id, owner_user_id, record_id)
                 .await?
                 .ok_or_else(|| anyhow!("runtime record not found"));
         }
@@ -558,11 +551,7 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
             assignment_count += 1;
         }
         builder.push(" where true");
-        append_scope_clause(
-            &mut builder,
-            &scope_column_name,
-            metadata_scope_filter(metadata, scope_id),
-        );
+        append_scope_clause(&mut builder, metadata, scope_id)?;
         append_owner_scope_clause(&mut builder, owner_user_id);
         builder.push(" and id = ");
         builder.push_bind(record_id);
@@ -597,8 +586,7 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         .await?;
         tx.commit().await?;
 
-        let lookup_scope_id =
-            payload_scope_id.or_else(|| metadata_scope_filter(metadata, scope_id));
+        let lookup_scope_id = payload_scope_id.or(scope_id);
         self.get_record(
             metadata,
             lookup_scope_id,
@@ -617,15 +605,10 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
         record_id: &str,
     ) -> Result<bool> {
         let table_name = quote_identifier(&metadata.physical_table_name)?;
-        let scope_column_name = quote_identifier(&metadata.scope_column_name)?;
         let record_id = parse_record_id(record_id)?;
         let mut builder =
             QueryBuilder::<Postgres>::new(format!("delete from {table_name} where true"));
-        append_scope_clause(
-            &mut builder,
-            &scope_column_name,
-            metadata_scope_filter(metadata, scope_id),
-        );
+        append_scope_clause(&mut builder, metadata, scope_id)?;
         append_owner_scope_clause(&mut builder, owner_user_id);
         builder.push(" and id = ");
         builder.push_bind(record_id);
@@ -760,17 +743,46 @@ fn append_owner_scope_clause(builder: &mut QueryBuilder<Postgres>, owner_user_id
     }
 }
 
+#[derive(Clone, Copy)]
+enum RuntimeTableScope {
+    ScopeColumn,
+    WorkspaceMembership,
+    GlobalPricingCatalog,
+}
+
+impl RuntimeTableScope {
+    fn for_metadata(metadata: &ModelMetadata) -> Self {
+        match metadata.physical_table_name.as_str() {
+            "users" => Self::WorkspaceMembership,
+            "model_pricing_rules" => Self::GlobalPricingCatalog,
+            _ => Self::ScopeColumn,
+        }
+    }
+}
+
 fn append_scope_clause(
     builder: &mut QueryBuilder<Postgres>,
-    scope_column_name: &str,
+    metadata: &ModelMetadata,
     scope_id: Option<Uuid>,
-) {
-    if let Some(scope_id) = scope_id {
-        builder.push(" and ");
-        builder.push(scope_column_name);
-        builder.push(" = ");
-        builder.push_bind(scope_id);
+) -> Result<()> {
+    let Some(scope_id) = scope_id else {
+        return Ok(());
+    };
+    match RuntimeTableScope::for_metadata(metadata) {
+        RuntimeTableScope::ScopeColumn => {
+            builder.push(" and ");
+            builder.push(quote_identifier(&metadata.scope_column_name)?);
+            builder.push(" = ");
+            builder.push_bind(scope_id);
+        }
+        RuntimeTableScope::WorkspaceMembership => {
+            builder.push(r#" and exists (select 1 from workspace_memberships wm where wm.user_id = "users"."id" and wm.workspace_id = "#);
+            builder.push_bind(scope_id);
+            builder.push(" and wm.status = 'active')");
+        }
+        RuntimeTableScope::GlobalPricingCatalog => {}
     }
+    Ok(())
 }
 
 pub(crate) fn to_runtime_model_metadata(
@@ -1064,16 +1076,13 @@ fn push_runtime_insert_column_value(
 }
 
 fn metadata_uses_scope_column(metadata: &ModelMetadata) -> bool {
-    metadata
+    matches!(
+        RuntimeTableScope::for_metadata(metadata),
+        RuntimeTableScope::ScopeColumn
+    ) && metadata
         .fields
         .iter()
         .any(|field| field.physical_column_name == metadata.scope_column_name)
-}
-
-fn metadata_scope_filter(metadata: &ModelMetadata, scope_id: Option<Uuid>) -> Option<Uuid> {
-    metadata_uses_scope_column(metadata)
-        .then_some(scope_id)
-        .flatten()
 }
 
 pub(crate) fn push_field_value(

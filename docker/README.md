@@ -166,6 +166,16 @@ docker compose up -d web
 
 归档内只有当前 `manifest.json` 和 `assets/`。更新时应先清空 `web/external-npm/` 中旧的 manifest 与资产，再整体解压新归档；需要回退时重新部署运维侧保留的旧归档。
 
+## 反向代理缓存 / Reverse-proxy caching
+
+- `/api/console/` 返回当前用户、工作区及可变权限数据，外层 Nginx / CDN 不应共享缓存这些响应。API 对未显式声明缓存策略的 Console 响应发送 `Cache-Control: private, no-store`；已有私有 ETag 重验证策略保持不变。
+- 若部署平台启用了反向代理缓存，应对 `/api/console/` 关闭缓存，并保留上游 `Cache-Control`，不要用 `proxy_ignore_headers Cache-Control` 覆盖它。静态 hash 资源的长缓存不受此限制。
+- 从旧版本升级时，清理此前缓存的 Console URL 或等待其过期；新响应头无法撤回代理已经存储的旧响应。验收时在“动态路由”全选、连续勾选并刷新，核对读取结果与保存结果一致，权限读取不再返回共享缓存 `HIT`。否则可能出现“保存成功，勾选回退”，后续整表保存还会覆盖先前的选择。
+
+- `/api/console/` returns actor/workspace-specific, mutable authorization data. Do not place these responses in a shared Nginx/CDN cache. Console responses without an explicit cache policy default to `Cache-Control: private, no-store`; existing private ETag revalidation policies remain unchanged.
+- Disable proxy caching for `/api/console/` and honor the upstream `Cache-Control` header; do not override it with `proxy_ignore_headers Cache-Control`. Long-lived caching for hashed static assets is unaffected.
+- On upgrade, purge previously cached Console URLs or wait for them to expire. New headers cannot retract an already stored response. Verify select-all, consecutive permission changes and reloads: readback must match the saved selection and permission reads must not report a shared-cache `HIT`. Stale readback can otherwise undo checkmarks and cause the next full-replacement save to overwrite earlier selections.
+
 ## 本地构建代理
 
 `node scripts/node/build-local-deploy-images.js` 会把当前 shell 的大小写

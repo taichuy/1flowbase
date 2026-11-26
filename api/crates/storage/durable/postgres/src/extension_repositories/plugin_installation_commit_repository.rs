@@ -7,7 +7,7 @@ use control_plane_contracts::{
     },
     ControlPlaneContractError,
 };
-use sqlx::{pool::PoolConnection, PgConnection, Postgres, Row};
+use sqlx::{pool::PoolConnection, Connection, PgConnection, Postgres, Row};
 use uuid::Uuid;
 
 use crate::{plugin_repository::map_installation, repositories::PgControlPlaneStore};
@@ -107,7 +107,7 @@ async fn validate_admission(
                     return Err(ControlPlaneContractError::Conflict(
                         "managed_archive_identity_conflict",
                     )
-                    .into())
+                    .into());
                 }
             }
         }
@@ -140,19 +140,44 @@ impl PluginInstallationLease for PgPluginInstallationLease {
             .connection
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("installation lease released"))?;
-        // The same connection owns admission, the session lock and the original install body.
-        sqlx::query("BEGIN").execute(&mut **connection).await?;
+        // Borrow the admission connection: its session lock must survive both rollback and
+        // retry, and dependency inventory must never acquire a second pool connection.
+        let mut transaction = Connection::begin(&mut **connection).await?;
         let result = async {
-            validate_admission(connection, &self.admission).await?;
-            let record = write_installation(connection, input).await?;
-            sqlx::query("COMMIT").execute(&mut **connection).await?;
+            crate::plugin_repository::lock_managed_dependency_scope(&mut transaction).await?;
+            // ON CONFLICT may retain an existing id rather than the proposed installation id.
+            // Resolve it under the system fence before workspace or installation row locks.
+            let existing_id: Option<Uuid> =
+                sqlx::query_scalar("select id from extension_installations where plugin_id=$1")
+                    .bind(&input.installation.plugin_id)
+                    .fetch_optional(&mut *transaction)
+                    .await?;
+            crate::plugin_repository::lock_managed_desired_state_scopes(
+                &mut transaction,
+                existing_id.unwrap_or(input.installation.installation_id),
+            )
+            .await?;
+            validate_admission(&mut transaction, &self.admission).await?;
+            let before =
+                crate::plugin_repository::managed_dependency_facts(&mut transaction).await?;
+            let record = write_installation(&mut transaction, input).await?;
+            // Check the concrete SQL result, including readiness published by write_installation.
+            let after =
+                crate::plugin_repository::managed_dependency_facts(&mut transaction).await?;
+            before.guard_write(&after, record.id, true)?;
             Ok(record)
         }
         .await;
-        if result.is_err() {
-            let _ = sqlx::query("ROLLBACK").execute(&mut **connection).await;
+        match result {
+            Ok(record) => {
+                transaction.commit().await?;
+                Ok(record)
+            }
+            Err(error) => {
+                let _ = transaction.rollback().await;
+                Err(error)
+            }
         }
-        result
     }
 
     async fn release(mut self: Box<Self>) -> Result<()> {

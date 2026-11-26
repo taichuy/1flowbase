@@ -43,6 +43,7 @@ pub fn compiled_catalog_from_inventory(
 
     let mut groups =
         BTreeMap::<ConsolePolicyGroup, BTreeMap<ConsoleOperationId, ConsoleOperationPolicy>>::new();
+    let mut workspace_groups = std::collections::BTreeSet::new();
     for operation in &inventory.operations {
         if operation.lifecycle != SettingsFeatureLifecycle::Active {
             return Err(ConsolePolicyMigrationError::new(format!(
@@ -111,6 +112,9 @@ pub fn compiled_catalog_from_inventory(
                 )
             }
         };
+        if !operation.root_workspace_only {
+            workspace_groups.insert(group.clone());
+        }
         if groups
             .entry(group)
             .or_default()
@@ -133,6 +137,9 @@ pub fn compiled_catalog_from_inventory(
         groups: groups
             .into_iter()
             .map(|(group, operations)| CompiledConsolePolicyGroup {
+                // A mixed group (e.g. files) must keep its workspace grants. Its
+                // platform-only operations are still gated individually at projection and dispatch.
+                root_workspace_only: !workspace_groups.contains(&group),
                 group,
                 full_operations: operations.into_values().collect(),
             })

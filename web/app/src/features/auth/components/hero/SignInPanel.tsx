@@ -4,10 +4,14 @@ export function SignInPanel({
   children,
   inert,
   footer,
+  hideFooter,
+  openingFooterHidden,
   filing_html
 }: PropsWithChildren<{
   inert?: boolean;
   footer: string;
+  hideFooter?: boolean;
+  openingFooterHidden?: boolean;
   filing_html?: string;
 }>) {
   return (
@@ -24,15 +28,17 @@ export function SignInPanel({
     >
       <div className="auth-sign-in-content">{children}</div>
       <div style={{ textAlign: 'center', marginTop: 48 }}>
-        <span className="auth-sign-in-footer">
-          <a
-            href="https://1flowbase.taichuy.com/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            {footer}
-          </a>
-        </span>
+        {hideFooter ? null : (
+          <span className="auth-sign-in-footer" hidden={openingFooterHidden}>
+            <a
+              href="https://1flowbase.taichuy.com/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {footer}
+            </a>
+          </span>
+        )}
         {filing_html ? (
           <div
             className="auth-sign-in-filing"

@@ -9,7 +9,7 @@ const REGEX_UNBOUNDED_REPEAT_LIMIT: u32 = 16;
 
 #[derive(Clone, Debug, Default)]
 pub struct RuntimeTableNamePolicy {
-    prefix_generator: Option<rand_regex::Regex>,
+    prefix_hir: Option<Hir>,
 }
 
 impl RuntimeTableNamePolicy {
@@ -47,19 +47,26 @@ impl RuntimeTableNamePolicy {
                 "runtime table prefix regex can generate a prefix that is too long"
             ));
         }
-        let prefix_generator = rand_regex::Regex::with_hir(hir, REGEX_UNBOUNDED_REPEAT_LIMIT)
-            .map_err(|error| anyhow!("invalid runtime table prefix regex: {error}"))?;
 
         Ok(Self {
-            prefix_generator: Some(prefix_generator),
+            prefix_hir: Some(hir),
         })
     }
 
     pub fn auto_prefix_enabled(&self) -> bool {
-        self.prefix_generator.is_some()
+        self.prefix_hir.is_some()
     }
 
     fn build_table_name(&self, code: &str) -> Result<String> {
+        let mut rng = rand::rng();
+        self.build_table_name_with_rng(code, &mut rng)
+    }
+
+    pub(crate) fn build_table_name_with_rng(
+        &self,
+        code: &str,
+        rng: &mut impl rand::Rng,
+    ) -> Result<String> {
         if code.is_empty()
             || !code
                 .chars()
@@ -70,9 +77,10 @@ impl RuntimeTableNamePolicy {
             ));
         }
 
-        let physical_table_name = match &self.prefix_generator {
-            Some(generator) => {
-                let prefix = rand::rng().sample::<String, _>(generator);
+        let physical_table_name = match &self.prefix_hir {
+            Some(hir) => {
+                let mut prefix = String::new();
+                sample_hir(hir, rng, &mut prefix);
                 format!("{prefix}_{code}")
             }
             None => code.to_string(),
@@ -87,23 +95,104 @@ impl RuntimeTableNamePolicy {
     }
 }
 
+pub(crate) fn sample_hir(hir: &Hir, rng: &mut impl rand::Rng, out: &mut String) {
+    match hir.kind() {
+        HirKind::Empty | HirKind::Look(_) => {}
+        HirKind::Literal(literal) => {
+            for &byte in &*literal.0 {
+                out.push(byte as char);
+            }
+        }
+        HirKind::Class(Class::Bytes(class)) => {
+            let total: u32 = class
+                .iter()
+                .map(|range| u32::from(range.end() - range.start()) + 1)
+                .sum();
+            if total > 0 {
+                let mut pick = rng.random_range(0..total);
+                for range in class.iter() {
+                    let span = u32::from(range.end() - range.start()) + 1;
+                    if pick < span {
+                        if let Some(byte) = range.start().checked_add(pick as u8) {
+                            out.push(byte as char);
+                        }
+                        break;
+                    }
+                    pick -= span;
+                }
+            }
+        }
+        HirKind::Class(Class::Unicode(class)) => {
+            let total: u32 = class
+                .iter()
+                .map(|range| (range.end() as u32 - range.start() as u32) + 1)
+                .sum();
+            if total > 0 {
+                let mut pick = rng.random_range(0..total);
+                for range in class.iter() {
+                    let span = (range.end() as u32 - range.start() as u32) + 1;
+                    if pick < span {
+                        if let Some(ch) = char::from_u32(range.start() as u32 + pick) {
+                            out.push(ch);
+                        }
+                        break;
+                    }
+                    pick -= span;
+                }
+            }
+        }
+        HirKind::Repetition(repetition) => {
+            let max = repetition
+                .max
+                .unwrap_or_else(|| repetition.min.saturating_add(REGEX_UNBOUNDED_REPEAT_LIMIT));
+            let count = if max >= repetition.min {
+                rng.random_range(repetition.min..=max)
+            } else {
+                repetition.min
+            };
+            for _ in 0..count {
+                sample_hir(&repetition.sub, rng, out);
+            }
+        }
+        HirKind::Capture(capture) => sample_hir(&capture.sub, rng, out),
+        HirKind::Concat(parts) => {
+            for part in parts {
+                sample_hir(part, rng, out);
+            }
+        }
+        HirKind::Alternation(parts) => {
+            if !parts.is_empty() {
+                let index = rng.random_range(0..parts.len());
+                sample_hir(&parts[index], rng, out);
+            }
+        }
+    }
+}
+
 fn hir_uses_identifier_characters(hir: &Hir) -> bool {
     match hir.kind() {
         HirKind::Empty => true,
         HirKind::Literal(literal) => literal.0.iter().copied().all(is_identifier_byte),
-        HirKind::Class(Class::Bytes(class)) => class
-            .iter()
-            .all(|range| (range.start()..=range.end()).all(is_identifier_byte)),
-        HirKind::Class(Class::Unicode(class)) => class.iter().all(|range| {
-            range.end().is_ascii()
-                && (range.start() as u32..=range.end() as u32)
-                    .all(|value| char::from_u32(value).is_some_and(is_identifier_char))
-        }),
+        HirKind::Class(Class::Bytes(class)) => {
+            !class.ranges().is_empty()
+                && class
+                    .iter()
+                    .all(|range| (range.start()..=range.end()).all(is_identifier_byte))
+        }
+        HirKind::Class(Class::Unicode(class)) => {
+            !class.ranges().is_empty()
+                && class.iter().all(|range| {
+                    range.end().is_ascii()
+                        && (range.start() as u32..=range.end() as u32)
+                            .all(|value| char::from_u32(value).is_some_and(is_identifier_char))
+                })
+        }
         HirKind::Look(_) => false,
         HirKind::Repetition(repetition) => hir_uses_identifier_characters(&repetition.sub),
         HirKind::Capture(capture) => hir_uses_identifier_characters(&capture.sub),
-        HirKind::Concat(parts) | HirKind::Alternation(parts) => {
-            parts.iter().all(hir_uses_identifier_characters)
+        HirKind::Concat(parts) => parts.iter().all(hir_uses_identifier_characters),
+        HirKind::Alternation(parts) => {
+            !parts.is_empty() && parts.iter().all(hir_uses_identifier_characters)
         }
     }
 }

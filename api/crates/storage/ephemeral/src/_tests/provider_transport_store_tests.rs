@@ -239,31 +239,36 @@ async fn protocol_context_preserves_large_values_with_slot_and_ttl_lifecycle() {
         .unwrap();
     assert_eq!(store.get_protocol_context(slot).await.unwrap(), Some(value));
 
-    let slot_bounded_store = MemoryProviderTransportStore::new(Duration::minutes(5));
-    for index in 0..16 {
+    let many_slots_store = MemoryProviderTransportStore::new(Duration::minutes(5));
+    let mut stored_slots = Vec::new();
+    for index in 0..32 {
         let value = ProviderProtocolContextValue::new(json!({"selected": index})).unwrap();
         let locator = value.derived_locator();
-        slot_bounded_store
-            .put_protocol_context(
-                ProviderProtocolContextSlotId::for_locator(flow_run_id, &locator),
-                value,
-            )
+        let slot = ProviderProtocolContextSlotId::for_locator(flow_run_id, &locator);
+        many_slots_store
+            .put_protocol_context(slot, value.clone())
             .await
             .unwrap();
+        stored_slots.push((slot, value));
     }
-    let overflow = ProviderProtocolContextValue::new(json!({"selected": "overflow"})).unwrap();
-    let overflow_locator = overflow.derived_locator();
     assert_eq!(
-        slot_bounded_store
-            .put_protocol_context(
-                ProviderProtocolContextSlotId::for_locator(flow_run_id, &overflow_locator),
-                overflow,
-            )
-            .await
-            .unwrap_err()
-            .to_string(),
-        "ephemeral_protocol_context_slot_limit_exceeded"
+        many_slots_store.retained_counts_for_test().await,
+        (0, 32, 0)
     );
+    for (slot, expected) in &stored_slots {
+        assert_eq!(
+            many_slots_store.get_protocol_context(*slot).await.unwrap(),
+            Some(expected.clone())
+        );
+    }
+    assert_eq!(
+        many_slots_store
+            .delete_flow_run_protocol_contexts(flow_run_id)
+            .await
+            .unwrap(),
+        32
+    );
+    assert_eq!(many_slots_store.retained_counts_for_test().await, (0, 0, 0));
 
     let expiring_store = MemoryProviderTransportStore::new(Duration::milliseconds(20));
     let value = protocol_context_value("expiring-context");
@@ -679,4 +684,81 @@ async fn native_response_round_slots_survive_resume_and_are_cleared_with_owner()
     for slot in [first, next, current] {
         assert!(store.get_continuation(slot).await.unwrap().is_none());
     }
+}
+
+#[tokio::test]
+async fn expiry_heap_lazily_skips_deleted_slots_and_clear_flow_run_preserves_other_runs() {
+    let store = MemoryProviderTransportStore::new(Duration::milliseconds(60));
+    let cleared_run = Uuid::now_v7();
+    let surviving_run = Uuid::now_v7();
+
+    store
+        .put(
+            ProviderTransportSlotId::for_flow_run(cleared_run),
+            responses_payload(),
+        )
+        .await
+        .unwrap();
+    for index in 0..24 {
+        let context = ProviderProtocolContextValue::new(json!({"turn": index})).unwrap();
+        let locator = context.derived_locator();
+        store
+            .put_protocol_context(
+                ProviderProtocolContextSlotId::for_locator(cleared_run, &locator),
+                context,
+            )
+            .await
+            .unwrap();
+    }
+    store
+        .put_continuation(
+            ProviderContinuationSlotId::for_flow_run(cleared_run),
+            responses_continuation(),
+        )
+        .await
+        .unwrap();
+
+    let surviving_request = ProviderTransportSlotId::for_flow_run(surviving_run);
+    let surviving_continuation = ProviderContinuationSlotId::for_flow_run(surviving_run);
+    let surviving_context = protocol_context_value("surviving");
+    let surviving_context_slot = ProviderProtocolContextSlotId::for_locator(
+        surviving_run,
+        &surviving_context.derived_locator(),
+    );
+    store
+        .put(surviving_request, responses_payload())
+        .await
+        .unwrap();
+    store
+        .put_continuation(surviving_continuation, responses_continuation())
+        .await
+        .unwrap();
+    store
+        .put_protocol_context(surviving_context_slot, surviving_context.clone())
+        .await
+        .unwrap();
+
+    store.clear_flow_run(cleared_run).await.unwrap();
+    assert_eq!(store.retained_counts_for_test().await, (1, 1, 1));
+    assert!(store.get(surviving_request).await.unwrap().is_some());
+    assert!(store
+        .get_continuation(surviving_continuation)
+        .await
+        .unwrap()
+        .is_some());
+    assert_eq!(
+        store
+            .get_protocol_context(surviving_context_slot)
+            .await
+            .unwrap(),
+        Some(surviving_context)
+    );
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while store.retained_counts_for_test().await != (0, 0, 0) {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("surviving entries must expire cleanly after cleared entries are skipped");
 }

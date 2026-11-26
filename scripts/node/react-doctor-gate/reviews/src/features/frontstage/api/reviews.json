@@ -1,0 +1,20 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/features/frontstage/api/block-catalog-scope.ts",
+      "rule": "react-doctor/js-tosorted-immutable",
+      "sourceSha256": "2f9679f8f2e0c817e4841b09ba90d84f77c6627a9958d009fd6ed04f1ecf2de1",
+      "reason": "The private copy preserves the source permissions array and sorts the cache key independently of permission order. This simple browser-side helper does not need to add a dependency on the newer toSorted runtime API.",
+      "evidenceSet": 0
+    }
+  ],
+  "evidenceSets": [
+    [
+      {
+        "file": "web/app/src/features/frontstage/_tests/use-frontstage-block-catalog.test.tsx",
+        "sha256": "c2bb5403a5753f9847e758a1ec79feb5e9a4486879c52798af808f8c9acb5ae4"
+      }
+    ]
+  ]
+}

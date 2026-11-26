@@ -37,6 +37,7 @@ fn callback_credential_boundary_is_explicit_and_start_keeps_safe_query() {
     assert_eq!(PublicInput::document_input_unavailable(&operation), None);
     assert_eq!(
         PublicInput::Start {
+            invitation_token: None,
             login_entry_id: Uuid::nil()
         }
         .project_document_input(&operation)

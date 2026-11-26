@@ -113,6 +113,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
                 crate::managed_worker::ManagedHostServices {
                     plugin_data: Arc::clone(&self.plugin_data),
                     plugin_credentials: self.plugin_credentials.clone(),
+                    workspace_governance: self.workspace_governance.clone(),
                     execution_gate: self
                         .execution_gate
                         .clone()

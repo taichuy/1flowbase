@@ -130,6 +130,7 @@ impl Fixture {
                 ),
                 provider_install_root: PathBuf::from(&state.provider_install_root),
             }),
+            false,
         );
         let service = Arc::new(
             NotificationService::new(

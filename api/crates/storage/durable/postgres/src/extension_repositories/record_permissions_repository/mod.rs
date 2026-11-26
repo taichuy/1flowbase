@@ -7,11 +7,20 @@ use control_plane_contracts::{
 };
 use domain::{
     ActorContext, RecordPermissionGrant, RecordPermissionKey, RecordPermissionMode,
-    RecordPermissionPolicy, RecordPermissionRole, ReplaceRecordPermissions,
+    RecordPermissionPolicy, RecordPermissionResourceKey, RecordPermissionRole,
+    ReplaceRecordPermissions,
 };
 use sqlx::{Postgres, Row, Transaction};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
+
+fn policy_mode(mode: &str) -> Result<RecordPermissionMode> {
+    match mode {
+        "inherit" => Ok(RecordPermissionMode::Inherit),
+        "restricted" => Ok(RecordPermissionMode::Restricted),
+        _ => Err(Error::InvalidInput("record_permission_mode").into()),
+    }
+}
 
 async fn read_policy(
     transaction: &mut Transaction<'_, Postgres>,
@@ -24,11 +33,7 @@ async fn read_policy(
         return Ok(None);
     };
     let policy_id: Uuid = row.try_get("id")?;
-    let mode = match row.try_get::<String, _>("mode")?.as_str() {
-        "inherit" => RecordPermissionMode::Inherit,
-        "restricted" => RecordPermissionMode::Restricted,
-        _ => return Err(Error::InvalidInput("record_permission_mode").into()),
-    };
+    let mode = policy_mode(row.try_get("mode")?)?;
     let grants = sqlx::query("select role_id, actions from plugin_record_permission_grants where policy_id=$1 order by role_id")
         .bind(policy_id).fetch_all(&mut **transaction).await?.into_iter().map(|row| Ok(RecordPermissionGrant {
             role_id: row.try_get("role_id")?, actions: row.try_get("actions")?,
@@ -54,6 +59,50 @@ impl RecordPermissionRepository for PgControlPlaneStore {
         let policy = read_policy(&mut tx, key).await?;
         tx.commit().await?;
         Ok(policy)
+    }
+
+    async fn get_record_permissions_batch(
+        &self,
+        workspace_id: Uuid,
+        resource: &RecordPermissionResourceKey,
+        record_ids: &[String],
+    ) -> Result<BTreeMap<String, RecordPermissionPolicy>> {
+        let rows = sqlx::query(
+            "select p.record_id, p.mode, p.revision, g.role_id, g.actions
+            from plugin_record_permission_policies p
+            left join plugin_record_permission_grants g on g.policy_id = p.id
+            where p.workspace_id=$1 and p.publisher_namespace=$2 and p.plugin_code=$3
+                and p.record_id=any($4) and p.resource_code=$5
+            order by p.record_id, g.role_id",
+        )
+        .bind(workspace_id)
+        .bind(&resource.publisher_namespace)
+        .bind(&resource.plugin_code)
+        .bind(record_ids)
+        .bind(&resource.resource_code)
+        .fetch_all(self.pool())
+        .await?;
+        let mut policies = BTreeMap::<String, RecordPermissionPolicy>::new();
+        for row in rows {
+            let id: String = row.try_get("record_id")?;
+            let policy = match policies.entry(id) {
+                std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(RecordPermissionPolicy {
+                        mode: policy_mode(row.try_get("mode")?)?,
+                        revision: row.try_get("revision")?,
+                        grants: Vec::new(),
+                    })
+                }
+            };
+            if let Some(role_id) = row.try_get::<Option<Uuid>, _>("role_id")? {
+                policy.grants.push(RecordPermissionGrant {
+                    role_id,
+                    actions: row.try_get("actions")?,
+                });
+            }
+        }
+        Ok(policies)
     }
 
     async fn replace_record_permissions(

@@ -15,7 +15,9 @@ function parseCoverageCliArgs(argv) {
     return { help: true, target: 'all' };
   }
 
-  const [target = 'all', ...backendKeys] = argv;
+  const keepCache = argv.includes('--keep-cache');
+  const positionalArgs = argv.filter((arg) => arg !== '--keep-cache');
+  const [target = 'all', ...backendKeys] = positionalArgs;
 
   if (!VALID_COVERAGE_TARGETS.has(target)) {
     throw new Error(`Unknown coverage target: ${target}`);
@@ -25,8 +27,10 @@ function parseCoverageCliArgs(argv) {
     throw new Error(`Coverage package filters are only supported for backend target: ${target}`);
   }
 
+  const keepCacheOption = keepCache ? { keepCache: true } : {};
+
   if (backendKeys.length === 0) {
-    return { help: false, target };
+    return { help: false, target, ...keepCacheOption };
   }
 
   const unknownKey = backendKeys.find((backendKey) => !BACKEND_COVERAGE_ENTRY_BY_KEY.has(backendKey));
@@ -35,7 +39,7 @@ function parseCoverageCliArgs(argv) {
     throw new Error(`Unknown backend coverage package: ${unknownKey}`);
   }
 
-  return { help: false, target, backendKeys };
+  return { help: false, target, backendKeys, ...keepCacheOption };
 }
 
 function buildCoverageFrontendCommand({ repoRoot }) {
@@ -91,7 +95,13 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
       );
       const command = 'cargo';
       const cwd = 'api';
-      const integrationCommand = (label, packageName, { filter, testTarget }) => ({
+      const hasApiServerManifest = fs.existsSync(
+        path.join(repoRoot, 'api', 'apps', 'api-server', 'Cargo.toml')
+      );
+      const hasStoragePostgresManifest = fs.existsSync(
+        path.join(repoRoot, 'api', 'crates', 'storage', 'durable', 'postgres', 'Cargo.toml')
+      );
+      const integrationCommand = (label, packageName, { filter, lib = false, testTarget, testTargets = [] }) => ({
         label,
         command,
         args: [
@@ -102,7 +112,9 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
           packageName,
           '--exclude-from-report',
           packageName,
+          ...(lib ? ['--lib'] : []),
           ...(testTarget ? ['--test', testTarget] : []),
+          ...testTargets.flatMap((targetName) => ['--test', targetName]),
           '--no-clean',
           '--json',
           '--summary-only',
@@ -145,17 +157,22 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
         integrationCommand(
           'backend-coverage-control-plane-ui-management-integration',
           'storage-durable-postgres',
-          { filter: 'ui_management_repository_tests' }
+          { filter: 'ui_management_repository_tests', lib: hasStoragePostgresManifest }
         ),
         integrationCommand(
           'backend-coverage-control-plane-mcp-routes-integration',
           'api-server',
-          { filter: 'mcp_management_routes' }
+          { filter: 'mcp_management_routes', testTargets: hasApiServerManifest ? ['api_mcp_management'] : [] }
         ),
         integrationCommand(
           'backend-coverage-control-plane-ui-routes-integration',
           'api-server',
-          { filter: 'ui_management_routes' }
+          {
+            filter: 'ui_management_routes',
+            testTargets: hasApiServerManifest
+              ? ['api_private_contracts', 'frontstage_data_capability_routes']
+              : [],
+          }
         ),
         docTestCommand,
       ];
@@ -376,11 +393,14 @@ async function runCoverage(argv = [], deps = {}) {
     }));
   }
 
+  const keepCache = Boolean(options.keepCache) || env.ONEFLOWBASE_KEEP_LLVM_COV_CACHE === '1';
   const shouldCleanupBackendCoverage = options.target === 'backend' || options.target === 'all';
+  const shouldCleanupAfterBackendCoverage = shouldCleanupBackendCoverage && !keepCache;
   const scopeSuffix = backendKeys?.length ? `-${backendKeys.join('-')}` : '';
   const commandSuffix = [
     options.target === 'all' ? '' : options.target,
     ...(backendKeys ?? []),
+    options.keepCache ? '--keep-cache' : '',
   ].filter(Boolean).join(' ');
   const commands = shouldCleanupBackendCoverage
     ? [...buildCoverageBackendCleanupCommands(), ...coverageCommands]
@@ -436,7 +456,7 @@ async function runCoverage(argv = [], deps = {}) {
           });
         }
       } finally {
-        if (shouldCleanupBackendCoverage) {
+        if (shouldCleanupAfterBackendCoverage) {
           const cleanupStatus = runCommandSequence({
             repoRoot,
             env: sequenceOptions.env,

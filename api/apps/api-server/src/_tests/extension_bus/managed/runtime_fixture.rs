@@ -9,6 +9,16 @@ pub(crate) struct RuntimeFixture {
 impl RuntimeFixture {
     #[cfg_attr(test, api_test_selection::group(contracts))]
     pub(crate) fn new(state: &crate::app_state::ApiState) -> Self {
+        Self::with_configured_resolver(state, false)
+    }
+
+    /// Opt in to startup_assembly's actual data/credential HostCall adapters.
+    /// Existing fixture callers keep their original missing-port behavior.
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    pub(crate) fn with_configured_resolver(
+        state: &crate::app_state::ApiState,
+        managed_host_calls: bool,
+    ) -> Self {
         Self::with_artifact_resolver(
             state,
             Arc::new(ApiRuntimeArtifactResolver::new(
@@ -16,12 +26,14 @@ impl RuntimeFixture {
                 &state.api_node_id,
                 &state.provider_install_root,
             )),
+            managed_host_calls,
         )
     }
 
     pub(crate) fn with_artifact_resolver(
         state: &crate::app_state::ApiState,
         resolver: Arc<dyn runtime_extension_host::RuntimeArtifactResolver>,
+        managed_host_calls: bool,
     ) -> Self {
         let assembly = crate::extension_bus::assemble_extension_graph_input(
             crate::api_workspace_root().unwrap(),
@@ -48,13 +60,40 @@ impl RuntimeFixture {
         notification_publication
             .activate(Arc::new(store.clone()))
             .unwrap();
-        let host = Arc::new(
+        let host = Arc::new(if managed_host_calls {
+            runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source(
+                time::OffsetDateTime::now_utc(),
+                resolver,
+                Arc::new(ObservedManagedPluginData(control_plane::plugin_management::ManagedPluginDataService::new(
+                    Arc::new(store.clone()),
+                    Arc::new(store.clone()),
+                ))),
+                Arc::new(runtime_profile::RuntimeSampleSource::new(
+                    std::time::Duration::from_secs(1),
+                )),
+            )
+            .unwrap()
+            .with_plugin_credentials(Arc::new(
+                control_plane::plugin_management::ManagedPluginCredentialService::new(
+                    Arc::new(store.clone()),
+                    Arc::new(storage_durable_postgres::PgPluginCredentialRepository::new(
+                        store.pool().clone(),
+                        state.provider_secret_master_key.clone(),
+                    ).unwrap()),
+                ),
+            ))
+            .with_execution_gate(Arc::new(
+                control_plane::plugin_management::ManagedPluginExecutionGateAuthority::new(
+                    Arc::new(store.clone()),
+                ),
+            ))
+        } else {
             runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
                 time::OffsetDateTime::now_utc(),
                 resolver,
             )
-            .unwrap(),
-        );
+            .unwrap()
+        });
         host.mark_ready().unwrap();
         let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
             crate::provider_runtime::services_for_current_cfg(
@@ -80,5 +119,27 @@ impl RuntimeFixture {
             composition,
             store,
         }
+    }
+}
+
+// Transparent test-only diagnostic: retain the real authorization and storage result.
+struct ObservedManagedPluginData(control_plane::plugin_management::ManagedPluginDataService);
+impl extension_contracts::PluginDataPort for ObservedManagedPluginData {
+    fn execute<'a>(
+        &'a self,
+        binding: &'a extension_contracts::PluginDataBinding,
+        request: &'a extension_contracts::PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a> {
+        Box::pin(async move {
+            let result =
+                extension_contracts::PluginDataPort::execute(&self.0, binding, request).await;
+            if let Err(error) = &result {
+                eprintln!(
+                    "R7_HOST_DATA_ERROR: kind={:?} code={} owner={}/{}",
+                    error.kind, error.code, binding.publisher_namespace, binding.plugin_code
+                );
+            }
+            result
+        })
     }
 }

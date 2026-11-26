@@ -242,6 +242,16 @@ pub trait ApplicationRepository: Send + Sync {
         workspace_id: Uuid,
         application_id: Uuid,
     ) -> anyhow::Result<Option<domain::ApplicationRecord>>;
+    /// Application keys are scoped to a workspace and its tenant, not to the
+    /// creator's current membership. Tenant-aware adapters must also check status.
+    async fn get_application_for_api_key(
+        &self,
+        _tenant_id: Uuid,
+        workspace_id: Uuid,
+        application_id: Uuid,
+    ) -> anyhow::Result<Option<domain::ApplicationRecord>> {
+        self.get_application(workspace_id, application_id).await
+    }
     async fn get_application_for_visibility(
         &self,
         workspace_id: Uuid,

@@ -6,9 +6,6 @@ use crate::system_backup::SystemBackupRuntimeAssembly;
 pub(super) async fn app_and_runtime_host_from_config(
     config: &ApiConfig,
 ) -> Result<(Router, ApiRuntimeShutdown)> {
-    control_plane::plugin_management::configure_shared_resources(
-        config.plugin_shared_resource_contracts.clone(),
-    )?;
     let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
@@ -210,6 +207,8 @@ pub(super) async fn app_and_runtime_host_from_config(
                     store.pool().clone(), config.provider_secret_master_key.clone(),
                 )?),
             ),
+        )).with_workspace_governance(Arc::new(
+            control_plane::plugin_management::ManagedWorkspaceGovernanceService::new(Arc::new(store.clone()), Arc::new(store.clone())),
         )).with_execution_gate(Arc::new(
             control_plane::plugin_management::ManagedPluginExecutionGateAuthority::new(Arc::new(store.clone())),
         )).with_plugin_ephemeral(Arc::new(
@@ -469,6 +468,7 @@ pub(super) async fn app_and_runtime_host_from_config(
         provider_runtime: provider_runtime.clone(),
         runtime_event_stream_projection: Arc::new(crate::interaction_assembly::RuntimeEventSseAdapter),
         native_resource_import: Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
+        local_terminal_disabled: config.local_terminal_disabled,
         terminal_jobs: Default::default(),
         process_started_at,
         runtime_activity,

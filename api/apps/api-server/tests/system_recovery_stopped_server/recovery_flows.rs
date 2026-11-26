@@ -4,7 +4,7 @@ use super::*;
 fn status_reads_the_external_journal_without_contacting_the_stopped_api_database() {
     let root = std::env::temp_dir().join(format!("system-recovery-cli-{}", Uuid::now_v7()));
     let repository = root.join("repository");
-    let output = Command::new(env!("CARGO_BIN_EXE_system_recovery"))
+    let output = Command::new(system_recovery_binary())
         .args(["status", "--recovery-job-id", &Uuid::now_v7().to_string()])
         .env("API_ENV", "development")
         .env(
@@ -198,9 +198,10 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
     let target_store = storage_durable_postgres::MainDurableStore::new(target_pool.clone());
     let restored_login = AuthKernel::new(
         target_store.clone(),
-        SessionIssuer::new(MemorySessionStore::new("portable-restored-login"), 7),
+        SessionIssuer::new(MokaSessionStore::new("portable-restored-login", 128), 7),
     )
     .login(LoginCommand {
+        invitation_token: None,
         login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         identifier: "root".to_owned(),
         password: "stopped-server-password".to_owned(),
@@ -211,9 +212,10 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
     assert!(
         AuthKernel::new(
             target_store.clone(),
-            SessionIssuer::new(MemorySessionStore::new("portable-fresh-login"), 7),
+            SessionIssuer::new(MokaSessionStore::new("portable-fresh-login", 128), 7),
         )
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             identifier: "root".to_owned(),
             password: "fresh-root-password".to_owned(),

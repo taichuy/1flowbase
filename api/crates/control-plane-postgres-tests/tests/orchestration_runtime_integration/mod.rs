@@ -46,6 +46,12 @@ fn base_database_url() -> String {
 }
 
 async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create_migrated(&base_database_url())
+        .await
+        .unwrap()
+}
+
+async fn unmigrated_database() -> postgres_test_support::PostgresTestSchema {
     postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
         .unwrap()

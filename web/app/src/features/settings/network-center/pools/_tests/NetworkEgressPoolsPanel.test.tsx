@@ -606,7 +606,7 @@ describe('NetworkEgressPoolsPanel', () => {
     expect(deleteButton).toBeDisabled();
 
     await domEvents.click(screen.getAllByRole('checkbox')[1]);
-    await domEvents.click(screen.getByTitle(/下一页|Next Page/));
+    await domEvents.click(screen.getByRole('button', { name: /^(下一页|Next Page)$/i }));
     await screen.findByText('Proxy 21');
     await domEvents.click(screen.getAllByRole('checkbox')[1]);
     expect(deleteButton).toBeEnabled();

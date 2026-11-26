@@ -30,10 +30,15 @@ export function RouteGuard({
   }
 
   if (sessionStatus === 'anonymous') {
+    const invite =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('invite')?.trim() ||
+          undefined
+        : undefined;
     return (
       <Navigate
         to="/sign-in"
-        search={{ login_entry_id: undefined }}
+        search={{ login_entry_id: undefined, invite }}
         replace
       />
     );

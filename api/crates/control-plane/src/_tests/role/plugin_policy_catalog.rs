@@ -16,6 +16,7 @@ fn plugin_inventory(
         path: "/api/console/acme/calendar".into(),
     };
     let feature = SettingsFeatureRegistration {
+        root_workspace_only: false,
         feature_id: "acme.calendar.settings".into(),
         owner: owner.clone(),
         lifecycle: SettingsFeatureLifecycle::Active,
@@ -59,6 +60,7 @@ fn plugin_inventory(
     let registry = ConsoleOperationRegistry::compile_with_locale_catalog(
         &settings,
         [ConsoleOperationRegistration {
+            root_workspace_only: false,
             operation_id: "acme.calendar.list".into(),
             authorization_profile_id: None,
             owner: owner.clone(),

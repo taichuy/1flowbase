@@ -28,7 +28,8 @@ const transportPath = path.join(
   "packages",
   "api-client",
   "src",
-  "transport.ts",
+  "transport",
+  "json.ts",
 );
 const envExamplePath = path.join(repoRoot, "web", "app", ".env.example");
 const viteConfigPath = path.join(repoRoot, "web", "app", "vite.config.ts");

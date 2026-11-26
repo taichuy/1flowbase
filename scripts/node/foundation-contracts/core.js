@@ -2,7 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const { getRepoRoot } = require('../testing/warning-capture.js');
+const { buildCargoCommandEnv, getRepoRoot } = require('../testing/warning-capture.js');
+const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
 const { parseExecutedTestCounts, testExecutionError } = require('./test-results.js');
 
 const OUTPUT_ROOT = path.join('tmp', 'test-governance', 'foundation-contracts');
@@ -70,6 +71,8 @@ const FOUNDATION_DEFINITIONS = {
           'test',
           '-p',
           'api-server',
+          '--test',
+          'api_private_contracts',
           'mcp_protocol_routes',
         ],
         cwd: 'api',
@@ -94,7 +97,7 @@ const FOUNDATION_DEFINITIONS = {
         id: 'application-backend-model-definition-api',
         testRunner: 'cargo',
         command: 'cargo',
-        args: ['test', '-p', 'api-server', 'model_definition_routes_'],
+        args: ['test', '-p', 'api-server', '--test', 'api_application', 'model_definition_routes_'],
         cwd: 'api',
       },
     ],
@@ -193,7 +196,7 @@ function buildMcpFastPack(changedFiles) {
       id: 'mcp-result-continuation',
       testRunner: 'cargo',
       command: 'cargo',
-      args: ['test', '-p', 'storage-durable-postgres', 'mcp_result_receipt_repository_tests'],
+      args: ['test', '-p', 'storage-durable-postgres', '--lib', 'mcp_result_receipt_repository_tests'],
       cwd: 'api',
     });
   }
@@ -431,7 +434,53 @@ function appendGitHubPlanOutputs(plan, outputPath) {
   fs.appendFileSync(outputPath, `${lines.join('\n')}\n`, 'utf8');
 }
 
-function runFastPack({ repoRoot, candidateSha, plan, foundation, spawnSyncImpl = spawnSync }) {
+function resolveFastPackCommandExecution({ item, repoRoot, env, runtimeConfig }) {
+  if (item.command !== 'cargo') {
+    return { args: item.args, env };
+  }
+  const resolvedConfig = runtimeConfig || loadVerifyRuntimeConfig({ repoRoot, env });
+  const { cargoJobs, cargoTestThreads, incremental } = resolvedConfig.backend;
+  const isTestCommand = item.args[0] === 'test';
+  const separatorIndex = item.args.indexOf('--');
+  const cargoArgs = separatorIndex === -1 ? [...item.args] : item.args.slice(0, separatorIndex);
+  const runnerArgs = separatorIndex === -1 ? [] : item.args.slice(separatorIndex + 1);
+
+  if (!cargoArgs.includes('--jobs') && !cargoArgs.includes('-j')) {
+    cargoArgs.push('--jobs', String(cargoJobs));
+  }
+  if (isTestCommand && !runnerArgs.some((arg) => arg.startsWith('--test-threads'))) {
+    runnerArgs.push(`--test-threads=${cargoTestThreads}`);
+  }
+
+  const cargoOverrides = buildCargoCommandEnv({
+    cargoParallelism: cargoJobs,
+    incremental,
+    testProfile: isTestCommand,
+  });
+  const mergedEnv = { ...env };
+  for (const [key, value] of Object.entries(cargoOverrides)) {
+    if (value === undefined) {
+      delete mergedEnv[key];
+    } else {
+      mergedEnv[key] = value;
+    }
+  }
+
+  return {
+    args: runnerArgs.length > 0 ? [...cargoArgs, '--', ...runnerArgs] : cargoArgs,
+    env: mergedEnv,
+  };
+}
+
+function runFastPack({
+  repoRoot,
+  candidateSha,
+  plan,
+  foundation,
+  env = process.env,
+  runtimeConfig,
+  spawnSyncImpl = spawnSync,
+}) {
   if (!candidateSha || !candidateSha.trim()) {
     throw new Error('candidate SHA is required');
   }
@@ -448,11 +497,12 @@ function runFastPack({ repoRoot, candidateSha, plan, foundation, spawnSyncImpl =
     const absoluteLogPath = path.join(repoRoot, logPath);
     fs.mkdirSync(path.dirname(absoluteLogPath), { recursive: true });
     const logFd = fs.openSync(absoluteLogPath, 'w');
+    const execution = resolveFastPackCommandExecution({ item, repoRoot, env, runtimeConfig });
     let result;
     try {
-      result = spawnSyncImpl(item.command, item.args, {
+      result = spawnSyncImpl(item.command, execution.args, {
         cwd: path.resolve(repoRoot, item.cwd),
-        env: process.env,
+        env: execution.env,
         stdio: ['ignore', logFd, logFd],
       });
     } catch (error) {
@@ -556,13 +606,21 @@ async function main(argv = [], deps = {}) {
 
   if (options.command === 'plan') {
     const { readChangedFiles } = require('../gate-router/core.js');
-    const changedFiles = deps.changedFiles || readChangedFiles({
-      repoRoot,
-      mode: 'branch',
-      baseRef: options['base-ref'] || 'origin/main',
-      env: deps.env || process.env,
-      spawnSyncImpl: deps.spawnSyncImpl,
-    });
+    let changedFiles = deps.changedFiles;
+    if (!changedFiles) {
+      try {
+        changedFiles = readChangedFiles({
+          repoRoot,
+          mode: ['push', 'pull_request'].includes(options.event) ? 'candidate' : 'branch',
+          baseRef: options['base-ref'] || 'origin/main',
+          env: deps.env || process.env,
+          spawnSyncImpl: deps.spawnSyncImpl,
+        });
+      } catch (error) {
+        if (options.foundation !== 'all') throw error;
+        changedFiles = [];
+      }
+    }
     const plan = buildFoundationPlan({
       changedFiles,
       foundation: options.foundation || 'auto',
@@ -587,6 +645,8 @@ async function main(argv = [], deps = {}) {
       candidateSha: options['candidate-sha'],
       plan,
       foundation: options.foundation,
+      env: deps.env || process.env,
+      runtimeConfig: deps.runtimeConfig,
       spawnSyncImpl: deps.spawnSyncImpl,
     });
     return result.exitCode;

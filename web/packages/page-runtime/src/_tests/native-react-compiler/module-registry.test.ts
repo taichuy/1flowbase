@@ -83,6 +83,79 @@ describe('Native React frontend module registry', () => {
     });
   });
 
+  test('loads only requested named exports when loadExports is provided, and falls back to full load on namespace imports', async () => {
+    const load = vi.fn(async () => ({
+      module: { FormBlock: 'form', TableBlock: 'table' },
+      styles: [{ css: '.table{}' }, { css: '.form{}' }]
+    }));
+    const loadExports = vi.fn(async (requested: readonly string[]) => ({
+      module: Object.fromEntries(requested.map((name) => [name, name.toLowerCase()])),
+      styles: [{ css: '.form-only{}' }]
+    }));
+    const registry = createNativeReactModuleRegistry([
+      {
+        module_source: '@1flowbase/data-blocks',
+        exports: ['TableBlock', 'FormBlock'],
+        load,
+        loadExports
+      }
+    ]);
+
+    const selective = await registry.resolveInjectedModuleMap!([
+      {
+        source: '@1flowbase/data-blocks',
+        bindings: [
+          {
+            kind: 'named',
+            source: '@1flowbase/data-blocks',
+            imported: 'FormBlock',
+            local: 'FormBlock'
+          }
+        ]
+      }
+    ]);
+    expect(selective).toEqual({
+      '@1flowbase/data-blocks': { FormBlock: 'formblock' }
+    });
+    expect(loadExports).toHaveBeenCalledTimes(1);
+    expect(loadExports).toHaveBeenCalledWith(['FormBlock']);
+    expect(load).not.toHaveBeenCalled();
+
+    const assets = await registry.resolveInjectedModuleAssets!([
+      {
+        source: '@1flowbase/data-blocks',
+        bindings: [
+          {
+            kind: 'named',
+            source: '@1flowbase/data-blocks',
+            imported: 'FormBlock',
+            local: 'FormBlock'
+          }
+        ]
+      }
+    ]);
+    expect(loadExports).toHaveBeenCalledTimes(1);
+    expect(assets).toHaveLength(1);
+    expect(new TextDecoder().decode(assets[0]!.bytes)).toBe('.form-only{}');
+
+    const fullNamespace = await registry.resolveInjectedModuleMap!([
+      {
+        source: '@1flowbase/data-blocks',
+        bindings: [
+          {
+            kind: 'namespace',
+            source: '@1flowbase/data-blocks',
+            local: 'DataBlocks'
+          }
+        ]
+      }
+    ]);
+    expect(fullNamespace).toEqual({
+      '@1flowbase/data-blocks': { FormBlock: 'form', TableBlock: 'table' }
+    });
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   test('rejects duplicate or malformed frontend registrations', () => {
     expect(() =>
       createNativeReactModuleRegistry([

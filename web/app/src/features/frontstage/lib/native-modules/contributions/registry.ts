@@ -1,17 +1,20 @@
 import {
   fetchConsoleFrontendModuleAsset,
+  type ConsoleFrontendBlockRuntimeCodeModule,
   type ConsolePluginSettingsCodeModule
 } from '@1flowbase/api-client';
 import {
   createNativeReactModuleRegistry,
   type NativeReactModuleRegistry
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 import { createFetchedNativeReactModuleRegistry } from '../../../../../shared/code-block/fetched-modules/registry';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../block-catalog';
 import { createFrontstageNativeReactModuleRegistry } from '../registry';
 import { getFrontstageBlockCatalogApiBaseUrl } from '../../../api/block-catalog';
 
-type Module = ConsolePluginSettingsCodeModule;
+type Module = ConsoleFrontendBlockRuntimeCodeModule & {
+  type_declarations?: ConsolePluginSettingsCodeModule['type_declarations'];
+};
 export interface ContributionModuleInventory {
   modules: Module[];
   hostBindingsByModule: ReadonlyMap<string, readonly Module[]>;
@@ -98,6 +101,44 @@ export function createContributionModuleRegistry(
             fetched.resolveModuleAssets(
               unique.filter((source) => fetchedSources.has(source))
             )
+          ]);
+          return assets.flat();
+        },
+        async resolveInjectedModuleMap(injectedModules) {
+          const hostItems = injectedModules.filter(
+            ({ source }) => !fetchedSources.has(source)
+          );
+          const fetchedItems = injectedModules.filter(({ source }) =>
+            fetchedSources.has(source)
+          );
+          const [hostMap, fetchedMap] = await Promise.all([
+            host.resolveInjectedModuleMap
+              ? host.resolveInjectedModuleMap(hostItems)
+              : host.resolveModuleMap(hostItems.map(({ source }) => source)),
+            fetched.resolveInjectedModuleMap
+              ? fetched.resolveInjectedModuleMap(fetchedItems)
+              : fetched.resolveModuleMap(
+                  fetchedItems.map(({ source }) => source)
+                )
+          ]);
+          return { ...hostMap, ...fetchedMap };
+        },
+        async resolveInjectedModuleAssets(injectedModules) {
+          const hostItems = injectedModules.filter(
+            ({ source }) => !fetchedSources.has(source)
+          );
+          const fetchedItems = injectedModules.filter(({ source }) =>
+            fetchedSources.has(source)
+          );
+          const assets = await Promise.all([
+            host.resolveInjectedModuleAssets
+              ? host.resolveInjectedModuleAssets(hostItems)
+              : host.resolveModuleAssets(hostItems.map(({ source }) => source)),
+            fetched.resolveInjectedModuleAssets
+              ? fetched.resolveInjectedModuleAssets(fetchedItems)
+              : fetched.resolveModuleAssets(
+                  fetchedItems.map(({ source }) => source)
+                )
           ]);
           return assets.flat();
         }

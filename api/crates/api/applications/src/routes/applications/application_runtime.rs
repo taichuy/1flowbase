@@ -45,7 +45,6 @@ use provider_trajectory::{
     list_provider_trajectory, list_record_client_trajectory, list_record_conversation_messages,
     list_run_trajectory,
 };
-mod application_log_cache;
 mod application_logs;
 pub mod application_monitoring;
 pub mod archive;

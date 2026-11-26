@@ -47,7 +47,8 @@
   overflow-x: hidden !important;
 }
 
-.data-table .ant-table-thead > tr > th {
+.data-table .ant-table-thead > tr > th,
+.data-table [class*='-table-thead'] > tr > th {
   position: sticky;
   top: 0;
   z-index: 2;

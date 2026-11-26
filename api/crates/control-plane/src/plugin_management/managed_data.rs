@@ -13,7 +13,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct ManagedPluginDataService {
-    registry: super::SharedResourceRegistry,
     authority: Arc<dyn PluginContributionAuthorityRepository>,
     inner: Arc<dyn PluginDataPort>,
 }
@@ -22,11 +21,7 @@ impl ManagedPluginDataService {
         authority: Arc<dyn PluginContributionAuthorityRepository>,
         inner: Arc<dyn PluginDataPort>,
     ) -> Self {
-        Self {
-            registry: super::shared_resource_registry().clone(),
-            authority,
-            inner,
-        }
+        Self { authority, inner }
     }
 }
 fn denied() -> PluginDataError {
@@ -65,26 +60,33 @@ impl PluginDataPort for ManagedPluginDataService {
             tokio::time::timeout(std::time::Duration::from_millis(remaining as u64), async {
                 let lease = self
                     .authority
-                    .lock_contribution_authority(subject)
+                    .lock_managed_callback_authority(subject)
                     .await
-                    .map_err(|_| denied())?;
+                    .map_err(|error| {
+                        if matches!(
+                            error.downcast_ref::<control_plane_contracts::ControlPlaneContractError>(),
+                            Some(control_plane_contracts::ControlPlaneContractError::PermissionDenied(_))
+                        ) {
+                            return denied();
+                        }
+                        tracing::warn!(%error, "plugin data authority lookup failed");
+                        PluginDataError {
+                            kind: PluginDataErrorKind::StorageUnavailable,
+                            code: "plugin_data_authority_unavailable".into(),
+                            retryable: true,
+                        }
+                    })?;
                 let installation = lease.installation(installation_id).ok_or_else(denied)?;
                 validate_authority(binding, request, installation, lease.snapshot())?;
-                // Preserve the lease across asynchronous storage access; revoke/disable serialize here.
-                let shared = self
-                    .registry
-                    .resolve_installation(installation)
-                    .map_err(|_| denied())?;
-                let resolved = shared
-                    .map(|contract| contract.data_binding(binding, request))
-                    .transpose()
-                    .map_err(|_| denied())?;
-                let result = self
-                    .inner
-                    .execute(resolved.as_ref().unwrap_or(binding), request)
-                    .await;
-                lease.release().await.map_err(|_| denied())?;
-                result
+                // Resolve against live authority; the lease also owns the data transaction.
+                let resolved = super::resolve_plugin_data_binding(
+                    installation,
+                    lease.installations(),
+                    binding,
+                    request,
+                )
+                .map_err(|_| denied())?;
+                lease.commit_plugin_data(&resolved, request).await
             })
             .await
             .map_err(|_| deadline())?
@@ -168,4 +170,4 @@ fn validate_authority(
 
 #[cfg(test)]
 #[path = "_tests/managed_data_tests.rs"]
-mod tests;
+mod managed_data_tests;

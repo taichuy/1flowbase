@@ -308,25 +308,42 @@ describe('MCP directory draft drag', () => {
     await act(async () => {
       await view.editor.saveDirectoryMutation.mutateAsync();
     });
-    const body = api.replaceSettingsMcpInstanceDirectory.mock.calls[0]![1];
-    expect(body.groups).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'group-origin', path: '/target/origin' }),
-        expect.objectContaining({ id: 'group-target', path: '/target' })
-      ])
-    );
-    expect(body.bindings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: draggedBinding.id,
-          group_path: '/target/origin'
+    expect(
+      api.replaceSettingsMcpInstanceDirectory
+    ).toHaveBeenCalledExactlyOnceWith(
+      'ops',
+      expect.objectContaining({
+        expected_snapshot: expect.objectContaining({
+          groups: catalog.groups,
+          bindings: catalog.bindings
         }),
-        expect.objectContaining({
-          id: selectedBinding.id,
-          group_path: '/target'
-        })
-      ])
+        groups: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'group-origin',
+            path: '/target/origin'
+          }),
+          expect.objectContaining({ id: 'group-target', path: '/target' })
+        ]),
+        bindings: expect.arrayContaining([
+          expect.objectContaining({
+            id: draggedBinding.id,
+            group_path: '/target/origin',
+            tool_id: 'dragged_tool',
+            sort_order: 10
+          }),
+          expect.objectContaining({
+            id: selectedBinding.id,
+            group_path: '/target',
+            tool_id: 'selected_tool',
+            sort_order: 20
+          })
+        ])
+      }),
+      'csrf-drag'
     );
+    const [, body] = api.replaceSettingsMcpInstanceDirectory.mock.calls[0]!;
+    expect(body.groups).toHaveLength(2);
+    expect(body.bindings).toHaveLength(2);
     expect(api.moveSettingsMcpGroup).not.toHaveBeenCalled();
   });
 

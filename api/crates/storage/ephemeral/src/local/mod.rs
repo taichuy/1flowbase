@@ -4,6 +4,7 @@ mod memory_task_queue;
 mod moka_cache_store;
 mod moka_rate_limit_store;
 mod moka_session_store;
+mod published_cache_support;
 mod published_plan_cache;
 mod published_publication_cache;
 mod read_through_cache;

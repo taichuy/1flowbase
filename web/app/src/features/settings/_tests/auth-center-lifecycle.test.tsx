@@ -72,6 +72,7 @@ vi.mock('@monaco-editor/react', async () => {
           MarkerSeverity: { Error: 8 },
           editor: { setModelMarkers: vi.fn() },
           languages: {
+            registerCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })),
             typescript: {
               JsxEmit: { Preserve: 'preserve' },
               ModuleResolutionKind: { NodeJs: 'node-js' },
@@ -374,7 +375,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     fireEvent.click(within(row).getByRole('button', { name: '编辑' }));
     const drawer = await screen.findByRole('dialog', { name: 'Password 配置' });
     expect(
-      within(drawer).getByRole('button', { name: /保\s*存/ })
+      within(drawer).getByRole('button', { name: /^保\s*存$/ })
     ).toBeDisabled();
     fireEvent.click(within(drawer).getByRole('button', { name: /取\s*消/ }));
     fireEvent.click(within(row).getByRole('button', { name: 'UI' }));
@@ -387,7 +388,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       )
     ).toHaveValue('original password block');
     expect(
-      within(studio).getByRole('button', { name: /保\s*存/ })
+      within(studio).getByRole('button', { name: /^保\s*存$/ })
     ).toBeDisabled();
     expect(
       within(studio).getByRole('button', { name: /运\s*行/ })
@@ -468,7 +469,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     fireEvent.change(within(dialog).getByLabelText('说明'), {
       target: { value: 'Customer login' }
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^保\s*存$/ }));
 
     await waitFor(() => {
       expect(
@@ -599,7 +600,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('区块源码')).not.toBeInTheDocument();
     fireEvent.click(within(dialog).getByLabelText('Allow self registration'));
-    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^保\s*存$/ }));
 
     await waitFor(() =>
       expect(
@@ -677,7 +678,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     expect(
       within(uiDialog).getByRole('button', { name: /重\s*置/ })
     ).toBeEnabled();
-    fireEvent.click(within(uiDialog).getByRole('button', { name: /保\s*存/ }));
+    fireEvent.click(within(uiDialog).getByRole('button', { name: /^保\s*存$/ }));
 
     await waitFor(() =>
       expect(
@@ -711,7 +712,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       { timeout: 5000 }
     );
     fireEvent.change(blockEditor, { target: { value: 'invalid draft' } });
-    fireEvent.click(within(uiDialog).getByRole('button', { name: /保\s*存/ }));
+    fireEvent.click(within(uiDialog).getByRole('button', { name: /^保\s*存$/ }));
 
     expect(
       await within(uiDialog).findByText('invalid input: public_ui_block')
@@ -732,7 +733,7 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       (await screen.findAllByRole('button', { name: '编辑' }))[0]
     );
     const dialog = await screen.findByRole('dialog', { name: 'Password 配置' });
-    fireEvent.click(within(dialog).getByRole('button', { name: /保\s*存/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /^保\s*存$/ }));
 
     expect(
       await within(dialog).findAllByText('invalid input: extension_config')

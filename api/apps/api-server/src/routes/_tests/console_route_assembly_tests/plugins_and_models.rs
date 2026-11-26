@@ -18,6 +18,11 @@ pub fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_owne
             ),
             (
                 "GET",
+                "/api/console/frontend-blocks/type-declarations",
+                "frontend_blocks.type_declarations.view"
+            ),
+            (
+                "GET",
                 "/api/console/js-dependencies",
                 "js_dependencies.view"
             ),

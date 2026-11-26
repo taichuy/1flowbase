@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { useFrontstageBlockCatalog } from '../hooks/use-frontstage-block-catalog';
+import { useFrontstageBlockTypeDeclarations } from '../hooks/use-frontstage-block-type-declarations';
 import type { FrontstageBlockCatalogEntry } from '../api/block-catalog';
 import type {
   FrontstageBlockCatalogDiagnostic,
@@ -13,12 +14,27 @@ import type {
 
 const frontstageApi = vi.hoisted(() => ({
   fetchFrontstageBlockCatalog: vi.fn(),
+  fetchFrontstageBlockTypeDeclarations: vi.fn(),
   frontstageBlockCatalogQueryKeyPrefix: ['frontstage', 'block-catalog'],
+  frontstageBlockTypeDeclarationsQueryKeyPrefix: [
+    'frontstage',
+    'block-type-declarations'
+  ],
   frontstageBlockCatalogQueryKey: vi.fn(
     ({ workspaceId, actorId, permissionFingerprint }) =>
       [
         'frontstage',
         'block-catalog',
+        workspaceId,
+        actorId,
+        permissionFingerprint
+      ] as const
+  ),
+  frontstageBlockTypeDeclarationsQueryKey: vi.fn(
+    ({ workspaceId, actorId, permissionFingerprint }) =>
+      [
+        'frontstage',
+        'block-type-declarations',
         workspaceId,
         actorId,
         permissionFingerprint
@@ -346,5 +362,109 @@ describe('useFrontstageBlockCatalog', () => {
     expect(frontstageApi.fetchFrontstageBlockCatalog).toHaveBeenCalledTimes(2);
     expect(result.current.items).toEqual([]);
     expect(result.current.diagnostics).toEqual([]);
+  });
+
+  test('fetches plugin block type declarations only when studio is open with active fetched plugin modules and authorized', async () => {
+    frontstageApi.fetchFrontstageBlockTypeDeclarations.mockResolvedValue([
+      {
+        installation_id: 'install-1',
+        plugin_id: 'calendar@1.0.0',
+        plugin_version: '1.0.0',
+        source: '@acme/calendar',
+        version: '1.0.0',
+        binding: 'fetched',
+        type_declarations: "declare module '@acme/calendar' {}"
+      }
+    ]);
+    const pluginCatalogEntry = {
+      id: 'calendar:widget',
+      raw: {
+        disable_reason: null,
+        code_modules: [
+          {
+            source: '@acme/calendar',
+            version: '1.0.0',
+            exports: ['Calendar'],
+            binding: 'fetched',
+            assets: []
+          }
+        ]
+      }
+    } as unknown as NormalizedFrontstageBlockCatalogEntry;
+
+    authenticate({ permissions: ['frontstage.page.design'] });
+    const queryClient = createQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result: unauthorizedResult, unmount: unmountUnauthorized } =
+      renderHook(
+        () =>
+          useFrontstageBlockTypeDeclarations({
+            workspaceId: 'workspace-1',
+            open: true,
+            catalogEntries: [pluginCatalogEntry]
+          }),
+        { wrapper }
+      );
+    expect(unauthorizedResult.current.items).toEqual([]);
+    expect(
+      frontstageApi.fetchFrontstageBlockTypeDeclarations
+    ).not.toHaveBeenCalled();
+    unmountUnauthorized();
+
+    act(() => {
+      authenticate({
+        permissions: [
+          'frontstage.page.design',
+          'frontend_blocks.type_declarations.view'
+        ]
+      });
+    });
+    const { result: closedResult } = renderHook(
+      () =>
+        useFrontstageBlockTypeDeclarations({
+          workspaceId: 'workspace-1',
+          open: false,
+          catalogEntries: [pluginCatalogEntry]
+        }),
+      { wrapper }
+    );
+    expect(closedResult.current.items).toEqual([]);
+    expect(
+      frontstageApi.fetchFrontstageBlockTypeDeclarations
+    ).not.toHaveBeenCalled();
+
+    const { result: noPluginModulesResult } = renderHook(
+      () =>
+        useFrontstageBlockTypeDeclarations({
+          workspaceId: 'workspace-1',
+          open: true,
+          catalogEntries: []
+        }),
+      { wrapper }
+    );
+    expect(noPluginModulesResult.current.items).toEqual([]);
+    expect(
+      frontstageApi.fetchFrontstageBlockTypeDeclarations
+    ).not.toHaveBeenCalled();
+
+    const { result: openedResult } = renderHook(
+      () =>
+        useFrontstageBlockTypeDeclarations({
+          workspaceId: 'workspace-1',
+          open: true,
+          catalogEntries: [pluginCatalogEntry]
+        }),
+      { wrapper }
+    );
+    await waitFor(() => {
+      expect(openedResult.current.items).toHaveLength(1);
+    });
+    expect(
+      frontstageApi.fetchFrontstageBlockTypeDeclarations
+    ).toHaveBeenCalledTimes(1);
+    expect(openedResult.current.items[0]?.source).toBe('@acme/calendar');
   });
 });

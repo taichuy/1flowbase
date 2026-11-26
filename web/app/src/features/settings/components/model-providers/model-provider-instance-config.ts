@@ -4,7 +4,6 @@ import type {
   SettingsModelProviderAuthOperation,
   SettingsModelProviderInstance,
   SettingsModelProviderModelCatalog,
-  SettingsModelProviderPricingTarget,
   SettingsModelProviderResetCreditCountResult,
   SettingsModelProviderUsageWindowsResult,
   PreviewSettingsModelProviderModelsResponse
@@ -210,7 +209,6 @@ export type ModelProviderInstanceDrawerProps = {
   catalogEntry: SettingsModelProviderCatalogEntry | null;
   instance: SettingsModelProviderInstance | null;
   cachedModelCatalog: SettingsModelProviderModelCatalog | null;
-  pricingTargets: SettingsModelProviderPricingTarget[];
   defaultIncludedInMain: boolean;
   submitting: boolean;
   onClose: () => void | Promise<void>;

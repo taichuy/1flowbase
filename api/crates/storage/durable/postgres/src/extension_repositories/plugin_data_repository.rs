@@ -75,15 +75,16 @@ pub(crate) async fn execute_request_in_transaction(
     let owner_id = format!("{}/{}", binding.publisher_namespace, binding.plugin_code);
     let authorization =
         RequestAuthorization::load(transaction, binding, request.idempotency_key.is_some()).await?;
-    let request_material = match &authorization {
-        Some(context) => serde_json::to_vec(&(request, &context.receipt_fingerprint)),
-        None => serde_json::to_vec(request),
-    };
-    let request_hash = hex_digest(
-        &request_material.map_err(|_| PluginDataError::invalid("plugin_data_request_encoding"))?,
-    );
+    let receipt = if let Some(key) = request.idempotency_key.as_deref() {
+        let request_material = match &authorization {
+            Some(context) => serde_json::to_vec(&(request, &context.receipt_fingerprint)),
+            None => serde_json::to_vec(request),
+        };
+        let request_hash = hex_digest(
+            &request_material
+                .map_err(|_| PluginDataError::invalid("plugin_data_request_encoding"))?,
+        );
 
-    if let Some(key) = request.idempotency_key.as_deref() {
         if let Some((stored_hash, response)) = load_receipt(
             transaction,
             &owner_id,
@@ -105,7 +106,10 @@ pub(crate) async fn execute_request_in_transaction(
                 ..response
             });
         }
-    }
+        Some((key, request_hash))
+    } else {
+        None
+    };
 
     let mut results = Vec::with_capacity(request.operations.len());
     for operation in &request.operations {
@@ -125,7 +129,7 @@ pub(crate) async fn execute_request_in_transaction(
         results,
         replayed: false,
     };
-    if let Some(key) = request.idempotency_key.as_deref() {
+    if let Some((key, request_hash)) = receipt {
         store_receipt(
             transaction,
             &owner_id,
@@ -537,12 +541,27 @@ async fn count_rows(
     filters: &[PluginDataFilter],
     record_permission: Option<&ResolvedRecordPermission>,
 ) -> Result<u64, PluginDataError> {
+    // Record existence previously required exactly one row per requested ID.
+    // A duplicate custom ID must not mask a missing ID in the same batch.
+    let identity = filters
+        .iter()
+        .find(|filter| filter.operator == PluginDataFilterOperator::In);
     let mut query = QueryBuilder::<Postgres>::new("select count(*)::bigint from ");
+    if identity.is_some() {
+        query.push("(select 1 from ");
+    }
     query.push(quoted(&target.table)?).push(" where ");
     push_scope(&mut query, workspace_id);
     push_filters(&mut query, target, filters)?;
     if let Some(permission) = record_permission {
         permission.push_where(&mut query);
+    }
+    if let Some(identity) = identity {
+        let field = &target.fields[&identity.field]; // already resolved by push_filters
+        query
+            .push(" group by ")
+            .push(quoted(&field.physical)?)
+            .push(" having count(*) = 1) as unique_records");
     }
     let count: i64 = query
         .build_query_scalar()
@@ -776,6 +795,42 @@ fn push_filters(
             }
             PluginDataFilterOperator::IsNotNull => {
                 query.push(" is not null");
+            }
+            PluginDataFilterOperator::In => {
+                let Some(PluginDataValue::Json(serde_json::Value::Array(values))) = &filter.value
+                else {
+                    return Err(PluginDataError::invalid("plugin_data_filter_value"));
+                };
+                query.push(" = any(");
+                match field.field_type.as_str() {
+                    "uuid" => {
+                        let ids = values
+                            .iter()
+                            .map(|value| {
+                                value
+                                    .as_str()
+                                    .and_then(|id| Uuid::parse_str(id).ok())
+                                    .ok_or_else(|| {
+                                        PluginDataError::invalid("plugin_data_filter_value")
+                                    })
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        query.push_bind(ids);
+                    }
+                    "string" | "text" => {
+                        let ids = values
+                            .iter()
+                            .map(|value| {
+                                value.as_str().ok_or_else(|| {
+                                    PluginDataError::invalid("plugin_data_filter_value")
+                                })
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        query.push_bind(ids);
+                    }
+                    _ => return Err(PluginDataError::invalid("plugin_data_filter_value")),
+                }
+                query.push(")");
             }
             operator => {
                 query.push(match operator {
@@ -1011,7 +1066,7 @@ fn ownership_error(code: &'static str) -> PluginDataError {
     error(PluginDataErrorKind::OwnershipDenied, code, false)
 }
 
-fn storage_error(source: impl std::fmt::Display) -> PluginDataError {
+pub(crate) fn storage_error(source: impl std::fmt::Display) -> PluginDataError {
     tracing::warn!(error = %source, "plugin data storage operation failed");
     error(
         PluginDataErrorKind::StorageUnavailable,

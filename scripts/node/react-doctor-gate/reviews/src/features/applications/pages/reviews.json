@@ -13,7 +13,7 @@
       "rule": "react-doctor/prefer-tag-over-role",
       "sourceSha256": "7c3087027f18f40a08c4d509709012d021fd0217fdd0272b60cc56315e114976",
       "reason": "While the collector catalog query is pending, the localized collectors_loading name identifies a polite status that wraps the visual Skeleton. AntD 6.6.2 renders this active Skeleton as a div (es/skeleton/Skeleton.js); output has implicit status semantics but only permits phrasing content and cannot wrap this host.",
-      "evidence": [{"file":"web/pnpm-lock.yaml","sha256":"efe9a6baabe230a49055cf69700158e3f488b326d7fc55012074b3575c52b0a0"},{"file":"web/app/src/features/applications/_tests/collector/collector-page.test.tsx","sha256":"161e3e711e5871a249b84e5ca04172598f500690e2ec8a98effb64af677afc48"}]
+      "evidence": [{"file":"web/pnpm-lock.yaml","sha256":"c35ba2f1102bcac7d986b09ba234061edc138ae75d7ff1e2b4fc44c1805b556f"},{"file":"web/app/src/features/applications/_tests/collector/collector-page.test.tsx","sha256":"161e3e711e5871a249b84e5ca04172598f500690e2ec8a98effb64af677afc48"}]
     },
     {
       "file": "web/app/src/features/applications/pages/WorkflowExtensionApiPage.tsx",

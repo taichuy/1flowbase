@@ -15,8 +15,15 @@ use uuid::Uuid;
 
 mod external;
 mod methods;
+mod workspace_policy;
 pub use methods::{
     AuthenticationMethodsService, AuthenticationMethodsView, ExternalAuthenticationMethod,
+};
+use workspace_policy::RegistrationHints;
+pub(crate) use workspace_policy::{governance_password_user, workspace_role_templates};
+pub use workspace_policy::{
+    redeem_workspace_invitation, validate_invitation_token, workspace_policy_denied,
+    WorkspacePolicyContext, WorkspacePolicyPort, WorkspacePolicyRejection,
 };
 pub mod public_ui;
 pub mod settings;
@@ -32,12 +39,14 @@ use crate::{
 };
 
 pub struct LoginCommand {
+    pub invitation_token: Option<String>,
     pub login_entry_id: Uuid,
     pub identifier: String,
     pub password: String,
 }
 
 pub struct SignUpCommand {
+    pub invitation_token: Option<String>,
     pub login_entry_id: Uuid,
     pub account: String,
     pub email: String,
@@ -643,6 +652,9 @@ where
                     .unwrap_or("member"),
             )
             .await?;
+        self.repository
+            .verify_workspace_access(user.id, api_key.tenant_id, api_key.scope_id, actor.is_root)
+            .await?;
         self.repository.mark_api_key_used(api_key.id).await?;
 
         Ok(UserApiKeyActor {
@@ -709,6 +721,7 @@ where
 }
 
 pub struct AuthKernel<R, S> {
+    workspace_policy: Option<WorkspacePolicyContext>,
     repository: R,
     registry: AuthenticatorRegistry,
     issuer: SessionIssuer<S>,
@@ -732,7 +745,13 @@ where
             repository,
             registry,
             issuer,
+            workspace_policy: None,
         }
+    }
+
+    pub fn with_workspace_policy(mut self, policy: WorkspacePolicyContext) -> Self {
+        self.workspace_policy = Some(policy);
+        self
     }
 
     pub async fn login(&self, command: LoginCommand) -> Result<LoginResult> {
@@ -774,15 +793,41 @@ where
                 .await?
                 .ok_or(ControlPlaneError::NotAuthenticated)?
         };
-        self.finish_login(user).await
+        self.finish_login_with_invitation(user, command.invitation_token.as_deref())
+            .await
     }
 
-    async fn finish_login(&self, user: domain::UserRecord) -> Result<LoginResult> {
+    async fn finish_login_with_invitation(
+        &self,
+        user: domain::UserRecord,
+        token: Option<&str>,
+    ) -> Result<LoginResult> {
+        let mut scope = None;
+        if let (Some(policy), Some(token)) =
+            (&self.workspace_policy, validate_invitation_token(token)?)
+        {
+            if let Some(workspace_id) =
+                redeem_workspace_invitation(policy.policy.as_ref(), &user, token).await?
+            {
+                scope = Some(policy.workspace_scope(workspace_id).await?);
+            }
+        }
+        self.finish_login_in_scope(user, scope).await
+    }
+
+    async fn finish_login_in_scope(
+        &self,
+        user: domain::UserRecord,
+        scope: Option<domain::ScopeContext>,
+    ) -> Result<LoginResult> {
         if matches!(user.status, UserStatus::Disabled) {
             return Err(ControlPlaneError::PermissionDenied("user_disabled").into());
         }
 
-        let scope = self.repository.default_scope_for_user(user.id).await?;
+        let scope = match scope {
+            Some(scope) => scope,
+            None => self.repository.default_scope_for_user(user.id).await?,
+        };
         let actor = self
             .repository
             .load_actor_context(user.id, scope.tenant_id, scope.workspace_id, None)
@@ -854,12 +899,50 @@ where
                 ControlPlaneError::PermissionDenied("self_registration_unsupported").into(),
             );
         }
+        let invitation = validate_invitation_token(command.invitation_token.as_deref())?;
+        let account = command.account.trim().to_lowercase();
+        let email = command.email.trim().to_lowercase();
+        if let Some(policy) = &self.workspace_policy {
+            if let Some(decision) = policy
+                .resolve_registration(
+                    RegistrationHints {
+                        account: Some(account.clone()),
+                        email: email.clone(),
+                        name: None,
+                        nickname: None,
+                    },
+                    invitation,
+                )
+                .await?
+            {
+                let user = match governance_password_user(
+                    &account,
+                    &email,
+                    &command.password,
+                    &account,
+                    &account,
+                ) {
+                    Ok(user) => user,
+                    Err(error) => {
+                        policy.release_registration(decision).await;
+                        return Err(error);
+                    }
+                };
+                let (user_id, scope) = policy.register(decision, user).await?;
+                let user = self
+                    .repository
+                    .find_user_by_id(user_id)
+                    .await?
+                    .ok_or(ControlPlaneError::NotAuthenticated)?;
+                return self.finish_login_in_scope(user, Some(scope)).await;
+            }
+        }
+        if invitation.is_some() {
+            return Err(ControlPlaneError::PermissionDenied("invitation_unsupported").into());
+        }
         if !public_ui::password_local_self_registration_enabled(&authenticator.options) {
             return Err(ControlPlaneError::PermissionDenied("self_registration_disabled").into());
         }
-
-        let account = command.account.trim().to_lowercase();
-        let email = command.email.trim().to_lowercase();
         validate_self_registration_input(&account, &email, &command.password)?;
         let password_hash = hash_password(&command.password)?;
         let user = self

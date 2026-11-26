@@ -5,10 +5,10 @@ import {
 } from '../state/navigation-query-scope';
 import { Link } from '@tanstack/react-router';
 import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
-import { Button, Drawer, Menu, Typography } from 'antd';
+import { Button, Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import type { ConsoleNavigation } from '@1flowbase/api-client';
@@ -29,6 +29,7 @@ import { useAuthStore } from '../state/auth-store';
 import { useFrontstageDesignModeStore } from '../state/frontstage-design-mode-store';
 import { loadTopbarNavigationDesigner } from './design-mode-demand';
 
+const LazyAntdDrawer = lazy(() => import('antd/es/drawer'));
 const TopbarNavigationDesigner = lazy(() =>
   loadTopbarNavigationDesigner().then((module) => ({
     default: module.TopbarNavigationDesigner
@@ -291,11 +292,23 @@ export function Navigation({
   const { t } = useTranslation('appShell');
   const { data: metadata } = useSystemMetadata();
   const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
+  const [hasOpenedMobile, setHasOpenedMobile] = useState(false);
   const [moveNodeId, setMoveNodeId] = useState<string | null>(null);
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
-  const runtimeI18n = useBlockI18n(workspaceId ?? '', Boolean(workspaceId));
+  const [runtimeI18nReady, setRuntimeI18nReady] = useState(() =>
+    Boolean(import.meta.env.VITEST)
+  );
+  useEffect(() => {
+    if (runtimeI18nReady) return undefined;
+    const timer = setTimeout(() => setRuntimeI18nReady(true), 1_500);
+    return () => clearTimeout(timer);
+  }, [runtimeI18nReady]);
+  const runtimeI18n = useBlockI18n(
+    workspaceId ?? '',
+    Boolean(workspaceId && runtimeI18nReady)
+  );
   const canUseDesignMode = useAuthStore(
     (state) =>
       state.actor?.effective_display_role === 'root' ||
@@ -317,6 +330,26 @@ export function Navigation({
     enabled: Boolean(workspaceId),
     retry: false
   });
+  useEffect(() => {
+    // Shell mount alone is not business readiness: menus and translated dynamic
+    // labels must have committed successfully before this semantic milestone.
+    if (
+      consoleNavigationQuery.isSuccess &&
+      (!workspaceId ||
+        (frontstageNavigationQuery.isSuccess &&
+          runtimeI18n.status === 'ready')) &&
+      performance.getEntriesByName('1flowbase:NavigationInteractive').length ===
+        0
+    ) {
+      performance.mark('1flowbase:NavigationInteractive');
+    }
+  }, [
+    consoleNavigationQuery.isSuccess,
+    frontstageNavigationQuery.isSuccess,
+    runtimeI18n.status,
+    workspaceId
+  ]);
+
   const dynamicRoutes = useMemo(
     () => topbarPageRoutes(frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES),
     [frontstageNavigationQuery.data]
@@ -435,7 +468,10 @@ export function Navigation({
         aria-label={t('auto.mobile_navigation_open')}
         className="app-shell-mobile-navigation-trigger"
         icon={<MenuOutlined />}
-        onClick={() => setIsMobileNavigationOpen(true)}
+        onClick={() => {
+          setHasOpenedMobile(true);
+          setIsMobileNavigationOpen(true);
+        }}
         type="text"
       />
       <Menu
@@ -450,49 +486,53 @@ export function Navigation({
         }
         items={items}
       />
-      <Drawer
-        className="app-shell-mobile-navigation-drawer"
-        destroyOnHidden
-        open={isMobileNavigationOpen}
-        placement="left"
-        title={
-          <span className="app-shell-mobile-navigation-brand">
-            <img alt="" aria-hidden="true" src={metadata?.logo_url} />
-            <Typography.Text>{metadata?.system_name}</Typography.Text>
-          </span>
-        }
-        onClose={closeMobileNavigation}
-      >
-        <section aria-label={t('auto.mobile_navigation')}>
-          <Menu
-            className="app-shell-mobile-navigation-menu"
-            mode="inline"
-            selectedKeys={
-              mobileSelectedFrontstagePageId
-                ? [mobileSelectedFrontstagePageId]
-                : selectedDynamicRoute
-                  ? [selectedDynamicRoute.id]
-                  : routes.some((route) => route.id === selectedKey)
-                    ? [selectedKey]
-                    : []
+      {hasOpenedMobile ? (
+        <Suspense fallback={null}>
+          <LazyAntdDrawer
+            className="app-shell-mobile-navigation-drawer"
+            destroyOnHidden
+            open={isMobileNavigationOpen}
+            placement="left"
+            title={
+              <span className="app-shell-mobile-navigation-brand">
+                <img alt="" aria-hidden="true" src={metadata?.logo_url} />
+                <span className="ant-typography">{metadata?.system_name}</span>
+              </span>
             }
-            defaultOpenKeys={
-              selectedTopbarNode
-                ? [
-                    selectedTopbarNode.id,
-                    ...frontstageGroupIds(selectedTopbarNode.children ?? [])
-                  ]
-                : undefined
-            }
-            items={mobilePrimaryItems}
-          />
-          {isDesignMode && workspaceId ? (
-            <Suspense fallback={null}>
-              <TopbarNavigationDesigner workspaceId={workspaceId} />
-            </Suspense>
-          ) : null}
-        </section>
-      </Drawer>
+            onClose={closeMobileNavigation}
+          >
+            <section aria-label={t('auto.mobile_navigation')}>
+              <Menu
+                className="app-shell-mobile-navigation-menu"
+                mode="inline"
+                selectedKeys={
+                  mobileSelectedFrontstagePageId
+                    ? [mobileSelectedFrontstagePageId]
+                    : selectedDynamicRoute
+                      ? [selectedDynamicRoute.id]
+                      : routes.some((route) => route.id === selectedKey)
+                        ? [selectedKey]
+                        : []
+                }
+                defaultOpenKeys={
+                  selectedTopbarNode
+                    ? [
+                        selectedTopbarNode.id,
+                        ...frontstageGroupIds(selectedTopbarNode.children ?? [])
+                      ]
+                    : undefined
+                }
+                items={mobilePrimaryItems}
+              />
+              {isDesignMode && workspaceId ? (
+                <Suspense fallback={null}>
+                  <TopbarNavigationDesigner workspaceId={workspaceId} />
+                </Suspense>
+              ) : null}
+            </section>
+          </LazyAntdDrawer>
+        </Suspense>
+      ) : null}
       {isDesignMode && workspaceId ? (
         <Suspense fallback={null}>
           <TopbarNavigationDesigner workspaceId={workspaceId} />

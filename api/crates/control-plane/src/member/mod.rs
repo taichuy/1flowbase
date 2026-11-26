@@ -115,19 +115,22 @@ where
 
         let user = self
             .repository
-            .create_member_with_default_role(&CreateMemberInput {
-                actor_user_id: command.actor_user_id,
-                workspace_id: actor.current_workspace_id,
-                account: command.account,
-                email: command.email,
-                phone: command.phone,
-                password_hash: command.password_hash,
-                name: command.name,
-                nickname: command.nickname,
-                introduction: command.introduction,
-                email_login_enabled: command.email_login_enabled,
-                phone_login_enabled: command.phone_login_enabled,
-            })
+            .create_member_with_default_role_in_scope(
+                &actor,
+                &CreateMemberInput {
+                    actor_user_id: command.actor_user_id,
+                    workspace_id: actor.current_workspace_id,
+                    account: command.account,
+                    email: command.email,
+                    phone: command.phone,
+                    password_hash: command.password_hash,
+                    name: command.name,
+                    nickname: command.nickname,
+                    introduction: command.introduction,
+                    email_login_enabled: command.email_login_enabled,
+                    phone_login_enabled: command.phone_login_enabled,
+                },
+            )
             .await?;
         self.repository
             .append_audit_log(&audit_log(
@@ -153,15 +156,18 @@ where
 
         let user = self
             .repository
-            .update_member_profile(&UpdateMemberInput {
-                actor_user_id: command.actor_user_id,
-                user_id: command.target_user_id,
-                name: command.name,
-                nickname: command.nickname,
-                email: command.email,
-                phone: command.phone,
-                introduction: command.introduction,
-            })
+            .update_member_profile_in_scope(
+                &actor,
+                &UpdateMemberInput {
+                    actor_user_id: command.actor_user_id,
+                    user_id: command.target_user_id,
+                    name: command.name,
+                    nickname: command.nickname,
+                    email: command.email,
+                    phone: command.phone,
+                    introduction: command.introduction,
+                },
+            )
             .await?;
         self.repository
             .append_audit_log(&audit_log(
@@ -185,7 +191,7 @@ where
         self.ensure_console_operation(&actor, MEMBERS_DISABLE_OPERATION_ID)
             .await?;
         self.repository
-            .disable_member(command.actor_user_id, command.target_user_id)
+            .disable_member_in_scope(&actor, command.target_user_id)
             .await?;
         self.repository
             .append_audit_log(&audit_log(
@@ -208,7 +214,7 @@ where
         self.ensure_console_operation(&actor, MEMBERS_ENABLE_OPERATION_ID)
             .await?;
         self.repository
-            .enable_member(command.actor_user_id, command.target_user_id)
+            .enable_member_in_scope(&actor, command.target_user_id)
             .await?;
         self.repository
             .append_audit_log(&audit_log(
@@ -231,7 +237,7 @@ where
         self.ensure_console_operation(&actor, MEMBERS_DELETE_OPERATION_ID)
             .await?;
         self.repository
-            .delete_member(command.actor_user_id, command.target_user_id)
+            .delete_member_in_scope(&actor, command.target_user_id)
             .await?;
         self.repository
             .append_audit_log(&audit_log(
@@ -254,11 +260,7 @@ where
         self.ensure_console_operation(&actor, MEMBERS_PASSWORD_RESET_OPERATION_ID)
             .await?;
         self.repository
-            .reset_member_password(
-                command.actor_user_id,
-                command.target_user_id,
-                &command.password_hash,
-            )
+            .reset_member_password_in_scope(&actor, command.target_user_id, &command.password_hash)
             .await?;
         self.repository
             .append_audit_log(&audit_log(

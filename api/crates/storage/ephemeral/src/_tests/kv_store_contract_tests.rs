@@ -127,6 +127,6 @@ fn public_exports_match_capability_names() {
 }
 
 #[test]
-fn memory_store_type_remains_public() {
-    let _ = storage_ephemeral::MemorySessionStore::new("test");
+fn moka_session_store_default_is_public() {
+    let _ = storage_ephemeral::MokaSessionStore::default();
 }

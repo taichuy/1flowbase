@@ -14,6 +14,7 @@ struct Paths8;
     crate::routes::system::terminate_runtime_process,
     crate::routes::system::get_runtime_processes,
     crate::routes::billing::list_pricing_rules,
+    crate::routes::billing::list_pricing_targets,
     crate::routes::billing::create_pricing_rule,
     crate::routes::billing::update_pricing_rule,
     crate::routes::billing::delete_pricing_rule,

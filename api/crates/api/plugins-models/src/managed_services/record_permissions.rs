@@ -3,7 +3,7 @@ use super::{record_acl, ManagedServiceRegistration};
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::{
     app_state::ApiState,
-    error_response::ApiError,
+    error_response::{ApiError, ApiServiceUnavailable},
     response::ApiSuccess,
     routes::{
         console_interface::{
@@ -152,9 +152,16 @@ impl ConsoleInterfacePort<Input, Output> for Adapter {
         input: Input,
     ) -> ConsoleInterfaceFuture<'a, Output> {
         Box::pin(async move {
-            self.execute_inner(principal, input)
-                .await
-                .map_err(ConsoleInterfaceTargetError)
+            self.execute_inner(principal, input).await.map_err(|error| {
+                // Connection acquisition failures are capacity errors, not ACL denials.
+                let error = if storage_durable_postgres::is_pool_unavailable_error(&error.0) {
+                    tracing::warn!(error = %error.0, "record permission storage unavailable");
+                    ApiServiceUnavailable("record_permission_storage_unavailable").into()
+                } else {
+                    error
+                };
+                ConsoleInterfaceTargetError(error)
+            })
         })
     }
 }
@@ -182,6 +189,10 @@ impl Adapter {
                 let registration = registration(&state, &body.plugin_code)?;
                 record_acl::ensure_active(&state, registration).await?;
                 let resource = record_acl::resource(registration, &body.resource_code)?;
+                let policies = state
+                    .console_policy_reader
+                    .load_role_console_policies_for_user(actor)
+                    .await?;
                 let mut eligible = Vec::new();
                 for action in &resource.actions {
                     for id in &action.operation_ids {
@@ -191,25 +202,31 @@ impl Adapter {
                             .iter()
                             .find(|op| &op.interface_id == id)
                             .ok_or(Error::Conflict("record_permission_operation"))?;
-                        if record_acl::operation_allowed(&state, actor, op).await? {
+                        if record_acl::operation_allowed_with_policies(
+                            &state, actor, op, &policies,
+                        )? {
                             eligible.push(action.action_code.clone());
                             break;
                         }
                     }
                 }
-                let mut items = Vec::new();
-                for id in body.record_ids {
-                    record_acl::ensure_record(&state, registration, actor, resource, &id).await?;
-                    items.push(
-                        service
-                            .capabilities(
-                                actor,
-                                &record_acl::key(registration, actor, resource, &id)?,
-                                &eligible,
-                            )
-                            .await?,
-                    );
-                }
+                let ids = record_acl::ensure_records(
+                    &state,
+                    registration,
+                    actor,
+                    resource,
+                    &body.record_ids,
+                )
+                .await?;
+                let (publisher, plugin, _) = registration.resource_owner(resource);
+                let resource = domain::RecordPermissionResourceKey {
+                    publisher_namespace: publisher.into(),
+                    plugin_code: plugin.into(),
+                    resource_code: resource.resource_code.clone(),
+                };
+                let items = service
+                    .capabilities_batch(actor, &resource, &ids, &eligible)
+                    .await?;
                 Ok(Output(json!({"items":items})))
             }
             input => {
@@ -251,10 +268,21 @@ impl Adapter {
                     // Policies belong to the shared resource identity. Withdraw streams in
                     // every active participant that became denied by this policy revision.
                     for participant in state.console_surface_registry.managed_services() {
-                        let (publisher, plugin, _) = participant.resource_owner();
-                        if publisher == key.resource.publisher_namespace
-                            && plugin == key.resource.plugin_code
-                        {
+                        let shares_resource =
+                            participant
+                                .declaration
+                                .record_resources
+                                .iter()
+                                .any(|candidate| {
+                                    let (publisher, plugin, _) =
+                                        participant.resource_owner(candidate);
+                                    publisher == key.resource.publisher_namespace
+                                        && plugin == key.resource.plugin_code
+                                        && candidate.resource_code == resource.resource_code
+                                        && candidate.collection_code == resource.collection_code
+                                        && candidate.id_field == resource.id_field
+                                });
+                        if shares_resource {
                             super::stream::revoke_record_permissions(
                                 &state,
                                 participant.installation_id,

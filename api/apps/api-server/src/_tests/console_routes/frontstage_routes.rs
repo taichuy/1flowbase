@@ -27,6 +27,7 @@ fn frontstage_route_assembly_freezes_business_operations_and_authenticated_catal
         routes,
         BTreeSet::from([
             ("GET", "/api/console/frontstage/block-context-contract"),
+            ("GET", "/api/console/frontstage/bootstrap"),
             ("GET", "/api/console/frontstage/components",),
             ("GET", "/api/console/frontstage/components/:component_id",),
             (
@@ -264,6 +265,26 @@ async fn switch_workspace(
         .to_owned()
 }
 
+// Console authoring is bootstrap-workspace only. Seed foreign nodes through the
+// service so the HTTP tests can still exercise references to existing foreign IDs.
+async fn frontstage_fixture_author(
+    database_url: &str,
+) -> (
+    control_plane::frontstage::FrontstagePageService<storage_durable_postgres::PgControlPlaneStore>,
+    uuid::Uuid,
+) {
+    let pool = sqlx::PgPool::connect(database_url).await.unwrap();
+    let root_user_id = sqlx::query_scalar("select id from users where account = 'root'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let store = storage_durable_postgres::PgControlPlaneStore::new(pool);
+    (
+        control_plane::frontstage::FrontstagePageService::new(store),
+        root_user_id,
+    )
+}
+
 async fn create_group(
     app: &axum::Router,
     cookie: &str,
@@ -434,6 +455,8 @@ async fn dispatch_capability(
 mod authoring;
 #[path = "frontstage_routes/block_tree.rs"]
 mod block_tree;
+#[path = "frontstage_routes/bootstrap.rs"]
+mod bootstrap;
 #[path = "frontstage_routes/content.rs"]
 mod content;
 #[path = "frontstage_routes/context_contract.rs"]

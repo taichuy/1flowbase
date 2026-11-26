@@ -1,6 +1,12 @@
 import React, { type PropsWithChildren } from 'react';
 
-export function HeroTagline({ slogan }: { slogan: string }) {
+export function HeroTagline({
+  title = '1flowbase',
+  slogan
+}: {
+  title?: string;
+  slogan: string;
+}) {
   return (
     <div
       className="hero-text-block"
@@ -14,7 +20,7 @@ export function HeroTagline({ slogan }: { slogan: string }) {
       }}
     >
       <div className="hero-tagline" aria-label="brand name and slogan">
-        <div className="hero-text-line hero-title-line">1flowbase</div>
+        <div className="hero-text-line hero-title-line">{title}</div>
         <div className="hero-text-line hero-slogan-line">{slogan}</div>
       </div>
     </div>

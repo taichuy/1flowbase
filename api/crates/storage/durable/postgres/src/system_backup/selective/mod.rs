@@ -35,6 +35,9 @@ impl PgSelectiveBackupRepository {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+    pub fn from_store(store: &crate::PgControlPlaneStore) -> Self {
+        Self::new(store.pool().clone())
+    }
     async fn export(
         &self,
         selection: &[SelectiveBackupSelection],

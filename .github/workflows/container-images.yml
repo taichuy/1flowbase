@@ -21,6 +21,7 @@ on:
       - "web/app/package.json"
       - "web/pnpm-lock.yaml"
       - "web/pnpm-workspace.yaml"
+      - "web/.pnpmfile.cjs"
       - "web/packages/page-protocol/**"
       - "web/packages/page-runtime/**"
       - "web/packages/tailwindcss-catalog/**"
@@ -306,10 +307,8 @@ jobs:
           build-contexts: |
             web_dist=./tmp/web-dist
           cache-from: |
-            type=gha,scope=1flowbase-web-runtime
             type=registry,ref=${{ steps.image_refs.outputs.buildcache_ref }}
           cache-to: |
-            type=gha,mode=max,scope=1flowbase-web-runtime
             type=registry,ref=${{ steps.image_refs.outputs.buildcache_ref }},mode=max
 
       - name: Prepare Trivy report directory
@@ -621,10 +620,8 @@ jobs:
           build-contexts: |
             api_server_binaries=./tmp/api-server-binaries
           cache-from: |
-            type=gha,scope=1flowbase-api-server-runtime
             type=registry,ref=${{ steps.image_refs.outputs.buildcache_ref }}
           cache-to: |
-            type=gha,mode=max,scope=1flowbase-api-server-runtime
             type=registry,ref=${{ steps.image_refs.outputs.buildcache_ref }},mode=max
 
       - name: Require built-in application templates on API cold start

@@ -605,6 +605,22 @@ pub trait FrontendBlockCatalogRepository: Send + Sync {
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::FrontendBlockCatalogEntry>>;
 
+    async fn list_workspace_frontend_blocks_runtime(
+        &self,
+        node_id: &str,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::FrontendBlockCatalogEntry>> {
+        let mut entries = self
+            .list_workspace_frontend_blocks(node_id, workspace_id)
+            .await?;
+        for entry in &mut entries {
+            for module in &mut entry.code_modules {
+                module.type_declarations.clear();
+            }
+        }
+        Ok(entries)
+    }
+
     async fn list_system_frontend_blocks(
         &self,
         _node_id: &str,

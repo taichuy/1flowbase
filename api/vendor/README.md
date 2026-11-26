@@ -77,3 +77,7 @@ candidate. No upstream acceptance is claimed. Remove the vendor patches when a
 reviewed upstream version/fork provides the same ownership invariants and passes
 the retained protocol/compression and allocator regressions. This change does
 not establish bounds for deflate/TLS/allocator/slab or total process RSS.
+
+## Offline tokio-tungstenite 0.28.0 fork snapshot
+
+`tokio-tungstenite-0.28.0-openai-memory` vendors `https://github.com/openai-oss-forks/tokio-tungstenite` revision `0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186` for offline Cargo metadata/builds, adding only `deflate = ["tungstenite/deflate"]` in `Cargo.toml`.

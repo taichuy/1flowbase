@@ -1,10 +1,11 @@
-use crate::_tests::support::{password_hash, MemoryAuthRepository, MemorySessionStore};
+use crate::_tests::support::{password_hash, MemoryAuthRepository};
 use crate::errors::ControlPlaneError;
 use crate::session_security::{
     ChangeOwnPasswordCommand, RevokeAllSessionsCommand, SessionSecurityService,
 };
 use control_plane::ports::SessionStore;
 use domain::{BoundRole, RoleScopeKind, SessionRecord, UserRecord, UserStatus};
+use storage_ephemeral::MokaSessionStore;
 use uuid::Uuid;
 
 fn test_user() -> UserRecord {
@@ -43,14 +44,14 @@ fn test_session(user_id: Uuid) -> SessionRecord {
         active_role_code: "member".into(),
         session_version: 1,
         csrf_token: "csrf-token".to_string(),
-        expires_at_unix: 1_800_000_000,
+        expires_at_unix: time::OffsetDateTime::now_utc().unix_timestamp() + 3_600,
     }
 }
 
 #[tokio::test]
 async fn change_password_rejects_wrong_old_password() {
     let repository = MemoryAuthRepository::new(test_user());
-    let session_store = MemorySessionStore::default();
+    let session_store = MokaSessionStore::default();
     let service = SessionSecurityService::new(repository.clone(), session_store);
 
     let error = service
@@ -73,7 +74,7 @@ async fn change_password_rejects_wrong_old_password() {
 #[tokio::test]
 async fn change_password_updates_hash_and_deletes_current_session() {
     let repository = MemoryAuthRepository::new(test_user());
-    let session_store = MemorySessionStore::default();
+    let session_store = MokaSessionStore::default();
     let service = SessionSecurityService::new(repository.clone(), session_store.clone());
     let session = test_session(repository.user().id);
     session_store.put(session.clone()).await.unwrap();
@@ -91,17 +92,14 @@ async fn change_password_updates_hash_and_deletes_current_session() {
     let user = repository.user();
     assert_eq!(user.password_hash, "new-password-hash");
     assert_eq!(user.session_version, 2);
-    assert_eq!(
-        session_store.deleted_session_ids(),
-        vec![session.session_id]
-    );
+    assert_eq!(session_store.get(&session.session_id).await.unwrap(), None);
     assert_eq!(repository.audit_events(), vec!["user.password_changed"]);
 }
 
 #[tokio::test]
 async fn revoke_all_bumps_session_version_and_deletes_current_session() {
     let repository = MemoryAuthRepository::new(test_user());
-    let session_store = MemorySessionStore::default();
+    let session_store = MokaSessionStore::default();
     let service = SessionSecurityService::new(repository.clone(), session_store.clone());
     let session = test_session(repository.user().id);
     session_store.put(session.clone()).await.unwrap();
@@ -119,9 +117,6 @@ async fn revoke_all_bumps_session_version_and_deletes_current_session() {
         repository.bump_session_version_calls(),
         vec![(repository.user().id, repository.user().id)]
     );
-    assert_eq!(
-        session_store.deleted_session_ids(),
-        vec![session.session_id]
-    );
+    assert_eq!(session_store.get(&session.session_id).await.unwrap(), None);
     assert_eq!(repository.audit_events(), vec!["session.revoke_all"]);
 }

@@ -24,8 +24,8 @@ use tokio::sync::{mpsc, watch};
 
 pub(super) struct ManagedSource {
     pub state: Arc<ApiState>,
-    pub registration: ManagedServiceRegistration,
-    pub operation: ManagedServiceOperation,
+    pub registration: Arc<ManagedServiceRegistration>,
+    pub operation: Arc<ManagedServiceOperation>,
     pub key: SourceKey,
 }
 pub(super) struct SharedPreparation;
@@ -158,11 +158,13 @@ pub(super) fn record_payload(
 impl ManagedSource {
     pub fn new(
         state: Arc<ApiState>,
-        registration: ManagedServiceRegistration,
-        operation: ManagedServiceOperation,
+        registration: impl Into<Arc<ManagedServiceRegistration>>,
+        operation: impl Into<Arc<ManagedServiceOperation>>,
         principal: &UserPrincipal,
         payload: &Value,
     ) -> Result<Self, ApiError> {
+        let registration = registration.into();
+        let operation = operation.into();
         let permission = operation
             .record_permission
             .as_ref()
@@ -282,8 +284,8 @@ impl ManagedSource {
 }
 #[async_trait::async_trait]
 impl SourceBackend for ManagedSource {
-    fn ready(&self, event: &Value) -> bool {
-        ManagedSource::ready(self, event)
+    fn is_ready(&self, event: &Value) -> bool {
+        self.ready(event)
     }
     async fn authorize(
         &self,
@@ -388,6 +390,15 @@ impl SourceBackend for ManagedSource {
             self.invalidate(revision).await?;
         }
         Ok(())
+    }
+    async fn cached(&self, revision: &str) -> Result<Option<Value>, ApiError> {
+        Ok(cache::get(
+            self.state.infrastructure.ephemeral_kv_store().as_ref(),
+            &self.key,
+            revision,
+        )
+        .await?
+        .filter(|event| self.ready(event)))
     }
     async fn invalidate(&self, revision: &str) -> Result<(), ApiError> {
         cache::invalidate(

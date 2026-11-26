@@ -141,6 +141,7 @@ pub(crate) fn production_interface_contributions(
         Arc::downgrade(owner),
     ));
     let public_login_entries = crate::routes::auth::public_login_entries_port(
+        api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
         state.store.clone(),
         Arc::clone(&state.authenticator_registry),
         state.bootstrap_workspace_id,
@@ -148,6 +149,7 @@ pub(crate) fn production_interface_contributions(
         state.provider_install_root.clone(),
     );
     let public_sign_in = crate::routes::sign_in_interface::public_sign_in_port(
+        api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
         state.store.clone(),
         Arc::clone(&state.session_store),
         state.session_ttl_days,
@@ -158,11 +160,13 @@ pub(crate) fn production_interface_contributions(
         state.bootstrap_workspace_id,
     );
     let public_sign_up = crate::routes::auth::public_sign_up_port(
+        api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
         state.store.clone(),
         Arc::clone(&state.session_store),
         state.session_ttl_days,
     );
     let console_identity = crate::routes::console_identity_interface::console_identity_port(
+        api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
         state.store.clone(),
         Arc::clone(&state.session_store),
         state.cookie_name.clone(),
@@ -177,6 +181,7 @@ pub(crate) fn production_interface_contributions(
     );
     let console_navigation = crate::routes::navigation_interface::port(
         crate::routes::navigation_interface::ConsoleNavigationDependencies {
+            bootstrap_workspace_id: state.bootstrap_workspace_id,
             navigation_cache: control_plane::navigation_cache::NavigationCache(
                 state.infrastructure.cache_store(),
             ),
@@ -270,6 +275,11 @@ pub(crate) fn production_interface_contributions(
             state.store.clone(),
             state.infrastructure.cache_store(),
             state.provider_secret_master_key.clone(),
+        )
+        .with_console_workspace_gate(
+            state.bootstrap_workspace_id,
+            state.console_operation_registry.inventory(),
+            &state.api_docs,
         )
         .with_managed_services(state.console_surface_registry.managed_services().to_vec());
     let mcp_interface_catalog_dependencies =
@@ -411,6 +421,7 @@ pub(crate) fn production_interface_contributions(
                 "console.identity.session.delete",
                 "console.identity.session.revoke-all",
                 "console.identity.session.switch-workspace",
+                "console.workspaces.invitations.redeem",
                 "console.identity.session.switch-role",
                 "console.identity.me.get",
                 "console.identity.me.patch",
@@ -792,6 +803,7 @@ pub(crate) fn production_interface_contributions(
             "api-server.console-billing",
             &[
                 "billing.pricing_rules.list",
+                "billing.pricing_targets.list",
                 "billing.pricing_rules.create",
                 "billing.pricing_rules.update",
                 "billing.pricing_rules.delete",

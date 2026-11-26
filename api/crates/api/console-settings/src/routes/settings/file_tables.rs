@@ -10,6 +10,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
+use control_plane::errors::ControlPlaneError;
 use control_plane::file_management::{
     project_builtin_file_table_title, BindFileTableStorageCommand, CreateFileTableCommand,
     DeleteFileTableCommand, FileTableService, FileTableWithStorageTitle,
@@ -367,7 +368,7 @@ impl FileTablesAdapter {
         let actor = principal.actor();
         match input {
             FileTablesInput::List { locale } => {
-                let mut tables = FileTableService::new(self.store.clone())
+                let mut tables = FileTableService::new(self.store.for_actor(actor.clone()))
                     .list_tables(actor.user_id)
                     .await?;
                 let preferred_locale = self
@@ -395,7 +396,13 @@ impl FileTablesAdapter {
                 Ok(FileTablesOutput::List(responses))
             }
             FileTablesInput::Create(body) => {
-                let created = FileTableService::new(self.store.clone())
+                // Creating a table is workspace-local; choosing a host storage explicitly is not.
+                if body.bound_storage_id.is_some()
+                    && actor.current_workspace_id != self.bootstrap_workspace_id
+                {
+                    return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+                }
+                let created = FileTableService::new(self.store.for_actor(actor.clone()))
                     .create_table(CreateFileTableCommand {
                         bound_storage_id: body.bound_storage_id,
                         actor_user_id: actor.user_id,
@@ -412,7 +419,10 @@ impl FileTablesAdapter {
                 file_table_id,
                 body,
             } => {
-                let updated = FileTableService::new(self.store.clone())
+                if actor.current_workspace_id != self.bootstrap_workspace_id {
+                    return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+                }
+                let updated = FileTableService::new(self.store.for_actor(actor.clone()))
                     .bind_storage(BindFileTableStorageCommand {
                         actor_user_id: actor.user_id,
                         file_table_id: parse_uuid(&file_table_id, "file_table_id")?,
@@ -424,7 +434,7 @@ impl FileTablesAdapter {
                 ))
             }
             FileTablesInput::Delete { file_table_id } => {
-                FileTableService::new(self.store.clone())
+                FileTableService::new(self.store.for_actor(actor.clone()))
                     .delete_table(DeleteFileTableCommand {
                         actor_user_id: actor.user_id,
                         file_table_id: parse_uuid(&file_table_id, "file_table_id")?,

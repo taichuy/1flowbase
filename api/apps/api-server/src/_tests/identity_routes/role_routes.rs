@@ -11,7 +11,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 #[tokio::test]
-async fn role_routes_authorized_policy_manager_can_grant_system_visibility() {
+async fn role_routes_reject_system_visibility_for_workspace_roles() {
     use crate::_tests::support::{create_member, create_role, replace_member_roles};
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -73,18 +73,18 @@ async fn role_routes_authorized_policy_manager_can_grant_system_visibility() {
     );
     let mut system = scoped;
     system["default_policy"]["default_view_scope"] = json!("system_all");
-    let allowed = app
+    let rejected = app
         .clone()
         .oneshot(request(&cookie, &csrf, path, system.clone()))
         .await
         .unwrap();
-    assert_eq!(allowed.status(), StatusCode::OK);
-    let root_allowed = app
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+    let root_rejected = app
         .clone()
         .oneshot(request(&root_cookie, &root_csrf, path, system))
         .await
         .unwrap();
-    assert_eq!(root_allowed.status(), StatusCode::OK);
+    assert_eq!(root_rejected.status(), StatusCode::BAD_REQUEST);
 }
 
 #[test]
@@ -386,7 +386,7 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         Some(false)
     );
 
-    let allow_default_system_view_response = app
+    let reject_default_system_view_response = app
         .clone()
         .oneshot(
             Request::builder()
@@ -414,9 +414,12 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         )
         .await
         .unwrap();
-    assert_eq!(allow_default_system_view_response.status(), StatusCode::OK);
+    assert_eq!(
+        reject_default_system_view_response.status(),
+        StatusCode::BAD_REQUEST
+    );
 
-    let allow_model_system_view_response = app
+    let reject_model_system_view_response = app
         .clone()
         .oneshot(
             Request::builder()
@@ -449,7 +452,10 @@ async fn role_routes_roundtrip_data_policy_and_protect_root_policy_mutation() {
         )
         .await
         .unwrap();
-    assert_eq!(allow_model_system_view_response.status(), StatusCode::OK);
+    assert_eq!(
+        reject_model_system_view_response.status(),
+        StatusCode::BAD_REQUEST
+    );
 
     let protect_root_response = app
         .clone()

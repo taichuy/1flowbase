@@ -1,35 +1,35 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx","sha256":"83ef6b799006c725acc67c37c402bc20eaf8c3f9994f5b857da9a2a84b70d808"}]
+    [{"file":"web/app/src/features/settings/_tests/authenticator-ui-block-studio.test.tsx","sha256":"4c77fdddab7c7d3c86ab8c8cf59af8410b68a0e382f4e29b4a8c58ede009379f"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
       "rule": "react-doctor/jsx-no-jsx-as-prop",
-      "sourceSha256": "37c73e1b98588c8db8bd35940136bdccc44b887648f7353e811a40bc547b17ff",
-      "reason": "The receiving shared component defines this named ReactNode slot; it is part of the layout API. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot. Reassessed 2026-11-03: Read-only and saving guards now also cover insertion, restore-default, preview and authoring callbacks. Login-entry/source/open identity still resets only the retained studio draft; editorNotice remains a named ReactNode slot.",
+      "sourceSha256": "46e59582aa5c7ea4978f31ee64e8443860db7360ab0d8e32b0cbe2d158e38fc5",
+      "reason": "The receiving shared component defines this named ReactNode slot; it is part of the layout API. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot. Reassessed 2026-11-03: Read-only and saving guards now also cover insertion, restore-default, preview and authoring callbacks. Login-entry/source/open identity still resets only the retained studio draft; editorNotice remains a named ReactNode slot. Reassessed: Lazy declarations are now conditional on authoring demand; the Studio keeps the source draft and the login entry identity outside that data request.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "37c73e1b98588c8db8bd35940136bdccc44b887648f7353e811a40bc547b17ff",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot. Reassessed 2026-11-03: Read-only and saving guards now also cover insertion, restore-default, preview and authoring callbacks. Login-entry/source/open identity still resets only the retained studio draft; editorNotice remains a named ReactNode slot.",
+      "sourceSha256": "46e59582aa5c7ea4978f31ee64e8443860db7360ab0d8e32b0cbe2d158e38fc5",
+      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot. Reassessed 2026-11-03: Read-only and saving guards now also cover insertion, restore-default, preview and authoring callbacks. Login-entry/source/open identity still resets only the retained studio draft; editorNotice remains a named ReactNode slot. Reassessed: Lazy declarations are now conditional on authoring demand; the Studio keeps the source draft and the login entry identity outside that data request.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
       "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "37c73e1b98588c8db8bd35940136bdccc44b887648f7353e811a40bc547b17ff",
-      "reason": "The state retains draft/history/resource information beyond the latest input projection. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot. Reassessed 2026-11-03: Read-only and saving guards now also cover insertion, restore-default, preview and authoring callbacks. Login-entry/source/open identity still resets only the retained studio draft; editorNotice remains a named ReactNode slot.",
+      "sourceSha256": "46e59582aa5c7ea4978f31ee64e8443860db7360ab0d8e32b0cbe2d158e38fc5",
+      "reason": "The state retains draft/history/resource information beyond the latest input projection. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot. Reassessed 2026-11-03: Read-only and saving guards now also cover insertion, restore-default, preview and authoring callbacks. Login-entry/source/open identity still resets only the retained studio draft; editorNotice remains a named ReactNode slot. Reassessed: Lazy declarations are now conditional on authoring demand; the Studio keeps the source draft and the login entry identity outside that data request.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx",
       "rule": "react-doctor/no-derived-useState",
-      "sourceSha256": "37c73e1b98588c8db8bd35940136bdccc44b887648f7353e811a40bc547b17ff",
-      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot. Reassessed 2026-11-03: Read-only and saving guards now also cover insertion, restore-default, preview and authoring callbacks. Login-entry/source/open identity still resets only the retained studio draft; editorNotice remains a named ReactNode slot.",
+      "sourceSha256": "46e59582aa5c7ea4978f31ee64e8443860db7360ab0d8e32b0cbe2d158e38fc5",
+      "reason": "The incoming value initializes a locally navigable/editable view rather than a continuously controlled value. LoginEntryUiBlockStudio retains an unsaved editable source/authoring snapshot and preview independently. loginEntryId/open/source changes reset the selected editor owner, while local typing does not change the incoming source. BlockSourceStudio.editorNotice is a deliberate named JSX slot. Reassessed 2026-11-03: Read-only and saving guards now also cover insertion, restore-default, preview and authoring callbacks. Login-entry/source/open identity still resets only the retained studio draft; editorNotice remains a named ReactNode slot. Reassessed: Lazy declarations are now conditional on authoring demand; the Studio keeps the source draft and the login entry identity outside that data request.",
       "evidenceSet": 0
     }
   ]

@@ -1,6 +1,7 @@
 export const modelProviderManagerOperations = [
   "state_model.view.all",
   "billing.pricing_rules.list",
+  "billing.pricing_targets.list",
   "billing.pricing_rules.create",
   "billing.pricing_rules.update",
   "billing.pricing_rules.delete",

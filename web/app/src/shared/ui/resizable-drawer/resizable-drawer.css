@@ -4,14 +4,15 @@
   bottom: 0;
   left: 50%;
   width: 1px;
-  content: "";
+  content: '';
   background: var(--border-default);
   transition: background-color 160ms ease;
 }
 
 .resizable-drawer__drag-handle:hover::after,
-.resizable-drawer__drag-handle.ant-drawer-resizable-dragger-dragging::after {
-  background: var(--border-focus);
+.resizable-drawer__drag-handle.ant-drawer-resizable-dragger-dragging::after,
+.resizable-drawer__drag-handle[class*='-drawer-resizable-dragger-dragging']::after {
+  background: var(--border-focus, var(--ant-color-primary));
 }
 
 .resizable-drawer__body {
@@ -35,7 +36,7 @@
   bottom: 0;
   left: 8px;
   width: 1px;
-  content: "";
+  content: '';
   background: transparent;
   transition: background-color 160ms ease;
 }

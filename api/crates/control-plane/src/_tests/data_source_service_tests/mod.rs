@@ -124,6 +124,7 @@ fn seeded_artifact() -> PluginArtifactInstanceRecord {
 #[derive(Clone)]
 struct InMemoryDataSourceRepository {
     actor: ActorContext,
+    request_actor: Option<ActorContext>,
     console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
     installations: Arc<RwLock<HashMap<Uuid, PluginInstallationRecord>>>,
     artifact_instances: Arc<RwLock<HashMap<(String, Uuid), PluginArtifactInstanceRecord>>>,
@@ -154,6 +155,7 @@ impl Default for InMemoryDataSourceRepository {
         };
         Self {
             actor,
+            request_actor: None,
             console_policies: Arc::new(RwLock::new(Vec::new())),
             installations: Arc::new(RwLock::new(HashMap::from([(
                 installation.id,
@@ -182,6 +184,13 @@ impl InMemoryDataSourceRepository {
         Self {
             actor,
             ..Self::default()
+        }
+    }
+
+    fn for_actor(&self, actor: ActorContext) -> Self {
+        Self {
+            request_actor: Some(actor),
+            ..self.clone()
         }
     }
 
@@ -273,10 +282,11 @@ impl AuthRepository for InMemoryDataSourceRepository {
     }
 
     async fn load_actor_context_for_user(&self, actor_user_id: Uuid) -> Result<ActorContext> {
+        let actor = self.request_actor.as_ref().unwrap_or(&self.actor);
         self.load_actor_context(
             actor_user_id,
-            self.actor.tenant_id,
-            self.actor.current_workspace_id,
+            actor.tenant_id,
+            actor.current_workspace_id,
             None,
         )
         .await
@@ -289,6 +299,17 @@ impl AuthRepository for InMemoryDataSourceRepository {
         workspace_id: Uuid,
         _display_role: Option<&str>,
     ) -> Result<ActorContext> {
+        if let Some(actor) = &self.request_actor {
+            if (actor.user_id, actor.tenant_id, actor.current_workspace_id)
+                != (user_id, tenant_id, workspace_id)
+            {
+                return Err(crate::errors::ControlPlaneError::PermissionDenied(
+                    "workspace_access_denied",
+                )
+                .into());
+            }
+            return Ok(actor.clone());
+        }
         let mut actor = self.actor.clone();
         actor.user_id = user_id;
         actor.tenant_id = tenant_id;

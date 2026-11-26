@@ -98,7 +98,7 @@ orchestration-runtime = { path = "../orchestration-runtime" }
 runtime-core = { path = "../runtime-core" }
 postgres-test-support = { path = "../postgres-test-support" }
 serde_json.workspace = true
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["macros"] }
 storage-durable = { path = "../storage/durable/core" }
 storage-durable-postgres = { path = "../storage/durable/postgres" }
 storage-ephemeral = { path = "../storage/ephemeral" }
@@ -123,3 +123,7 @@ path = "tests/event_bus/mod.rs"
 [[test]]
 name = "event_center_configuration"
 path = "tests/event_center_configuration/mod.rs"
+
+[[test]]
+name = "plugin_resource_archive_upgrade"
+path = "tests/plugin_resource_archive_upgrade.rs"

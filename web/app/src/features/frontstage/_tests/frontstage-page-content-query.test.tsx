@@ -1,4 +1,11 @@
-import { configure, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  configure,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const pageTreeApi = vi.hoisted(() => ({
@@ -113,7 +120,7 @@ function createPageContent(
       kind: 'page' as const,
       parentId: null,
       rank: '001000',
-      contentPresentation: 'single' as const
+      contentPresentation: 'single' as 'single' | 'tabs'
     },
     tab: {
       id: `tab-${pageId}`,
@@ -394,6 +401,141 @@ describe('frontstage page content query route wiring', () => {
         'workspace-1',
         'page-1',
         'tab-page-1'
+      );
+    },
+    FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT
+  );
+
+  test(
+    'keeps topbar, sidebar, and page tabs mounted while switching to an uncached tab and shows visible local loading',
+    async () => {
+      const groupRoot = {
+        id: 'group-sales',
+        title: '销售工作台',
+        kind: 'group' as const,
+        parent_id: null,
+        rank: '001000',
+        placement: 'topbar' as const,
+        content_presentation: 'single' as const,
+        slug: 'frontstage',
+        children: [
+          {
+            id: 'page-1',
+            title: '页面 page-1',
+            kind: 'page' as const,
+            parent_id: 'group-sales',
+            rank: '001000',
+            placement: 'sidebar' as const,
+            content_presentation: 'tabs' as const,
+            show_title: true,
+            children: []
+          }
+        ]
+      };
+      const defaultTab = {
+        id: 'tab-overview',
+        page_id: 'page-1',
+        title: '概览',
+        rank: '001000',
+        is_default: true,
+        route_segment: null,
+        document_root_uid: 'root-overview'
+      };
+      const detailsTab = {
+        id: 'tab-details',
+        page_id: 'page-1',
+        title: '详情',
+        rank: '002000',
+        is_default: false,
+        route_segment: 'details',
+        document_root_uid: 'root-details'
+      };
+      let resolveDetailsContent!: (
+        value: ReturnType<typeof createPageContent>
+      ) => void;
+      const pendingDetailsContent = new Promise<
+        ReturnType<typeof createPageContent>
+      >((resolve) => {
+        resolveDetailsContent = resolve;
+      });
+
+      pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([groupRoot]);
+      pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([
+        defaultTab,
+        detailsTab
+      ]);
+      pageContentApi.fetchFrontstagePageContent.mockImplementation(
+        (_workspaceId: string, pageId: string, tabRef: string) => {
+          if (tabRef === 'details' || tabRef === 'tab-details') {
+            return pendingDetailsContent;
+          }
+          return Promise.resolve({
+            ...createPageContent(pageId, {
+              id: 'tab-overview',
+              title: '概览',
+              isDefault: true,
+              routeSegment: null
+            }),
+            page: {
+              ...createPageContent(pageId).page,
+              contentPresentation: 'tabs' as const
+            }
+          });
+        }
+      );
+
+      renderApp('/frontstage/pages/page-1');
+
+      const detailsTabButton = await screen.findByRole('tab', { name: '详情' });
+      const topbarNav = screen.getByRole('navigation', { name: 'Primary' });
+      const sidebarTree = screen.getByRole('tree');
+      expect(
+        screen.queryByTestId('workspace-shell-skeleton')
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(detailsTabButton);
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/frontstage/pages/page-1/tabs/details'
+        );
+      });
+
+      // Topbar and sidebar DOM instances must stay strictly preserved (zero shell remount).
+      expect(screen.getByRole('navigation', { name: 'Primary' })).toBe(
+        topbarNav
+      );
+      expect(screen.getByRole('tree')).toBe(sidebarTree);
+      expect(
+        screen.queryByTestId('workspace-shell-skeleton')
+      ).not.toBeInTheDocument();
+
+      // In-page tab bar must remain mounted with the target tab selected even while content is pending.
+      const pendingDetailsTab = screen.getByRole('tab', { name: '详情' });
+      expect(pendingDetailsTab).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('status')).toBeVisible();
+
+      await act(async () => {
+        resolveDetailsContent({
+          ...createPageContent('page-1', {
+            id: 'tab-details',
+            title: '详情',
+            isDefault: false,
+            routeSegment: 'details'
+          }),
+          page: {
+            ...createPageContent('page-1').page,
+            contentPresentation: 'tabs' as const
+          }
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      });
+      expect(screen.getByRole('tab', { name: '详情' })).toHaveAttribute(
+        'aria-selected',
+        'true'
       );
     },
     FRONTSTAGE_ROUTE_WIRING_TEST_TIMEOUT

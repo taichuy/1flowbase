@@ -9,7 +9,8 @@ import {
   importConsolePricingCatalog,
   syncConsolePricingCatalog,
   listConsoleCreditAccounts,
-  listConsolePricingRules
+  listConsolePricingRules,
+  listConsolePricingTargets
 } from '../../../console/administration/billing';
 
 describe('console billing client', () => {
@@ -20,6 +21,22 @@ describe('console billing client', () => {
   test('uses canonical pricing and credit routes', async () => {
     await expect(listConsolePricingRules()).resolves.toMatchObject({
       path: '/api/console/settings/billing/pricing-rules?page=1&page_size=20'
+    });
+    await expect(
+      listConsolePricingTargets({ provider_query: 'open', page: 1, page_size: 50 })
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/billing/pricing-targets?provider_query=open&page=1&page_size=50'
+    });
+    await expect(
+      listConsolePricingTargets({
+        provider_code: 'openai',
+        upstream_model_id: 'gpt',
+        selected_model_id: 'gpt-4o',
+        page: 2,
+        page_size: 25
+      })
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/billing/pricing-targets?provider_code=openai&upstream_model_id=gpt&selected_model_id=gpt-4o&page=2&page_size=25'
     });
     await expect(
       getConsolePricingCatalog({

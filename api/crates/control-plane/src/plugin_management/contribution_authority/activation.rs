@@ -17,9 +17,16 @@ impl HostContributionGrantPolicy {
             .data_models
             .iter()
             .flat_map(|model| &model.owned_collections)
-            .map(|collection| ContributionResourceScope::OwnedCollection {
-                collection_code: collection.collection_code.clone(),
-            })
+            .map(|collection| collection.collection_code.clone())
+            .chain(manifest.resource_imports.iter().flat_map(|import| {
+                import
+                    .collections
+                    .iter()
+                    .map(|collection| collection.collection_code.clone())
+            }))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|collection_code| ContributionResourceScope::OwnedCollection { collection_code })
             .collect::<Vec<_>>();
         let mut grants = Vec::new();
         for contribution in &managed.module.contributions {
@@ -39,6 +46,10 @@ impl HostContributionGrantPolicy {
                     "network.http.request" => Some("http-egress"),
                     "credential.manage" => Some("plugin-credential"),
                     "ephemeral.manage" => Some("plugin-ephemeral"),
+                    extension_contracts::WORKSPACE_GOVERNANCE_READ_PERMISSION
+                    | extension_contracts::WORKSPACE_GOVERNANCE_MANAGE_PERMISSION => {
+                        Some(extension_contracts::WORKSPACE_GOVERNANCE_CONTRACT_ID)
+                    }
                     "execution.gate" => Some("execution-gate"),
                     "event.subscribe" | "event.publish" => Some("managed-event"),
                     "plugin_data.owned.write" => Some("plugin-data"),
@@ -99,11 +110,36 @@ where
             || manifest.plugin_code()? != installation.provider_code
             || manifest.version != installation.plugin_version
             || serde_json::to_value(&manifest.managed)? != installation.metadata_json["managed"]
-            || manifest.shared_resource_contract.as_deref()
-                != installation
+            || ((!manifest.resource_exports.is_empty() || !manifest.resource_imports.is_empty())
+                && serde_json::to_value(&manifest.data_models)?
+                    != installation
+                        .metadata_json
+                        .get("data_models")
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!([])))
+            || [
+                (
+                    "plugin_dependencies",
+                    serde_json::to_value(&manifest.plugin_dependencies)?,
+                ),
+                (
+                    "resource_exports",
+                    serde_json::to_value(&manifest.resource_exports)?,
+                ),
+                (
+                    "resource_imports",
+                    serde_json::to_value(&manifest.resource_imports)?,
+                ),
+            ]
+            .iter()
+            .any(|(key, declaration)| {
+                installation
                     .metadata_json
-                    .get("shared_resource_contract")
-                    .and_then(serde_json::Value::as_str)
+                    .get(*key)
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!([]))
+                    != *declaration
+            })
         {
             return Err(
                 ControlPlaneError::Conflict("managed_contribution_identity_mismatch").into(),

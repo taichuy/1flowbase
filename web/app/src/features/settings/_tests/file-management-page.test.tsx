@@ -157,6 +157,11 @@ beforeAll(async () => {
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 
+const bootstrapStoragePermissions = [
+  'file_storages.list', 'file_storages.create', 'file_storages.update', 'file_storages.delete',
+  'file_tables.storage.bind'
+];
+
 function authenticateWithPermissions(
   permissions: string[],
   effectiveDisplayRole: 'member' | 'root' = 'member'
@@ -288,7 +293,7 @@ describe('File management settings page', () => {
   });
 
   test('root mode shows table management layout and creation entries', async () => {
-    authenticateWithPermissions([], 'root');
+    authenticateWithPermissions(bootstrapStoragePermissions, 'root');
 
     renderApp('/settings/files');
 
@@ -331,7 +336,7 @@ describe('File management settings page', () => {
   });
 
   test('root mode opens the storage create drawer', async () => {
-    authenticateWithPermissions([], 'root');
+    authenticateWithPermissions(bootstrapStoragePermissions, 'root');
 
     renderApp('/settings/files');
 
@@ -347,7 +352,7 @@ describe('File management settings page', () => {
   });
 
   test('root mode creates a local storage with public base url in config_json', async () => {
-    authenticateWithPermissions([], 'root');
+    authenticateWithPermissions(bootstrapStoragePermissions, 'root');
 
     renderApp('/settings/files');
 
@@ -387,7 +392,7 @@ describe('File management settings page', () => {
   });
 
   test('root mode shows existing public base url when editing local storage', async () => {
-    authenticateWithPermissions([], 'root');
+    authenticateWithPermissions(bootstrapStoragePermissions, 'root');
     fileManagementApi.fetchSettingsFileStorages.mockResolvedValue([
       {
         id: 'storage-1',
@@ -417,7 +422,7 @@ describe('File management settings page', () => {
   });
 
   test('root mode opens the file table create drawer', async () => {
-    authenticateWithPermissions([], 'root');
+    authenticateWithPermissions(bootstrapStoragePermissions, 'root');
 
     renderApp('/settings/files');
 

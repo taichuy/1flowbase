@@ -18,6 +18,7 @@ pub(super) struct Authority {
     pub(super) locks: AtomicUsize,
 }
 struct Lease {
+    installations: std::collections::BTreeMap<Uuid, PluginInstallationRecord>,
     state: tokio::sync::OwnedMutexGuard<State>,
     pub(super) held: Arc<AtomicBool>,
 }
@@ -36,6 +37,20 @@ impl ContributionAuthorityLease for Lease {
     fn installation(&self, id: Uuid) -> Option<&PluginInstallationRecord> {
         (id == self.state.installation.id).then_some(&self.state.installation)
     }
+    fn installations(&self) -> &std::collections::BTreeMap<Uuid, PluginInstallationRecord> {
+        &self.installations
+    }
+    fn commit_plugin_data<'a>(
+        self: Box<Self>,
+        _: &'a extension_contracts::PluginDataBinding,
+        _: &'a extension_contracts::PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a>
+    where
+        Self: 'a,
+    {
+        panic!("unexpected plugin data commit")
+    }
+
     fn load_communication_command_context<'a>(
         &'a mut self,
         _: &'a ManagedContributionSubject,
@@ -161,6 +176,7 @@ impl PluginContributionAuthorityRepository for Authority {
         );
         self.held.store(true, Ordering::SeqCst);
         Ok(Box::new(Lease {
+            installations: [(state.installation.id, state.installation.clone())].into(),
             state,
             held: self.held.clone(),
         }))

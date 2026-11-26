@@ -6,9 +6,15 @@ import type { Plugin } from 'vite';
 
 export const NATIVE_ANTD_ES_MODULES_VIRTUAL_ID =
   'virtual:1flowbase-native-antd-es-modules';
+export const NATIVE_ANTD_PRODUCT_LOADERS_VIRTUAL_ID =
+  'virtual:1flowbase-native-antd-product-loaders';
+export const NATIVE_ANTD_ES_LOADERS_VIRTUAL_ID =
+  'virtual:1flowbase-native-antd-es-loaders';
 export const PRODUCT_ANTD_RESOLVED_CHUNKS = new Map<string, string>();
 
 const RESOLVED_VIRTUAL_ID = `\0${NATIVE_ANTD_ES_MODULES_VIRTUAL_ID}`;
+const RESOLVED_PRODUCT_LOADERS_VIRTUAL_ID = `\0${NATIVE_ANTD_PRODUCT_LOADERS_VIRTUAL_ID}`;
+const RESOLVED_ES_LOADERS_VIRTUAL_ID = `\0${NATIVE_ANTD_ES_LOADERS_VIRTUAL_ID}`;
 const antdRequire = createRequire(import.meta.url);
 const antdPackageRoot = path.dirname(antdRequire.resolve('antd/package.json'));
 const productExportPaths = collectProductExportPaths();
@@ -45,7 +51,7 @@ export function nativeAntDesignEsModulesPlugin(
     resolveId: {
       filter: {
         id: [
-          /^virtual:1flowbase-native-antd-es-modules$/u,
+          /^virtual:1flowbase-native-antd-(?:es-modules|product-loaders|es-loaders)$/u,
           /^antd\/locale\/[A-Za-z0-9_]+(?:\.js)?$/u,
           /^antd\/es\/[A-Za-z0-9_-]+(?:\/.*)?$/u
         ]
@@ -53,6 +59,12 @@ export function nativeAntDesignEsModulesPlugin(
       async handler(id, importer) {
         if (id === NATIVE_ANTD_ES_MODULES_VIRTUAL_ID) {
           return RESOLVED_VIRTUAL_ID;
+        }
+        if (id === NATIVE_ANTD_PRODUCT_LOADERS_VIRTUAL_ID) {
+          return RESOLVED_PRODUCT_LOADERS_VIRTUAL_ID;
+        }
+        if (id === NATIVE_ANTD_ES_LOADERS_VIRTUAL_ID) {
+          return RESOLVED_ES_LOADERS_VIRTUAL_ID;
         }
         if (/^antd\/locale\/[A-Za-z0-9_]+(?:\.js)?$/u.test(id)) {
           moduleSources ??= collectAntDesignEsModuleSources();
@@ -67,25 +79,35 @@ export function nativeAntDesignEsModulesPlugin(
         }
         if (
           isProductAntDesignSource(id) &&
-          !importer?.includes(NATIVE_ANTD_ES_MODULES_VIRTUAL_ID)
+          !importer?.includes('virtual:1flowbase-native-antd-')
         ) {
           const resolved = await this.resolve(id, importer, { skipSelf: true });
           if (!resolved) return undefined;
-          PRODUCT_ANTD_RESOLVED_CHUNKS.set(
-            resolved.id,
-            productAntDesignChunk(id)
-          );
+          const chunk = productAntDesignChunk(id);
+          if (chunk) {
+            PRODUCT_ANTD_RESOLVED_CHUNKS.set(resolved.id, chunk);
+          }
           return resolved.id;
         }
         return undefined;
       }
     },
     load: {
-      filter: { id: /^\x00virtual:1flowbase-native-antd-es-modules$/u },
+      filter: {
+        id: /virtual:1flowbase-native-antd-(?:es-modules|product-loaders|es-loaders)$/u
+      },
       handler(id) {
-        if (id !== RESOLVED_VIRTUAL_ID) return undefined;
         moduleSources ??= collectAntDesignEsModuleSources();
-        return renderNativeAntDesignEsModules(moduleSources);
+        if (id === RESOLVED_VIRTUAL_ID) {
+          return renderNativeAntDesignEsModules(moduleSources);
+        }
+        if (id === RESOLVED_PRODUCT_LOADERS_VIRTUAL_ID) {
+          return renderNativeAntDesignProductLoaders(moduleSources);
+        }
+        if (id === RESOLVED_ES_LOADERS_VIRTUAL_ID) {
+          return renderNativeAntDesignDeepLoaders(moduleSources);
+        }
+        return undefined;
       }
     }
   };
@@ -148,9 +170,14 @@ export function rewriteProductAntDesignImports(source: string): string {
   );
 }
 
-export function productAntDesignChunk(id: string): string {
+export function productAntDesignChunk(id: string): string | undefined {
   const component = /^antd\/es\/([^/]+)/u.exec(id)?.[1];
   if (!component) return 'antd-core';
+  if (component === 'locale') {
+    return /^antd\/es\/locale\/en_US(?:\.js)?$/u.test(id)
+      ? 'antd-core'
+      : undefined;
+  }
   if (
     [
       'drawer',
@@ -158,21 +185,33 @@ export function productAntDesignChunk(id: string): string {
       'modal',
       'popover',
       'popconfirm',
-      'tooltip'
+      'tooltip',
+      'watermark'
     ].includes(component)
   )
     return 'antd-overlay';
   if (
     [
-      'calendar',
-      'cascader',
-      'date-picker',
-      'descriptions',
+      'checkbox',
       'form',
-      'pagination',
+      'input',
+      'input-number',
+      'radio',
+      'segmented',
       'select',
+      'switch'
+    ].includes(component)
+  )
+    return 'antd-form';
+  if (
+    [
+      'cascader',
+      'descriptions',
+      'list',
+      'listy',
+      'pagination',
       'table',
-      'time-picker',
+      'transfer',
       'tree',
       'tree-select',
       'upload'
@@ -181,51 +220,54 @@ export function productAntDesignChunk(id: string): string {
     return 'antd-data';
   if (
     [
+      'auto-complete',
+      'calendar',
+      'color-picker',
+      'date-picker',
+      'mentions',
+      'rate',
+      'slider',
+      'time-picker'
+    ].includes(component)
+  )
+    return 'antd-picker';
+  if (
+    [
       'alert',
+      'avatar',
+      'badge',
+      'empty',
       'message',
       'notification',
       'progress',
       'result',
       'skeleton',
-      'spin'
+      'spin',
+      'tag'
     ].includes(component)
   )
     return 'antd-feedback';
-  if (['anchor', 'breadcrumb', 'menu', 'steps', 'tabs'].includes(component))
+  if (['breadcrumb', 'menu', 'steps', 'tabs'].includes(component))
     return 'antd-navigation';
   if (
-    [
-      'checkbox',
-      'color-picker',
-      'input',
-      'input-number',
-      'mentions',
-      'radio',
-      'rate',
-      'segmented',
-      'slider',
-      'switch',
-      'transfer'
-    ].includes(component)
+    ['card', 'collapse', 'image', 'statistic', 'timeline'].includes(component)
   )
-    return 'antd-input';
+    return 'antd-display';
   if (
     [
-      'avatar',
-      'badge',
-      'card',
+      'affix',
+      'anchor',
+      'back-top',
+      'border-beam',
       'carousel',
-      'collapse',
-      'empty',
-      'image',
-      'list',
-      'statistic',
-      'tag',
-      'timeline',
+      'float-button',
+      'masonry',
+      'qr-code',
+      'splitter',
       'tour'
     ].includes(component)
   )
-    return 'antd-display';
+    return undefined;
   return 'antd-core';
 }
 
@@ -277,46 +319,153 @@ function listJavaScriptFiles(directory: string, prefix = ''): string[] {
   });
 }
 
-function renderNativeAntDesignEsModules(
+function partitionProductAndDeepSources(
   moduleSources: readonly AntDesignEsModuleSource[]
+) {
+  const productLoaderSources = new Set<string>();
+  for (const exportPath of productExportPaths.values()) {
+    productLoaderSources.add(`antd/es/${exportPath}.js`);
+    productLoaderSources.add(`antd/es/${exportPath}/index.js`);
+  }
+  productLoaderSources.add('antd/es/modal/useModal.js');
+  productLoaderSources.add('antd/es/modal/useModal/index.js');
+
+  const productEntries: AntDesignEsModuleSource[] = [];
+  const deepEntries: AntDesignEsModuleSource[] = [];
+  for (const entry of moduleSources) {
+    if (
+      productLoaderSources.has(entry.loaderSource) ||
+      /^antd\/es\/locale\/[A-Za-z0-9_]+\.js$/u.test(entry.loaderSource)
+    ) {
+      productEntries.push(entry);
+    } else {
+      deepEntries.push(entry);
+    }
+  }
+  return { productEntries, deepEntries };
+}
+
+function renderDeduplicatedLoaderMap(
+  entries: readonly AntDesignEsModuleSource[],
+  exportFnName: string
 ): string {
-  const rootExports = Object.keys(
-    antdRequire('antd') as Record<string, unknown>
-  ).sort((left, right) => left.localeCompare(right));
-  const loaders = Object.fromEntries(
-    moduleSources.map(({ moduleSource, loaderSource }) => [
-      moduleSource,
-      `() => import(${JSON.stringify(loaderSource)})`
-    ])
-  );
+  const canonicalSources = [
+    ...new Set(entries.map(({ loaderSource }) => loaderSource))
+  ].sort((left, right) => left.localeCompare(right));
+  const aliasPairs = entries
+    .filter(({ loaderSource, moduleSource }) => moduleSource !== loaderSource)
+    .map(({ loaderSource, moduleSource }) => [moduleSource, loaderSource] as const);
   return `
-const loaders = {${Object.entries(loaders)
+const canonicalLoaders = {${canonicalSources
     .map(
-      ([moduleSource, loader]) =>
-        `\n  ${JSON.stringify(moduleSource)}: ${loader},`
+      (loaderSource) =>
+        `\n  ${JSON.stringify(loaderSource)}: () => import(${JSON.stringify(loaderSource)}),`
     )
     .join('')}\n};
+const aliasToCanonical = ${JSON.stringify(Object.fromEntries(aliasPairs))};
+const moduleFlights = new Map();
 
-export const ANTD_ES_MODULE_DEFINITIONS = Object.freeze(
-  Object.keys(loaders).map((module_source) => ({ module_source, exports: ['*'] }))
-);
+export async function ${exportFnName}(moduleSource) {
+  const current = moduleFlights.get(moduleSource);
+  if (current) return current;
+  const canonical = aliasToCanonical[moduleSource] ?? moduleSource;
+  const load = canonicalLoaders[canonical];
+  if (!load) throw new Error('Ant Design ES module is not installed: ' + moduleSource + '.');
+  const flight = load().catch((error) => {
+    if (moduleFlights.get(moduleSource) === flight) moduleFlights.delete(moduleSource);
+    throw error;
+  });
+  moduleFlights.set(moduleSource, flight);
+  return flight;
+}
+`;
+}
 
-export const ANTD_ROOT_EXPORTS = Object.freeze(${JSON.stringify(rootExports)});
-
+function renderNativeAntDesignProductLoaders(
+  moduleSources: readonly AntDesignEsModuleSource[]
+): string {
+  const { productEntries } = partitionProductAndDeepSources(moduleSources);
+  return `${renderDeduplicatedLoaderMap(productEntries, 'loadProductAntDesignEsModule')}
 let rootModulePromise;
-
-export function loadAntDesignRootModule() {
+export function loadAntDesignRootModuleFromDomain() {
   rootModulePromise ??= import('antd').catch((error) => {
     rootModulePromise = undefined;
     throw error;
   });
   return rootModulePromise;
 }
+`;
+}
+
+function renderNativeAntDesignDeepLoaders(
+  moduleSources: readonly AntDesignEsModuleSource[]
+): string {
+  const { deepEntries } = partitionProductAndDeepSources(moduleSources);
+  return renderDeduplicatedLoaderMap(deepEntries, 'loadDeepAntDesignEsModule');
+}
+
+function renderNativeAntDesignEsModules(
+  moduleSources: readonly AntDesignEsModuleSource[]
+): string {
+  const rootExports = Object.keys(
+    antdRequire('antd') as Record<string, unknown>
+  ).sort((left, right) => left.localeCompare(right));
+  const { productEntries, deepEntries } =
+    partitionProductAndDeepSources(moduleSources);
+  const productExportMap = Object.fromEntries(
+    [...productExportPaths.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([exportName, exportPath]) => [exportName, `antd/es/${exportPath}`])
+  );
+  return `
+const productSources = new Set(${JSON.stringify(productEntries.map(({ moduleSource }) => moduleSource))});
+const deepSources = new Set(${JSON.stringify(deepEntries.map(({ moduleSource }) => moduleSource))});
+
+export const ANTD_PRODUCT_EXPORT_PATHS = Object.freeze(${JSON.stringify(productExportMap)});
+
+export const ANTD_ES_MODULE_DEFINITIONS = Object.freeze(
+  ${JSON.stringify(moduleSources.map(({ moduleSource }) => moduleSource))}.map((module_source) => ({ module_source, exports: ['*'] }))
+);
+
+export const ANTD_ROOT_EXPORTS = Object.freeze(${JSON.stringify(rootExports)});
+
+let productDomainPromise;
+function loadProductDomain() {
+  productDomainPromise ??= import(${JSON.stringify(NATIVE_ANTD_PRODUCT_LOADERS_VIRTUAL_ID)}).catch((error) => {
+    productDomainPromise = undefined;
+    throw error;
+  });
+  return productDomainPromise;
+}
+
+let deepDomainPromise;
+function loadDeepDomain() {
+  deepDomainPromise ??= import(${JSON.stringify(NATIVE_ANTD_ES_LOADERS_VIRTUAL_ID)}).catch((error) => {
+    deepDomainPromise = undefined;
+    throw error;
+  });
+  return deepDomainPromise;
+}
+
+export function prewarmAntDesignProductDomain() {
+  return loadProductDomain();
+}
+
+export async function loadAntDesignRootModule() {
+  const domain = await loadProductDomain();
+  return domain.loadAntDesignRootModuleFromDomain();
+}
 
 export async function loadAntDesignEsModule(moduleSource) {
-  const load = loaders[moduleSource];
-  if (!load) throw new Error('Ant Design ES module is not installed: ' + moduleSource + '.');
-  return load();
+  if (productSources.has(moduleSource)) {
+    const domain = await loadProductDomain();
+    return domain.loadProductAntDesignEsModule(moduleSource);
+  }
+  if (deepSources.has(moduleSource)) {
+    const domain = await loadDeepDomain();
+    return domain.loadDeepAntDesignEsModule(moduleSource);
+  }
+  throw new Error('Ant Design ES module is not installed: ' + moduleSource + '.');
 }
 `;
 }

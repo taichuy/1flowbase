@@ -34,6 +34,17 @@ pub async fn load_installations(
     node_id: &str,
     installations: &[domain::PluginInstallationRecord],
 ) -> Result<Vec<ManagedServiceRegistration>> {
+    // The input is the complete unpublished system generation. A version switch may
+    // still have a disabled target in storage; resolve against the projected generation,
+    // never the superseded provider. Runtime admission rechecks durable enabled facts.
+    let inventory = installations
+        .iter()
+        .cloned()
+        .map(|mut installation| {
+            installation.desired_state = domain::PluginDesiredState::ActiveRequested;
+            (installation.id, installation)
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut registrations = Vec::new();
     let mut owners = std::collections::BTreeSet::new();
     for installation in installations {
@@ -54,14 +65,34 @@ pub async fn load_installations(
         )?;
         let code = manifest.plugin_code()?.to_string();
         anyhow::ensure!(
-            code == installation.provider_code
-                && manifest.version == installation.plugin_version
-                && manifest.publisher_namespace == installation.organization
-                && manifest.shared_resource_contract.as_deref()
+            ((manifest.resource_exports.is_empty() && manifest.resource_imports.is_empty())
+                || serde_json::to_value(&manifest.data_models)?
                     == installation
                         .metadata_json
-                        .get("shared_resource_contract")
-                        .and_then(serde_json::Value::as_str),
+                        .get("data_models")
+                        .cloned()
+                        .unwrap_or(serde_json::json!([])))
+                && code == installation.provider_code
+                && manifest.version == installation.plugin_version
+                && manifest.publisher_namespace == installation.organization
+                && serde_json::to_value(&manifest.plugin_dependencies)?
+                    == installation
+                        .metadata_json
+                        .get("plugin_dependencies")
+                        .cloned()
+                        .unwrap_or(serde_json::json!([]))
+                && serde_json::to_value(&manifest.resource_imports)?
+                    == installation
+                        .metadata_json
+                        .get("resource_imports")
+                        .cloned()
+                        .unwrap_or(serde_json::json!([]))
+                && serde_json::to_value(&manifest.resource_exports)?
+                    == installation
+                        .metadata_json
+                        .get("resource_exports")
+                        .cloned()
+                        .unwrap_or(serde_json::json!([])),
             "managed service installed identity mismatch"
         );
         // System scope also hosts other governed contributions, including authentication.
@@ -77,23 +108,45 @@ pub async fn load_installations(
         for page in &manifest.settings_pages {
             plugin_framework::read_plugin_settings_page_source(root, page)?;
         }
-        let shared_resource = control_plane::plugin_management::shared_resource_registry()
-            .resolve(
-                manifest.shared_resource_contract.as_deref(),
-                &manifest.publisher_namespace,
-                &code,
-            )?
-            .cloned();
-        if let Some(contract) = &shared_resource {
-            contract.validate_schema(&manifest.data_models)?;
-            let service = manifest
-                .managed_service
-                .as_ref()
-                .context("shared_resource_managed_service_required")?;
-            contract.validate_record_resources(&service.record_resources)?;
+        let resource_imports =
+            control_plane::plugin_management::resolve_resource_imports(installation, &inventory)?;
+        let service = manifest
+            .managed_service
+            .as_ref()
+            .context("system service declaration missing")?;
+        for import in &resource_imports {
+            for binding in &import.record_resources {
+                anyhow::ensure!(
+                    service
+                        .record_resources
+                        .iter()
+                        .any(|r| r.resource_code == binding.resource_code
+                            && r.collection_code == binding.collection_code
+                            && r.id_field == binding.id_field),
+                    "plugin_resource_record_binding_mismatch"
+                );
+            }
+            for resource in &service.record_resources {
+                if import
+                    .collections
+                    .iter()
+                    .any(|c| c.collection_code == resource.collection_code)
+                {
+                    anyhow::ensure!(
+                        import
+                            .record_resources
+                            .iter()
+                            .any(|r| r.resource_code == resource.resource_code
+                                && r.collection_code == resource.collection_code
+                                && r.id_field == resource.id_field),
+                        "plugin_resource_record_binding_mismatch"
+                    );
+                }
+            }
         }
         registrations.push(ManagedServiceRegistration {
-            shared_resource,
+            root_workspace_only: service.root_workspace_only,
+            resource_imports,
             installation_id: installation.id,
             publisher_namespace: manifest.publisher_namespace,
             data_models: manifest.data_models,

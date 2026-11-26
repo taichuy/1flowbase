@@ -13,6 +13,7 @@
       "outputs": []
     },
     "test": {
+      "passThroughEnv": ["VITEST_MAX_WORKERS"],
       "dependsOn": ["^build"],
       "outputs": []
     }

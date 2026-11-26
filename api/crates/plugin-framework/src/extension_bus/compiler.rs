@@ -478,8 +478,14 @@ fn validate_permissions(
         &module.granted_permissions
     };
     for permission in &contribution.required_permissions {
+        // Callback authority is independent of the workspace policy decision contract.
+        // Only verified managed contributions with durable grants can use these services.
+        let policy_callback = point.point_id.as_str()
+            == extension_contracts::WORKSPACE_POLICY_POINT
+            && authority.is_some_and(|facts| facts.managed_modules.contains(&module.module_id))
+            && extension_contracts::is_workspace_policy_callback_permission(permission.as_str());
         if !granted_permissions.contains(permission)
-            || !point.allowed_permissions.contains(permission)
+            || (!point.allowed_permissions.contains(permission) && !policy_callback)
         {
             return Err(CompilationError::PermissionEscalation {
                 contribution_id: contribution.contribution_id.clone(),

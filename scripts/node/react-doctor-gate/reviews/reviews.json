@@ -4,30 +4,90 @@
     {
       "file": "web/app/package.json",
       "rule": "deslop/unused-dependency",
-      "sourceSha256": "3bc83ead8fab93d3c82a5fcac8854433be9b42626e4eee2c3afd047b46fa5e9d",
-      "reason": "web/app/package.json 的 is-mobile 是 Vite 开发态 interop cache 的直接依赖，由 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 字符串列表和 verifyCriticalInteropCache 消费，不要求业务 TSX 直接 import。scripts/node/dev-up/_tests/vite-config-text.test.js 的 DRS-001 critical CommonJS dependencies share the optimized ESM boundary 断言 is-mobile/react-is、optimize include/needsInterop 引用及 appPackage.dependencies 实际存在。删除会破坏该真实开发配置合同；此证据是现存静态 contract test，不冒充浏览器验证。 The package version bump and added pre-React auth alias assertions leave is-mobile and the DRS-001 optimization witness in place.",
-      "evidence": [{"file":"web/app/vite/dev-runtime.ts","sha256":"ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef"},{"file":"scripts/node/dev-up/_tests/vite-config-text.test.js","sha256":"c39c0167c843c117c0415e7a8eaeac4230396103a601555ed75bab12f24afe84"}]
+      "sourceSha256": "2026edb9794e9a9f7bf5994d4e0246e27e743447d1482c9bdcc37be6896b3daf",
+      "reason": "web/app/package.json 的 is-mobile 是 Vite 开发态 interop cache 的直接依赖，由 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 字符串列表和 verifyCriticalInteropCache 消费，不要求业务 TSX 直接 import。scripts/node/dev-up/_tests/vite-config-text.test.js 的 DRS-001 critical CommonJS dependencies share the optimized ESM boundary 断言 is-mobile/react-is、optimize include/needsInterop 引用及 appPackage.dependencies 实际存在。删除会破坏该真实开发配置合同；此证据是现存静态 contract test，不冒充浏览器验证。 The package version bump and added pre-React auth alias assertions leave is-mobile and the DRS-001 optimization witness in place. Reassessed: The test runner and compiler dependency revisions leave the development-only interop specifier in place. The Vite text contract still checks its declared dependency and optimized lookup.",
+      "evidence": [
+        {
+          "file": "web/app/vite/dev-runtime.ts",
+          "sha256": "6bca6f78ad4cc18ad6737c9617f25f05c8913cbb7a235410b769c02f30e916bf"
+        },
+        {
+          "file": "scripts/node/dev-up/_tests/vite-config-text.test.js",
+          "sha256": "31a14007b08e33237ff29360913f88c51904f43f16c4c5f3b9b9f65f5a937491"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.fixtures.tsx",
       "rule": "react-doctor/only-export-components",
       "sourceSha256": "902555bf6db70c16382030e134e818658c6b7587ebb069f5d8ebbdcea2bc45e2",
       "reason": "This Vitest-only fixture defines stable local harness components together with the mock controls and custom helpers used by the adjacent scenario modules. It is not reachable through the production app graph or used as a Fast Refresh boundary. Testing Library utilities, production components and other imported runtime symbols are now imported directly by the scenario modules; the remaining mixed exports are locally owned harness/mock bindings whose identities must be shared by these assertions. Unused fixture exports and the two broad unused-vars suppressions were removed. P21 reassessed 2026-11-17: The package source changes only version 0.6.2 to 0.6.4; is-mobile 5.0.0 remains directly declared and consumed by DEV_CRITICAL_INTEROP_SPECIFIERS and the existing DRS-001 config contract test. LLM fixture source only adds analysis to seed state; its stable harness/mock exports remain test-only. Design-control fixture consumers now select a specific catalog entry before the existing create assertions.",
-      "evidence": [{"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.fixtures.tsx","sha256":"902555bf6db70c16382030e134e818658c6b7587ebb069f5d8ebbdcea2bc45e2"},{"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.test.tsx","sha256":"dce1b689ddce9d9154f9449d39e266cf7970caf564dc5e68733ade67a9433844"},{"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-icons.test.tsx","sha256":"57301b9aa8076c90559f93d1025506df1a8c9555bd86b0f3434493cf21983240"},{"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-parameters.test.tsx","sha256":"12ebb01ebac08182ca972dcbb43f159a395ca53c743456341c2fbecb9997eefb"},{"file":"web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-panel.test.tsx","sha256":"de9638d83f258b63e0bf3577cc5a7d5f7022c87e3ca9f7bd8ac6cc2992d33e6d"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.fixtures.tsx",
+          "sha256": "902555bf6db70c16382030e134e818658c6b7587ebb069f5d8ebbdcea2bc45e2"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.test.tsx",
+          "sha256": "dce1b689ddce9d9154f9449d39e266cf7970caf564dc5e68733ade67a9433844"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-icons.test.tsx",
+          "sha256": "57301b9aa8076c90559f93d1025506df1a8c9555bd86b0f3434493cf21983240"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-parameters.test.tsx",
+          "sha256": "12ebb01ebac08182ca972dcbb43f159a395ca53c743456341c2fbecb9997eefb"
+        },
+        {
+          "file": "web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field-panel.test.tsx",
+          "sha256": "de9638d83f258b63e0bf3577cc5a7d5f7022c87e3ca9f7bd8ac6cc2992d33e6d"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx",
       "rule": "react-doctor/only-export-components",
       "sourceSha256": "ffbe86d3faa1db668453d63ed54b614c5ccd4af027e6d8b199e41d73f533ca41",
       "reason": "This Vitest-only fixture defines stable local harness components together with the mock controls and custom helpers used by the adjacent scenario modules. It is not reachable through the production app graph or used as a Fast Refresh boundary. Testing Library utilities, production components and other imported runtime symbols are now imported directly by the scenario modules; the remaining mixed exports are locally owned harness/mock bindings whose identities must be shared by these assertions. Unused fixture exports and the two broad unused-vars suppressions were removed. P21 reassessed 2026-11-17: The package source changes only version 0.6.2 to 0.6.4; is-mobile 5.0.0 remains directly declared and consumed by DEV_CRITICAL_INTEROP_SPECIFIERS and the existing DRS-001 config contract test. LLM fixture source only adds analysis to seed state; its stable harness/mock exports remain test-only. Design-control fixture consumers now select a specific catalog entry before the existing create assertions.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx","sha256":"ffbe86d3faa1db668453d63ed54b614c5ccd4af027e6d8b199e41d73f533ca41"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls-catalog-creation.test.tsx","sha256":"bf907278d21ba61ef562be33eb839e50868dd736f20a9c4097aa2a9ba25b48df"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.test.tsx","sha256":"6e347717fc50e4fd0480a5c01bafce5004eb789731afd2e32da129c0d59f9a78"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx",
+          "sha256": "ffbe86d3faa1db668453d63ed54b614c5ccd4af027e6d8b199e41d73f533ca41"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls-catalog-creation.test.tsx",
+          "sha256": "f9f3d4f8042af492759f24f8cab63a68cd3df81decdb42bd49ce8c005746a14d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls.test.tsx",
+          "sha256": "3efda40dd6f6fdeb9d6828591d2427970c8c6368924cb37b31b27c4d2ef46747"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/me/components/AuthenticationMethodsPanel.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
       "sourceSha256": "d57ab150ee89d01b743412791753783b46745c8a2d50e037b2f9f84645f783ec",
       "reason": "authorize navigates the entire document to the returned authorization_url; the current account cache is not rendered after navigation. switchAccount delegates to the inline callback supplied by MePage, which logs out and invokes endSession: ['me'] queries are removed, the auth store becomes anonymous and navigation returns to sign-in. In contrast, unlink remains on this page and explicitly invalidates authenticationMethodsQueryKey on success and error. Authentication-methods tests retain CSRF-bound unlink/refresh and explicit account-switch assertions. The callback owner supplies the session/cache transition the local useMutation heuristic cannot see.",
-      "evidence": [{"file":"web/app/src/features/me/components/AuthenticationMethodsPanel.tsx","sha256":"d57ab150ee89d01b743412791753783b46745c8a2d50e037b2f9f84645f783ec"},{"file":"web/app/src/features/me/pages/MePage.tsx","sha256":"914511083e753303e042bea773374346e835184a0af811c85dac0f65022ea511"},{"file":"web/app/src/features/me/_tests/authentication-methods.test.tsx","sha256":"9c6d6123ec5e3c23a07f9508f1a358affa992c031af08f92d4a8008706f9ccd1"},{"file":"web/app/src/features/me/_tests/me-page.test.tsx","sha256":"299309a1e6c82c6bfdf038dd2119845894ff7eb9b45194eb2d81e9b181d9875b"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/me/components/AuthenticationMethodsPanel.tsx",
+          "sha256": "d57ab150ee89d01b743412791753783b46745c8a2d50e037b2f9f84645f783ec"
+        },
+        {
+          "file": "web/app/src/features/me/pages/MePage.tsx",
+          "sha256": "805599ac28f779ca67d9af11c910fe3161b6c2a9d179c9cba4702ee775907ff9"
+        },
+        {
+          "file": "web/app/src/features/me/_tests/authentication-methods.test.tsx",
+          "sha256": "9c6d6123ec5e3c23a07f9508f1a358affa992c031af08f92d4a8008706f9ccd1"
+        },
+        {
+          "file": "web/app/src/features/me/_tests/me-page.test.tsx",
+          "sha256": "299309a1e6c82c6bfdf038dd2119845894ff7eb9b45194eb2d81e9b181d9875b"
+        }
+      ]
     }
   ]
 }

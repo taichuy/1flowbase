@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchVoid } from '../transport';
+import { apiFetch, apiFetchVoid } from '../transport/json';
 
 export interface ConsoleSessionActor {
   id: string;
@@ -28,6 +28,51 @@ export interface ConsoleSessionSnapshot {
   active_role_permissions: string[];
   csrf_token: string;
   cookie_name: string;
+}
+
+export interface ConsoleWorkspaceSummary {
+  id: string;
+  name: string;
+  logo_url: string | null;
+  introduction: string;
+  is_current: boolean;
+}
+
+export function fetchConsoleWorkspaces(
+  baseUrl?: string
+): Promise<ConsoleWorkspaceSummary[]> {
+  return apiFetch<ConsoleWorkspaceSummary[]>({
+    path: '/api/console/workspaces',
+    baseUrl
+  });
+}
+
+export function switchConsoleSessionWorkspace(
+  workspaceId: string,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleSessionSnapshot> {
+  return apiFetch<ConsoleSessionSnapshot>({
+    path: '/api/console/session/actions/switch-workspace',
+    method: 'POST',
+    body: { workspace_id: workspaceId },
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function redeemConsoleWorkspaceInvitation(
+  invitationToken: string,
+  csrfToken: string,
+  baseUrl?: string
+): Promise<ConsoleSessionSnapshot> {
+  return apiFetch<ConsoleSessionSnapshot>({
+    path: '/api/console/workspaces/invitations/redeem',
+    method: 'POST',
+    body: { invitation_token: invitationToken },
+    csrfToken,
+    baseUrl
+  });
 }
 
 export function switchConsoleSessionRole(

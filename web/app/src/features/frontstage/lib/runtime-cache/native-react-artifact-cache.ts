@@ -5,7 +5,7 @@ import {
   sha256Text,
   type NativeReactComponentArtifact,
   type NativeReactComponentArtifactIdentity
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 import { LRUCache } from 'lru-cache';
 import type { NativeReactArtifactStore } from './native-react-artifact-store';
@@ -359,12 +359,31 @@ export function createFrontstageNativeReactArtifactCacheIdentity({
   source: string;
   modulePolicySha256?: string;
 }): FrontstageNativeReactArtifactCacheIdentity {
+  return createFrontstageNativeReactArtifactCacheIdentityFromDigest({
+    actorId,
+    workspaceId,
+    sourceSha256: sha256Text(source),
+    modulePolicySha256
+  });
+}
+
+export function createFrontstageNativeReactArtifactCacheIdentityFromDigest({
+  actorId,
+  workspaceId,
+  sourceSha256,
+  modulePolicySha256 = sha256Text('[]')
+}: {
+  actorId: string;
+  workspaceId: string;
+  sourceSha256: string;
+  modulePolicySha256?: string;
+}): FrontstageNativeReactArtifactCacheIdentity {
   return {
     actorId,
     workspaceId,
     module_policy_sha256: modulePolicySha256,
     ...createNativeReactComponentArtifactIdentity({
-      sourceSha256: sha256Text(source)
+      sourceSha256: sourceSha256.trim().toLowerCase()
     })
   };
 }

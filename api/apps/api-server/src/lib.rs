@@ -146,6 +146,11 @@ pub(crate) async fn runtime_internal_tool_invoker_factory(
                 state.infrastructure.cache_store(),
                 state.provider_secret_master_key.clone(),
             )
+            .with_console_workspace_gate(
+                state.bootstrap_workspace_id,
+                state.console_operation_registry.inventory(),
+                &state.api_docs,
+            )
             .with_managed_services(state.console_surface_registry.managed_services().to_vec()),
             Arc::new(
                 routes::mcp_protocol::virtual_ui::McpInterfaceCatalogSnapshot::new(
@@ -366,6 +371,7 @@ pub fn app() -> Router {
 }
 
 pub fn app_with_state(state: Arc<ApiState>) -> Router {
+    network_egress_client::ensure_rustls_ring_provider();
     let owner = state.extension_boot_snapshot.as_ref().map(|snapshot| {
         snapshot
             .publish_complete_catalog(&state)
@@ -490,7 +496,11 @@ fn console_router_with_assembly(
     (router, mounted)
 }
 
-pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
+pub fn app_with_state_and_config(mut state: Arc<ApiState>, config: &ApiConfig) -> Router {
+    // Resolve the policy before publishing handlers that capture this state or its flag.
+    if state.local_terminal_disabled != config.local_terminal_disabled {
+        Arc::make_mut(&mut state).local_terminal_disabled = config.local_terminal_disabled;
+    }
     let interface_snapshot = state
         .extension_boot_snapshot
         .as_ref()
@@ -519,6 +529,37 @@ pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Ro
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn app_with_state_config_and_managed_assembly(
+    state: Arc<ApiState>,
+    config: &ApiConfig,
+    assembly: routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
+) -> Router {
+    use utoipa::OpenApi;
+    let owner = state.extension_boot_snapshot.as_ref().map(|snapshot| {
+        snapshot
+            .publish_complete_catalog_with_route_assembly(&state, assembly.clone())
+            .expect("complete interface catalog must publish before router construction")
+    });
+    let mut openapi_document = serde_json::to_value(openapi::ApiDoc::openapi())
+        .expect("static OpenAPI document must serialize");
+    managed_services::append_openapi(
+        &mut openapi_document,
+        state.console_surface_registry.managed_services(),
+    );
+    let router = app_with_state_and_config_and_console_route_assembly(
+        state,
+        config,
+        assembly,
+        &openapi_document,
+    );
+    match owner {
+        Some(owner) => generation_dispatch::serving_router(router, owner),
+        None => router,
+    }
+}
+
 fn app_with_state_and_config_and_console_route_assembly(
     state: Arc<ApiState>,
     config: &ApiConfig,
@@ -531,6 +572,9 @@ fn app_with_state_and_config_and_console_route_assembly(
     publish_external_endpoint_catalog(&state, &mounted, include_docs, openapi_document)
         .expect("external endpoint catalog must publish before router construction");
     router
+        .layer(axum_middleware::from_fn(
+            api_host_kernel::middleware::response_compression::compress_bounded_http_response,
+        ))
         .layer(cors_layer(config))
         .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }

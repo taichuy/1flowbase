@@ -76,29 +76,27 @@ env "${common_env[@]}" "$script_dir/apply-resource-limits.sh" \
 
 grep -Fxq 'ManagedOOMSwap=auto' "$systemd_dir/dev.slice"
 grep -Fxq 'ManagedOOMSwap=kill' "$systemd_dir/dev-rust.slice"
-grep -Fxq 'MemoryHigh=infinity' "$systemd_dir/dev.slice"
-grep -Fxq 'MemoryMax=infinity' "$systemd_dir/dev.slice"
-grep -Fxq 'MemorySwapMax=infinity' "$systemd_dir/dev.slice"
-grep -Fxq 'CPUQuota=' "$systemd_dir/dev.slice"
-grep -Fxq 'MemoryHigh=infinity' "$systemd_dir/dev-frontend.slice"
-grep -Fxq 'MemoryMax=infinity' "$systemd_dir/dev-frontend.slice"
+budget_max=$((8 * 1024 * 1024 * 1024))
+budget_high=$((8 * 1024 * 9 / 10 * 1024 * 1024))
+for unit in dev dev-frontend dev-rust; do
+  grep -Fxq "MemoryHigh=$budget_high" "$systemd_dir/$unit.slice"
+  grep -Fxq "MemoryMax=$budget_max" "$systemd_dir/$unit.slice"
+done
+grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/dev.slice"
+grep -Fxq 'CPUQuota=1200%' "$systemd_dir/dev.slice"
 grep -Fxq 'MemoryLow=2147483648' "$systemd_dir/session.slice.d/50-memory-protection.conf"
 grep -Fxq 'ManagedOOMMemoryPressure=auto' \
   "$systemd_dir/app.slice.d/50-memory-budget.conf"
-rust_high=$((11059 * 1024 * 1024))
-rust_max=$((12 * 1024 * 1024 * 1024))
-grep -Fxq "MemoryHigh=$rust_high" "$systemd_dir/dev-rust.slice"
-grep -Fxq "MemoryMax=$rust_max" "$systemd_dir/dev-rust.slice"
 grep -Fxq 'MemorySwapMax=1G' "$systemd_dir/dev-rust.slice"
-grep -Fxq 'CPUQuota=1000%' "$systemd_dir/dev-rust.slice"
+grep -Fxq 'CPUQuota=1200%' "$systemd_dir/dev-rust.slice"
 grep -Fxq 'IOWeight=10' "$systemd_dir/dev-rust.slice"
 grep -Fq 'default_cargo_job_limit=auto' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": "auto"' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": "auto"' "$repo_dir/.1flowbase.verify.local.json"
 test -x "$bin_dir/oneflowbase-resource-budget"
 test -r "$bin_dir/resource-budget-context.sh"
-grep -Fq 'set-property --runtime dev.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota=' "$systemctl_log"
-grep -Fq "set-property --runtime dev-rust.slice MemoryHigh=$rust_high MemoryMax=$rust_max MemorySwapMax=1G CPUQuota=1000% IOWeight=10" \
+grep -Fq "set-property --runtime dev.slice MemoryHigh=$budget_high MemoryMax=$budget_max MemorySwapMax=1G CPUQuota=1200%" "$systemctl_log"
+grep -Fq "set-property --runtime dev-rust.slice MemoryHigh=$budget_high MemoryMax=$budget_max MemorySwapMax=1G CPUQuota=1200% IOWeight=10" \
   "$systemctl_log"
 
 # Inspect the environment actually received by fake Cargo, including the
@@ -142,11 +140,11 @@ chmod +x "$bin_dir/dev-heavy-run"
 env PATH="$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$systemd_run_log" \
-  CARGO_BUILD_JOBS=12 \
-  "$bin_dir/cargo" test -j 12
-grep -Fxq 'CARGO_BUILD_JOBS=10' "$systemd_run_log"
+  CARGO_BUILD_JOBS=20 \
+  "$bin_dir/cargo" test -j 20
+grep -Fxq 'CARGO_BUILD_JOBS=12' "$systemd_run_log"
 grep -Fq -- '--slice=dev-rust.slice -- ' "$systemd_run_log"
-grep -Fq -- 'test -j 10' "$systemd_run_log"
+grep -Fq -- 'test -j 12' "$systemd_run_log"
 test ! -e "$systemd_run_log.gate"
 
 # An invocation can request a smaller budget without changing the memory scope.
@@ -164,9 +162,9 @@ grep -Fq -- '--property=CPUQuota=400%' "$test_root/warmup-run.log"
 env PATH="$mock_bin:$PATH" \
   RESOURCE_LIMITS_SYSTEMCTL_LOG="$systemctl_log" \
   RESOURCE_LIMITS_SYSTEMD_RUN_LOG="$test_root/default-run.log" \
-  CARGO_BUILD_JOBS=12 "$bin_dir/cargo" build -j12
-grep -Fxq 'CARGO_BUILD_JOBS=10' "$test_root/default-run.log"
-grep -Fq -- 'build -j10' "$test_root/default-run.log"
+  CARGO_BUILD_JOBS=20 "$bin_dir/cargo" build -j20
+grep -Fxq 'CARGO_BUILD_JOBS=12' "$test_root/default-run.log"
+grep -Fq -- 'build -j12' "$test_root/default-run.log"
 ! grep -Fq -- '--property=CPUQuota=' "$test_root/default-run.log"
 
 set +e
@@ -176,7 +174,7 @@ set -e
 test "$budget_status" -eq 2
 grep -Fq 'ONEFLOWBASE_CARGO_JOB_LIMIT must be a positive integer' "$test_root/invalid-budget.log"
 
-# pnpm enters the unlimited frontend sibling, outside the Rust budget.
+# pnpm enters the frontend sibling under the shared development budget.
 cat >"$mock_bin/pnpm" <<'EOF'
 #!/bin/sh
 exit 0
@@ -228,12 +226,12 @@ test "$cancel_status" -eq 143
 grep -Fq -- '--no-block stop rust-cargo-' "$systemctl_log"
 
 # Installation resolves systemd quotas; wrappers recalculate for every call.
-for cpu_case in 1:1 2:2 3:3 4:4 6:4 8:4 20:10; do
+for cpu_case in 1:1 2:1 3:1 4:2 6:3 8:4 20:12; do
   cpus=${cpu_case%:*}
   jobs=${cpu_case#*:}
   env "${common_env[@]}" RESOURCE_LIMITS_TEST_CPUS="$cpus" \
     "$script_dir/apply-resource-limits.sh" "$script_dir/resource-limits.conf"
-  grep -Fxq 'CPUQuota=' "$systemd_dir/dev.slice"
+  grep -Fxq "CPUQuota=${jobs}00%" "$systemd_dir/dev.slice"
   grep -Fxq "CPUQuota=${jobs}00%" "$systemd_dir/dev-rust.slice"
   grep -Fq '"cargoJobs": "auto"' "$repo_dir/.1flowbase.verify.local.json"
   env PATH="$mock_bin:$PATH" RESOURCE_LIMITS_TEST_CPUS="$cpus" \
@@ -244,12 +242,14 @@ for cpu_case in 1:1 2:2 3:3 4:4 6:4 8:4 20:10; do
   grep -Fq -- "build --jobs=$jobs" "$test_root/cpu-$cpus.log"
 done
 
-# Rust's memory floor may exceed half the machine, but never its effective capacity.
-for memory_case in 4:1:4 8:2:8 12:2:8 16:2:8 24:2:12 32:2:16; do
+# Aggregate and leaf memory budgets never exceed 8 GiB or effective capacity.
+for memory_case in 4:1:4 8:2:8 12:2:8 16:2:8 24:2:8 32:2:8; do
   IFS=: read -r capacity reserve budget <<<"$memory_case"
   env "${common_env[@]}" RESOURCE_LIMITS_TEST_MEMORY_GIB="$capacity" \
     "$script_dir/apply-resource-limits.sh" "$script_dir/resource-limits.conf"
-  grep -Fxq "MemoryMax=$((budget * 1024 * 1024 * 1024))" "$systemd_dir/dev-rust.slice"
+  for unit in dev dev-frontend dev-rust; do
+    grep -Fxq "MemoryMax=$((budget * 1024 * 1024 * 1024))" "$systemd_dir/$unit.slice"
+  done
   grep -Fxq "MemoryLow=$((reserve * 1024 * 1024 * 1024))" "$systemd_dir/session.slice.d/50-memory-protection.conf"
 done
 env "${common_env[@]}" RESOURCE_LIMITS_TEST_MEMORY_GIB=64 RESOURCE_LIMITS_TEST_CONSTRAINED_GIB=8 \

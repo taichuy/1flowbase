@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
+import { useFrontstageBlockTypeDeclarations } from '../../../frontstage/hooks/use-frontstage-block-type-declarations';
 import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
 import {
@@ -78,9 +79,19 @@ export function UiCodeTemplateStudio({
         entry.providerCode === draft.provider_code &&
         entry.contributionCode === draft.contribution_code
     ) ?? null;
+  const typeDeclarations = useFrontstageBlockTypeDeclarations({
+    workspaceId,
+    open,
+    catalogEntries: catalog.items
+  });
   const projection = useMemo(
-    () => createFrontstageJsxEditorProjection({ catalogEntry }),
-    [catalogEntry]
+    () =>
+      createFrontstageJsxEditorProjection({
+        catalogEntry,
+        catalogEntries: catalog.items,
+        typeDeclarations: typeDeclarations.items
+      }),
+    [catalog.items, catalogEntry, typeDeclarations.items]
   );
   const monacoExtraLibs = projection.monacoExtraLibs;
   const canSave =

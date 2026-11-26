@@ -1,0 +1,168 @@
+diff --git a/es/_util/TableMeasureRowContext.d.ts b/es/_util/TableMeasureRowContext.d.ts
+new file mode 100644
+index 0000000..f44345b
+--- /dev/null
++++ b/es/_util/TableMeasureRowContext.d.ts
+@@ -0,0 +1,3 @@
++import React from 'react';
++declare const TableMeasureRowContext: React.Context<boolean>;
++export default TableMeasureRowContext;
+diff --git a/es/_util/TableMeasureRowContext.js b/es/_util/TableMeasureRowContext.js
+new file mode 100644
+index 0000000..2b3f0c2
+--- /dev/null
++++ b/es/_util/TableMeasureRowContext.js
+@@ -0,0 +1,3 @@
++import React from 'react';
++const TableMeasureRowContext = /*#__PURE__*/React.createContext(false);
++export default TableMeasureRowContext;
+\ No newline at end of file
+diff --git a/es/table/InternalTable.js b/es/table/InternalTable.js
+index 9a0bccf..b93e644 100644
+--- a/es/table/InternalTable.js
++++ b/es/table/InternalTable.js
+@@ -34,7 +34,7 @@ import useTitleColumns from './hooks/useTitleColumns';
+ import RcTable from './RcTable';
+ import RcVirtualTable from './RcTable/VirtualTable';
+ import useStyle from './style';
+-import TableMeasureRowContext from './TableMeasureRowContext';
++import TableMeasureRowContext from '../_util/TableMeasureRowContext';
+ import { getPaginationSize, normalizePlacement } from './util';
+ const EMPTY_LIST = [];
+ const HeaderTableContext = /*#__PURE__*/React.createContext({});
+diff --git a/es/table/TableMeasureRowContext.d.ts b/es/table/TableMeasureRowContext.d.ts
+deleted file mode 100644
+index f44345b..0000000
+--- a/es/table/TableMeasureRowContext.d.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-import React from 'react';
+-declare const TableMeasureRowContext: React.Context<boolean>;
+-export default TableMeasureRowContext;
+diff --git a/es/table/TableMeasureRowContext.js b/es/table/TableMeasureRowContext.js
+deleted file mode 100644
+index 2b3f0c2..0000000
+--- a/es/table/TableMeasureRowContext.js
++++ /dev/null
+@@ -1,3 +0,0 @@
+-import React from 'react';
+-const TableMeasureRowContext = /*#__PURE__*/React.createContext(false);
+-export default TableMeasureRowContext;
+\ No newline at end of file
+diff --git a/es/table/hooks/useFilter/FilterDropdown.js b/es/table/hooks/useFilter/FilterDropdown.js
+index 7ca70c5..74ed9fb 100644
+--- a/es/table/hooks/useFilter/FilterDropdown.js
++++ b/es/table/hooks/useFilter/FilterDropdown.js
+@@ -17,7 +17,7 @@ import Menu from '../../../menu';
+ import { OverrideProvider } from '../../../menu/OverrideContext';
+ import Radio from '../../../radio';
+ import Tree from '../../../tree';
+-import TableMeasureRowContext from '../../TableMeasureRowContext';
++import TableMeasureRowContext from '../../../_util/TableMeasureRowContext';
+ import FilterSearch from './FilterSearch';
+ import FilterDropdownMenuWrapper from './FilterWrapper';
+ export function flattenKeys(filters) {
+diff --git a/es/tooltip/index.js b/es/tooltip/index.js
+index 64119b7..1134b56 100644
+--- a/es/tooltip/index.js
++++ b/es/tooltip/index.js
+@@ -15,7 +15,7 @@ import { devUseWarning } from '../_util/warning';
+ import ZIndexContext from '../_util/zindexContext';
+ import { useComponentConfig } from '../config-provider/context';
+ import useCSSVarCls from '../config-provider/hooks/useCSSVarCls';
+-import TableMeasureRowContext from '../table/TableMeasureRowContext';
++import TableMeasureRowContext from '../_util/TableMeasureRowContext';
+ import { useToken } from '../theme/internal';
+ import useMergedArrow from './hook/useMergedArrow';
+ import PurePanel from './PurePanel';
+diff --git a/lib/_util/TableMeasureRowContext.d.ts b/lib/_util/TableMeasureRowContext.d.ts
+new file mode 100644
+index 0000000..f44345b
+--- /dev/null
++++ b/lib/_util/TableMeasureRowContext.d.ts
+@@ -0,0 +1,3 @@
++import React from 'react';
++declare const TableMeasureRowContext: React.Context<boolean>;
++export default TableMeasureRowContext;
+diff --git a/lib/_util/TableMeasureRowContext.js b/lib/_util/TableMeasureRowContext.js
+new file mode 100644
+index 0000000..4f761b2
+--- /dev/null
++++ b/lib/_util/TableMeasureRowContext.js
+@@ -0,0 +1,10 @@
++"use strict";
++
++var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault").default;
++Object.defineProperty(exports, "__esModule", {
++  value: true
++});
++exports.default = void 0;
++var _react = _interopRequireDefault(require("react"));
++const TableMeasureRowContext = /*#__PURE__*/_react.default.createContext(false);
++var _default = exports.default = TableMeasureRowContext;
+\ No newline at end of file
+diff --git a/lib/table/InternalTable.js b/lib/table/InternalTable.js
+index 0f1186d..e16a90a 100644
+--- a/lib/table/InternalTable.js
++++ b/lib/table/InternalTable.js
+@@ -41,7 +41,7 @@ var _useTitleColumns = _interopRequireDefault(require("./hooks/useTitleColumns")
+ var _RcTable = _interopRequireDefault(require("./RcTable"));
+ var _VirtualTable = _interopRequireDefault(require("./RcTable/VirtualTable"));
+ var _style = _interopRequireDefault(require("./style"));
+-var _TableMeasureRowContext = _interopRequireDefault(require("./TableMeasureRowContext"));
++var _TableMeasureRowContext = _interopRequireDefault(require("../_util/TableMeasureRowContext"));
+ var _util2 = require("./util");
+ const EMPTY_LIST = [];
+ const HeaderTableContext = /*#__PURE__*/React.createContext({});
+diff --git a/lib/table/TableMeasureRowContext.d.ts b/lib/table/TableMeasureRowContext.d.ts
+deleted file mode 100644
+index f44345b..0000000
+--- a/lib/table/TableMeasureRowContext.d.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-import React from 'react';
+-declare const TableMeasureRowContext: React.Context<boolean>;
+-export default TableMeasureRowContext;
+diff --git a/lib/table/TableMeasureRowContext.js b/lib/table/TableMeasureRowContext.js
+deleted file mode 100644
+index 4f761b2..0000000
+--- a/lib/table/TableMeasureRowContext.js
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"use strict";
+-
+-var _interopRequireDefault = require("@babel/runtime/helpers/interopRequireDefault").default;
+-Object.defineProperty(exports, "__esModule", {
+-  value: true
+-});
+-exports.default = void 0;
+-var _react = _interopRequireDefault(require("react"));
+-const TableMeasureRowContext = /*#__PURE__*/_react.default.createContext(false);
+-var _default = exports.default = TableMeasureRowContext;
+\ No newline at end of file
+diff --git a/lib/table/hooks/useFilter/FilterDropdown.js b/lib/table/hooks/useFilter/FilterDropdown.js
+index c192bc5..224f8d5 100644
+--- a/lib/table/hooks/useFilter/FilterDropdown.js
++++ b/lib/table/hooks/useFilter/FilterDropdown.js
+@@ -25,7 +25,7 @@ var _menu = _interopRequireDefault(require("../../../menu"));
+ var _OverrideContext = require("../../../menu/OverrideContext");
+ var _radio = _interopRequireDefault(require("../../../radio"));
+ var _tree = _interopRequireDefault(require("../../../tree"));
+-var _TableMeasureRowContext = _interopRequireDefault(require("../../TableMeasureRowContext"));
++var _TableMeasureRowContext = _interopRequireDefault(require("../../../_util/TableMeasureRowContext"));
+ var _FilterSearch = _interopRequireDefault(require("./FilterSearch"));
+ var _FilterWrapper = _interopRequireDefault(require("./FilterWrapper"));
+ function flattenKeys(filters) {
+diff --git a/lib/tooltip/index.js b/lib/tooltip/index.js
+index cef2f46..a8fa6b3 100644
+--- a/lib/tooltip/index.js
++++ b/lib/tooltip/index.js
+@@ -22,7 +22,7 @@ var _warning = require("../_util/warning");
+ var _zindexContext = _interopRequireDefault(require("../_util/zindexContext"));
+ var _context = require("../config-provider/context");
+ var _useCSSVarCls = _interopRequireDefault(require("../config-provider/hooks/useCSSVarCls"));
+-var _TableMeasureRowContext = _interopRequireDefault(require("../table/TableMeasureRowContext"));
++var _TableMeasureRowContext = _interopRequireDefault(require("../_util/TableMeasureRowContext"));
+ var _internal = require("../theme/internal");
+ var _useMergedArrow = _interopRequireDefault(require("./hook/useMergedArrow"));
+ var _PurePanel = _interopRequireDefault(require("./PurePanel"));

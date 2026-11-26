@@ -23,3 +23,18 @@ mod _tests;
 
 mod resource_import;
 pub use resource_import::*;
+
+async fn visible_file_table(
+    repository: &impl crate::ports::FileManagementRepository,
+    file_table_id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
+) -> anyhow::Result<domain::FileTableRecord> {
+    repository
+        .get_file_table(file_table_id)
+        .await?
+        .filter(|table| match table.scope_kind {
+            domain::FileTableScopeKind::System => table.scope_id == domain::SYSTEM_SCOPE_ID,
+            domain::FileTableScopeKind::Workspace => table.scope_id == workspace_id,
+        })
+        .ok_or_else(|| crate::errors::ControlPlaneError::NotFound("file_table").into())
+}

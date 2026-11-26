@@ -78,6 +78,7 @@ test('full CI checks types through Clippy while the lighter PR lane retains carg
   const scopes = [...matrix.matchAll(/- (repo-backend-\S+)/gu)].map((match) => match[1]);
   assert.deepEqual(scopes, REPO_BACKEND_COMPONENT_SCOPES);
   assert.ok(DEFAULT_AGGREGATE_SCOPES.every((scope) => !scope.startsWith('repo-backend-check-')));
+  const { buildPrVerifyPlan } = require('../../gate-router/core.js');
   for (const shard of BACKEND_SHARDS) {
     const options = { repoRoot, cargoJobs: 2, cargoTestThreads: 1, shard: shard.key };
     const [check] = buildBackendCommands({ ...options, target: 'check' });
@@ -85,7 +86,7 @@ test('full CI checks types through Clippy while the lighter PR lane retains carg
     assert.deepEqual(check.args.slice(1), clippy.args.slice(1, -3).filter((arg) => arg !== '--all-targets'));
     assert.deepEqual(check.env, clippy.env);
     assert.ok(DEFAULT_AGGREGATE_SCOPES.includes(`repo-backend-clippy-${shard.key}`));
-    assert.ok(readVerifyWorkflow().includes(`- repo-backend-check-${shard.key}`));
+    assert.ok(buildPrVerifyPlan().backendScopes.includes(`repo-backend-check-${shard.key}`));
     assert.deepEqual(buildGateCommand({ repoRoot, scope: `repo-backend-check-${shard.key}` }).args.slice(-2), ['check', shard.key]);
   }
 });
@@ -227,21 +228,17 @@ test("Delivery 1898 provider conformance pins every reusable action", () => {
 test("verify workflow runs lightweight merge gates before one aggregate report", () => {
   const workflow = readVerifyWorkflow();
 
-  assert.match(workflow, /repo-tooling-gate:\n\s+runs-on: ubuntu-latest/u);
-  assert.match(
-    workflow,
-    /repo-tooling-gate:[\s\S]*?fetch-depth: 0/u,
-  );
-  assert.match(workflow, /repo-frontend-gate:\n\s+runs-on: ubuntu-latest/u);
-  assert.match(workflow, /repo-backend-gate:\n\s+runs-on: ubuntu-latest/u);
+  assert.match(workflow, /plan-verify-scopes:\n\s+runs-on: ubuntu-latest/u);
+  assert.match(workflow, /gate-router --pr-plan-json --base-ref/u);
+  for (const [job, condition] of [
+    ['repo-tooling-gate', "tooling == 'true'"],
+    ['repo-frontend-gate', "frontend == 'true'"],
+    ['repo-backend-gate', "backend != '[]'"],
+  ]) {
+    assert.ok(workflow.includes(`  ${job}:\n    needs: plan-verify-scopes\n    if: needs.plan-verify-scopes.outputs.${condition}`));
+  }
   assert.match(workflow, /fail-fast: false/u);
-  assert.match(workflow, /- repo-backend-static/u);
-  assert.match(workflow, /- repo-backend-fmt/u);
-  assert.match(workflow, /- repo-backend-image-llm-vision/u);
-  assert.match(workflow, /- repo-backend-official-i18n-seed/u);
-  assert.match(workflow, /- repo-backend-check-core-libs/u);
-  assert.match(workflow, /- repo-backend-check-runtime-storage/u);
-  assert.match(workflow, /- repo-backend-check-apps/u);
+  assert.match(workflow, /scope: \$\{\{ fromJSON\(needs.plan-verify-scopes.outputs.backend\) \}\}/u);
   assert.doesNotMatch(workflow, /- repo-backend-clippy-core-libs/u);
   assert.doesNotMatch(workflow, /- repo-backend-test-control-plane/u);
   assert.doesNotMatch(workflow, /- repo-backend-test-api-server/u);
@@ -255,7 +252,7 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
   );
   assert.match(
     workflow,
-    /foundation-contract-gate:\n\s+uses: \.\/\.github\/workflows\/foundation-contracts\.yml/u,
+    /foundation-contract-gate:\n\s+needs: plan-verify-scopes\n\s+uses: \.\/\.github\/workflows\/foundation-contracts\.yml/u,
   );
   assert.match(workflow, /scope: repo-tooling/u);
   assert.match(workflow, /scope: repo-frontend-pr/u);
@@ -267,7 +264,8 @@ test("verify workflow runs lightweight merge gates before one aggregate report",
   assert.match(workflow, /name: test-governance-repo-tooling/u);
   assert.match(workflow, /name: test-governance-repo-frontend-pr/u);
   assert.match(workflow, /name: test-governance-\$\{\{ matrix\.scope \}\}/u);
-  assert.match(workflow, /INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,foundation-contracts/u);
+  assert.match(workflow, /INPUT_EXPECTED_SCOPES: \$\{\{ needs.plan-verify-scopes.outputs.expected_scopes \}\}/u);
+  assert.match(workflow, /github-quality-gate-aggregate\.js\n +if: needs\.plan-verify-scopes\.result == 'success'.*',foundation-contracts,'/u);
   assert.match(
     workflow,
     /INPUT_PUBLISH_PR_COMMENT: \$\{\{ github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository \}\}/u,
@@ -491,6 +489,16 @@ test("API coverage sharding is enforced after structural equivalence is proven",
   const workflow = readQualityGateWorkflow();
 
   assert.doesNotMatch(workflow, /coverage-backend-api-server-sharded:\n[\s\S]*?continue-on-error: true/u);
+  const producer = workflow.split('  coverage-backend-api-server-build:')[1].split('  coverage-backend-api-server-sharded:')[0];
+  const shards = workflow.split('  coverage-backend-api-server-sharded:')[1].split('  coverage-backend-api-server-sharded-merge:')[0];
+  const merge = workflow.split('  coverage-backend-api-server-sharded-merge:')[1].split('  container-images-gate:')[0];
+  assert.match(producer, /coverage-shadow\/cli\.js build-archive api-server/u);
+  assert.match(producer, /build-sdk-worker-fixtures/u);
+  for (const consumer of [shards, merge]) {
+    assert.match(consumer, /name: coverage-shadow-api-server-build-\$\{\{ env.QUALITY_GATE_TARGET_SHA \}\}/u);
+    assert.match(consumer, /ONEFLOWBASE_COVERAGE_ARCHIVE_DIR:/u);
+    assert.doesNotMatch(consumer, /build-sdk-worker-fixtures|actions\/cache|cargo (?:build|test)/u);
+  }
   assert.match(workflow, /shard: \[1, 2, 3, 4\]/u);
   assert.doesNotMatch(workflow, /coverage-backend-api-server-sharded-merge:\n[\s\S]*?continue-on-error: true/u);
   const coverageMatrix = workflow.match(/coverage-backend-gate:[\s\S]*?steps:/u)?.[0] || '';
@@ -792,7 +800,7 @@ test("backend fixture callers keep their scope and target while sharing one SDK 
   ]) {
     const step = callers[index];
     const jobTail = workflow.slice(matches[index].index).split(/\n  [\w-]+:\n/u)[0];
-    assert.ok(jobTail.includes("      - uses: ./.github/actions/quality-gate\n"), "fixture action precedes its job gate");
+    assert.ok(jobTail.includes(index === 4 ? "coverage-shadow/cli.js build-archive api-server" : "      - uses: ./.github/actions/quality-gate\n"), "fixture action precedes its archive or job gate");
     assert.match(step, /uses: \.\/\.github\/actions\/build-sdk-worker-fixtures/u);
     assert.ok(step.includes("CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/" + target));
     if (scope) assert.ok(step.includes("if: ${{ " + condition + " }}"));
@@ -1067,7 +1075,7 @@ test('manual provider conformance shares one source candidate and participates i
   assert.match(provider, /name: test-governance-provider-conformance/u);
   const aggregate = workflow.slice(workflow.indexOf('  verify:'));
   assert.match(aggregate, /needs:[\s\S]*?- provider-conformance/u);
-  assert.ok(aggregate.includes("foundation-contracts${{ github.event_name == 'workflow_dispatch' && ',provider-conformance' || '' }}"));
+  assert.ok(aggregate.includes("needs.plan-verify-scopes.outputs.expected_scopes }}${{ github.event_name == 'workflow_dispatch' && ',provider-conformance' || '' }}"));
   for (const job of ['repo-tooling-gate', 'repo-frontend-gate', 'repo-backend-gate', 'verify']) {
     const block = workflow.slice(workflow.indexOf(`  ${job}:`)).split(/\n  [a-z][a-z-]+:/u)[0];
     assert.ok(block.includes(`ref: ${candidate}`), job);

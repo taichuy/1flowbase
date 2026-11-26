@@ -365,11 +365,23 @@ fn protocol_layers_use_explicit_adapters_without_sql_or_runtime_host() {
     let mut violations = Vec::new();
     for directory in [
         api.join("apps/api-server/src/routes"),
-        api.join("apps/api-server/src/controllers"),
+        api.join("crates/api/public-gateway/src"),
+        api.join("crates/api/applications/src"),
+        api.join("crates/api/mcp/src"),
+        api.join("crates/api/plugins-models/src"),
+        api.join("crates/api/console-interaction/src"),
+        api.join("crates/api/console-settings/src"),
     ] {
-        if directory.exists() {
-            violations.extend(source_pattern_violations(&directory, &patterns));
-        }
+        assert!(
+            directory.exists(),
+            "protocol boundary directory must exist: {}",
+            directory.display()
+        );
+        violations.extend(source_pattern_violations(&directory, &patterns));
+    }
+    let legacy_controllers = api.join("apps/api-server/src/controllers");
+    if legacy_controllers.exists() {
+        violations.extend(source_pattern_violations(&legacy_controllers, &patterns));
     }
     assert_eq!(violations, Vec::<String>::new());
 }

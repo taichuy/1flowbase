@@ -78,24 +78,33 @@ pub fn test_config() -> ApiConfig {
 }
 
 async fn isolated_database(base_url: &str) -> PostgresTestSchema {
-    PostgresTestSchema::create(base_url).await.unwrap()
+    PostgresTestSchema::create_migrated(base_url).await.unwrap()
 }
 
-async fn isolated_postgres_toolchain(
-    store: &storage_durable_postgres::MainDurableStore,
-) -> (
-    storage_durable_postgres::PostgreSqlToolchain,
-    std::path::PathBuf,
-) {
-    let server_version: String = sqlx::query_scalar("show server_version_num")
-        .fetch_one(store.pool())
-        .await
-        .expect("test PostgreSQL server version should be readable");
-    let server_major = server_version
-        .parse::<u32>()
-        .expect("test PostgreSQL server version should be numeric")
-        / 10_000;
-    let root = std::env::temp_dir().join(format!("api-postgres-toolchain-{}", Uuid::now_v7()));
+fn bootstrap_root_password_hash(password: &str) -> String {
+    static DEFAULT_ROOT_PASSWORD_HASH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    if password == "change-me" {
+        return DEFAULT_ROOT_PASSWORD_HASH
+            .get_or_init(|| {
+                Argon2::default()
+                    .hash_password(b"change-me")
+                    .expect("default test root password should hash")
+                    .to_string()
+            })
+            .clone();
+    }
+    Argon2::default()
+        .hash_password(password.as_bytes())
+        .expect("test root password should hash")
+        .to_string()
+}
+
+fn write_dummy_postgres_toolchain_dir(server_major: u32) -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!(
+        "api-postgres-toolchain-shared-{}-{}",
+        std::process::id(),
+        Uuid::now_v7()
+    ));
     std::fs::create_dir_all(&root).expect("test PostgreSQL toolchain root should be created");
     let script = format!(
         "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"PostgreSQL tool {server_major}.0\"\n  exit 0\nfi\nif [ \"$1\" = \"--list\" ]; then\n  cat >/dev/null\n  exit 0\nfi\ndd if=/dev/zero bs=65536 count=20 2>/dev/null\n"
@@ -115,7 +124,7 @@ async fn isolated_postgres_toolchain(
                 .metadata()
                 .expect("test PostgreSQL tool metadata should be readable")
                 .permissions();
-            permissions.set_mode(0o700);
+            permissions.set_mode(0o500);
             writer
                 .set_permissions(permissions)
                 .expect("test PostgreSQL tool should be executable");
@@ -132,10 +141,37 @@ async fn isolated_postgres_toolchain(
             .expect("inherited test tool writers should close");
         drop(reader);
     }
-    let toolchain = storage_durable_postgres::PostgreSqlToolchain::discover(&pg_dump, &pg_restore)
+    root
+}
+
+async fn isolated_postgres_toolchain(
+    store: &storage_durable_postgres::MainDurableStore,
+) -> storage_durable_postgres::PostgreSqlToolchain {
+    static SHARED_TOOLCHAIN_ROOT: std::sync::OnceLock<std::path::PathBuf> =
+        std::sync::OnceLock::new();
+    static SHARED_TOOLCHAIN: tokio::sync::OnceCell<storage_durable_postgres::PostgreSqlToolchain> =
+        tokio::sync::OnceCell::const_new();
+
+    SHARED_TOOLCHAIN
+        .get_or_init(|| async {
+            let server_version: String = sqlx::query_scalar("show server_version_num")
+                .fetch_one(store.pool())
+                .await
+                .expect("test PostgreSQL server version should be readable");
+            let server_major = server_version
+                .parse::<u32>()
+                .expect("test PostgreSQL server version should be numeric")
+                / 10_000;
+            let root = SHARED_TOOLCHAIN_ROOT
+                .get_or_init(|| write_dummy_postgres_toolchain_dir(server_major));
+            let pg_dump = root.join("pg_dump");
+            let pg_restore = root.join("pg_restore");
+            storage_durable_postgres::PostgreSqlToolchain::discover(&pg_dump, &pg_restore)
+                .await
+                .expect("isolated PostgreSQL toolchain should be discoverable")
+        })
         .await
-        .expect("isolated PostgreSQL toolchain should be discoverable");
-    (toolchain, root)
+        .clone()
 }
 
 async fn test_state_with_runtime_profile_state(
@@ -184,13 +220,10 @@ async fn test_state_with_runtime_profile_state(
     .await
     .unwrap();
     let store = durable.store.clone();
-    let (postgres_toolchain, postgres_toolchain_root) = isolated_postgres_toolchain(&store).await;
+    let postgres_toolchain = isolated_postgres_toolchain(&store).await;
     let file_storage_registry = Arc::new(storage_object::builtin_driver_registry());
 
-    let root_password_hash = Argon2::default()
-        .hash_password(config.bootstrap_root_password.as_bytes())
-        .unwrap()
-        .to_string();
+    let root_password_hash = bootstrap_root_password_hash(&config.bootstrap_root_password);
 
     let bootstrap = BootstrapService::new(store.clone())
         .run(&BootstrapConfig {
@@ -244,7 +277,6 @@ async fn test_state_with_runtime_profile_state(
             std::path::PathBuf::from(&config.provider_install_root),
             std::path::PathBuf::from(&config.mcp_template_library_root),
             std::path::PathBuf::from(&config.system_backup_repository_root),
-            postgres_toolchain_root,
         ],
     ));
     #[cfg(test)]
@@ -378,6 +410,7 @@ async fn test_state_with_runtime_profile_state(
             crate::interaction_assembly::RuntimeEventSseAdapter,
         ),
         native_resource_import: Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
+        local_terminal_disabled: config.local_terminal_disabled,
         terminal_jobs: Default::default(),
         process_started_at,
         communication_activity: Default::default(),
@@ -473,6 +506,73 @@ pub async fn test_app_with_official_extension_source(
     Arc::get_mut(&mut state)
         .expect("test API state should be uniquely owned before router construction")
         .official_extension_catalog_source = source;
+    crate::app_with_state_and_config(state, &default_test_config())
+}
+
+pub async fn test_app_with_commercial_branding_fixture(
+    provider_install_root: String,
+    active_version: Option<&str>,
+) -> Router {
+    let (mut state, _) = test_api_state_with_database_url().await;
+    let raw = Arc::get_mut(&mut state)
+        .expect("test API state should be uniquely owned before router construction");
+    raw.provider_install_root = provider_install_root;
+    if let Some(version) = active_version {
+        let active_service = crate::managed_services::ManagedServiceRegistration {
+            root_workspace_only: true,
+            resource_imports: Vec::new(),
+            installation_id: Uuid::now_v7(),
+            publisher_namespace: "taichuy".into(),
+            data_models: Vec::new(),
+            plugin_code: "commercial-license".into(),
+            plugin_version: version.into(),
+            display_name: "商业授权".into(),
+            description: "Commercial white-label configuration".into(),
+            pages: Vec::new(),
+            declaration: serde_json::from_value(serde_json::json!({
+                "root_workspace_only": true,
+                "scope": "system",
+                "feature": {
+                    "feature_id": "commercial-license.management",
+                    "label": "商业授权",
+                    "description": "Manage commercial white-label settings",
+                    "route_id": "commercial-license",
+                    "path": "/settings/commercial-license"
+                },
+                "operations": [{
+                    "interface_id": "commercial-license.config.get",
+                    "contribution_id": "commercial-license.config.get",
+                    "method": "GET",
+                    "path": "/api/console/managed-services/commercial-license/config",
+                    "summary": "Get commercial branding config",
+                    "description": "Read static commercial branding config.",
+                    "input_schema": {"type":"object","properties":{"path":{"type":"object"},"query":{"type":"object"},"body":{"type":["object","null"]}}},
+                    "output_schema": {"type":"object"}
+                }]
+            }))
+            .expect("valid commercial-license fixture declaration"),
+        };
+        let interface_snapshot = raw
+            .extension_boot_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.interface_registry())
+            .map(|registry| registry.snapshot());
+        let boot_plan = crate::app_state::compile_console_boot_plan_with_managed_services(
+            Vec::new(),
+            interface_snapshot.as_deref(),
+            crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+            vec![active_service],
+        )
+        .expect("commercial-license boot plan must compile");
+        raw.settings_feature_registry = boot_plan.settings_feature_registry;
+        raw.console_operation_registry = boot_plan.console_operation_registry;
+        raw.console_surface_registry = boot_plan.console_surface_registry;
+        return crate::app_with_state_config_and_managed_assembly(
+            state,
+            &default_test_config(),
+            boot_plan.route_assembly,
+        );
+    }
     crate::app_with_state_and_config(state, &default_test_config())
 }
 

@@ -100,6 +100,8 @@ pub struct SettingsApiRoute {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SettingsFeatureRegistration {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub root_workspace_only: bool,
     pub feature_id: String,
     pub owner: SettingsFeatureOwner,
     pub lifecycle: SettingsFeatureLifecycle,
@@ -147,6 +149,7 @@ pub enum AccessRule {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SettingsFeatureInventoryEntry {
+    pub root_workspace_only: bool,
     pub feature_id: String,
     pub permission_code: String,
     pub owner: SettingsFeatureOwner,
@@ -210,6 +213,7 @@ impl SettingsFeatureRegistry {
         let features = features
             .into_values()
             .map(|registration| SettingsFeatureInventoryEntry {
+                root_workspace_only: registration.root_workspace_only,
                 permission_code: registration.permission_code(),
                 feature_id: registration.feature_id,
                 owner: registration.owner,

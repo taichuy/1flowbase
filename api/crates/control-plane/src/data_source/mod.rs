@@ -897,10 +897,7 @@ async fn load_actor_context_for_user<R>(
 where
     R: AuthRepository,
 {
-    let scope = repository.default_scope_for_user(actor_user_id).await?;
-    repository
-        .load_actor_context(actor_user_id, scope.tenant_id, scope.workspace_id, None)
-        .await
+    AuthRepository::load_actor_context_for_user(repository, actor_user_id).await
 }
 
 fn ensure_workspace_matches(actor: &domain::ActorContext, workspace_id: Uuid) -> Result<()> {

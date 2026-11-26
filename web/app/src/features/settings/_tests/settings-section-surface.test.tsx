@@ -98,6 +98,7 @@ vi.mock('../api/extensions/plugins', () => pluginsApi);
 vi.mock('../api/file-management', () => fileManagementApi);
 vi.mock('../api/console-navigation', () => consoleNavigationApi);
 vi.mock('../../auth/api/session', () => authApi);
+vi.mock('../../auth/api/session-actions', () => authApi);
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () => <div data-testid="settings-page-scalar">Scalar</div>
 }));

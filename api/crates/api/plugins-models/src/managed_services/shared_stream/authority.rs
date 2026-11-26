@@ -40,6 +40,15 @@ pub(super) async fn authorize(
     payload: &Value,
 ) -> Result<UserPrincipal, ApiError> {
     let principal = live_principal(&source.state, principal).await?;
+    authorize_current(source, &principal, payload).await?;
+    Ok(principal)
+}
+
+async fn authorize_current(
+    source: &ManagedSource,
+    principal: &UserPrincipal,
+    payload: &Value,
+) -> Result<(), ApiError> {
     if !super::super::record_acl::operation_allowed(
         &source.state,
         principal.actor(),
@@ -57,7 +66,7 @@ pub(super) async fn authorize(
         payload,
     )
     .await?;
-    Ok(principal)
+    Ok(())
 }
 
 /// Rechecks at the socket projection boundary as well as at broker fanout, so a
@@ -125,7 +134,7 @@ pub(in crate::managed_services) async fn authorize_frame(
         &source_payload,
     )?;
     Ok(
-        authorize(&source, &context.interface_principal(), &source_payload)
+        authorize_current(&source, &context.interface_principal(), &source_payload)
             .await
             .is_ok(),
     )

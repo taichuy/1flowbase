@@ -3,8 +3,11 @@ import * as apiClient from '@1flowbase/api-client';
 
 import {
   fetchFrontstageBlockCatalog,
+  fetchFrontstageBlockTypeDeclarations,
   frontstageBlockCatalogQueryKey,
-  frontstageBlockCatalogQueryKeyPrefix
+  frontstageBlockCatalogQueryKeyPrefix,
+  frontstageBlockTypeDeclarationsQueryKey,
+  frontstageBlockTypeDeclarationsQueryKeyPrefix
 } from '../api/block-catalog';
 import {
   fetchFrontstagePageContent,
@@ -415,6 +418,27 @@ describe('frontstage block catalog feature api', () => {
       expect(listSpy).toHaveBeenLastCalledWith(expect.any(String), undefined);
     } finally {
       listSpy.mockRestore();
+    }
+
+    expect(frontstageBlockTypeDeclarationsQueryKeyPrefix).toEqual([
+      'frontstage',
+      'block-type-declarations'
+    ]);
+    expect(frontstageBlockTypeDeclarationsQueryKey(context)).toEqual([
+      'frontstage',
+      'block-type-declarations',
+      context.workspaceId,
+      context.actorId,
+      context.permissionFingerprint
+    ]);
+    const declarationsSpy = vi
+      .spyOn(apiClient, 'listConsoleFrontendBlockTypeDeclarations')
+      .mockResolvedValue([]);
+    try {
+      await expect(fetchFrontstageBlockTypeDeclarations()).resolves.toEqual([]);
+      expect(declarationsSpy).toHaveBeenCalledWith(expect.any(String));
+    } finally {
+      declarationsSpy.mockRestore();
     }
   });
 

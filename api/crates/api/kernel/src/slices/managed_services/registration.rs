@@ -3,7 +3,8 @@ use plugin_framework::{ManagedServiceManifest, PluginSettingsPageManifest};
 
 #[derive(Debug, Clone)]
 pub struct ManagedServiceRegistration {
-    pub shared_resource: Option<control_plane::plugin_management::SharedResourceContract>,
+    pub root_workspace_only: bool,
+    pub resource_imports: Vec<control_plane::plugin_management::ResolvedPluginResource>,
     pub installation_id: uuid::Uuid,
     pub publisher_namespace: String,
     pub data_models: Vec<extension_contracts::PluginDataModelContribution>,
@@ -15,21 +16,41 @@ pub struct ManagedServiceRegistration {
     pub pages: Vec<PluginSettingsPageManifest>,
 }
 impl ManagedServiceRegistration {
-    pub fn resource_owner(&self) -> (&str, &str, &str) {
-        self.shared_resource
-            .as_ref()
-            .map(|c| {
-                (
-                    c.owner.publisher_namespace.as_str(),
-                    c.owner.plugin_code.as_str(),
-                    c.schema_version.as_str(),
-                )
+    pub fn resource_owner(
+        &self,
+        resource: &plugin_framework::ManagedServiceRecordResource,
+    ) -> (&str, &str, &str) {
+        self.resource_imports
+            .iter()
+            .find(|import| {
+                import.record_resources.iter().any(|r| {
+                    r.resource_code == resource.resource_code
+                        && r.collection_code == resource.collection_code
+                        && r.id_field == resource.id_field
+                })
             })
+            .map(|import| import.owner())
             .unwrap_or((
                 &self.publisher_namespace,
                 &self.plugin_code,
                 &self.plugin_version,
             ))
+    }
+    pub fn resource_data_models(
+        &self,
+        resource: &plugin_framework::ManagedServiceRecordResource,
+    ) -> &[extension_contracts::PluginDataModelContribution] {
+        self.resource_imports
+            .iter()
+            .find(|import| {
+                import.record_resources.iter().any(|r| {
+                    r.resource_code == resource.resource_code
+                        && r.collection_code == resource.collection_code
+                        && r.id_field == resource.id_field
+                })
+            })
+            .map(|import| import.data_models.as_slice())
+            .unwrap_or(&self.data_models)
     }
 
     pub fn owner(&self) -> SettingsFeatureOwner {
@@ -45,6 +66,7 @@ impl ManagedServiceRegistration {
         }
         let f = self.declaration.feature.as_ref()?;
         Some(SettingsFeatureRegistration {
+            root_workspace_only: self.root_workspace_only,
             feature_id: f.feature_id.clone(),
             owner: self.owner(),
             lifecycle: SettingsFeatureLifecycle::Active,
@@ -121,6 +143,7 @@ impl ManagedServiceRegistration {
             .iter()
             .enumerate()
             .map(|(index, op)| ConsoleOperationRegistration {
+                root_workspace_only: self.root_workspace_only,
                 operation_id: op.interface_id.clone(),
                 authorization_profile_id: Some(op.interface_id.clone()),
                 owner: self.owner(),

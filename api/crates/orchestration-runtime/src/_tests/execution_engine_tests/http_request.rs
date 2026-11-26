@@ -433,6 +433,7 @@ async fn root_1805_http_node_uses_host_created_proxy_client_for_positive_traffic
         r#"{"via":"fake-proxy"}"#,
     )])
     .await;
+    crate::ensure_rustls_ring_provider();
     let client = Client::builder()
         .proxy(Proxy::all(&proxy_url).unwrap())
         .build()

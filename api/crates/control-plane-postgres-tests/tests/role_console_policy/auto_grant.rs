@@ -30,6 +30,7 @@ fn inventory(entries: &[(&str, &str)]) -> ConsoleOperationCompiledInventory {
             .iter()
             .enumerate()
             .map(|(index, (group, id))| ConsoleOperationInventoryEntry {
+                root_workspace_only: false,
                 operation_id: id.to_string(),
                 authorization_profile_id: id.to_string(),
                 owner: ConsoleOperationOwner {
@@ -466,4 +467,77 @@ async fn workspace_admin_created_after_catalog_publication_receives_full_baselin
         "other.existing",
         "existing.old"
     ));
+}
+
+#[tokio::test]
+async fn platform_grants_are_seeded_only_in_bootstrap_and_stale_grants_are_removed() {
+    let (store, bootstrap) = fixture().await;
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "customer")
+        .await
+        .unwrap()
+        .id;
+    assert_ne!(workspace, bootstrap);
+    let input = CreateWorkspaceRoleInput {
+        actor_user_id: Uuid::now_v7(),
+        workspace_id: workspace,
+        code: "receiver".into(),
+        name: "Receiver".into(),
+        introduction: String::new(),
+        auto_grant_new_permissions: true,
+        is_default_member_role: false,
+    };
+    RoleRepository::create_team_role(&store, &input)
+        .await
+        .unwrap();
+    let legacy = inventory(&[("other.legacy", "legacy.operation")]);
+    sync_console_permission_catalog(&store, &legacy)
+        .await
+        .unwrap();
+    save(
+        &store,
+        workspace,
+        "receiver",
+        vec![RoleConsoleGroupPolicy::custom(
+            group("other.legacy"),
+            vec![operation("legacy.operation", true)],
+        )],
+    )
+    .await;
+    let mut current = inventory(&[
+        ("other.legacy", "legacy.operation"),
+        ("other.platform", "platform.new"),
+        ("other.workspace", "workspace.new"),
+    ]);
+    for op in &mut current.operations {
+        op.root_workspace_only = op.operation_id != "workspace.new";
+    }
+    sync_console_permission_catalog(&store, &current)
+        .await
+        .unwrap();
+    let customer = policy(&store, workspace, "receiver").await;
+    assert!(allowed(&customer, "other.workspace", "workspace.new"));
+    assert!(!allowed(&customer, "other.platform", "platform.new"));
+    assert!(!customer
+        .groups()
+        .iter()
+        .any(|p| p.group() == &group("other.legacy")));
+    assert!(allowed(
+        &policy(&store, bootstrap, "receiver").await,
+        "other.platform",
+        "platform.new"
+    ));
+
+    for workspace_id in [workspace, bootstrap] {
+        control_plane_test_support::upsert_builtin_roles(&store, workspace_id)
+            .await
+            .unwrap();
+        let admin = policy(&store, workspace_id, "admin").await;
+        assert!(allowed(&admin, "other.workspace", "workspace.new"));
+        assert_eq!(
+            allowed(&admin, "other.platform", "platform.new"),
+            workspace_id == bootstrap
+        );
+    }
 }

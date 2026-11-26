@@ -108,9 +108,27 @@ fn default_test_config() -> ApiConfig {
 }
 
 async fn isolated_database(base_url: &str) -> postgres_test_support::PostgresTestSchema {
-    postgres_test_support::PostgresTestSchema::create(base_url)
+    postgres_test_support::PostgresTestSchema::create_migrated(base_url)
         .await
         .unwrap()
+}
+
+fn bootstrap_root_password_hash(password: &str) -> String {
+    static DEFAULT_ROOT_PASSWORD_HASH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    if password == "change-me" {
+        return DEFAULT_ROOT_PASSWORD_HASH
+            .get_or_init(|| {
+                Argon2::default()
+                    .hash_password(b"change-me")
+                    .expect("default test root password should hash")
+                    .to_string()
+            })
+            .clone();
+    }
+    Argon2::default()
+        .hash_password(password.as_bytes())
+        .expect("test root password should hash")
+        .to_string()
 }
 
 async fn test_app() -> Router {
@@ -128,10 +146,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     .unwrap();
     let store = durable.store.clone();
 
-    let root_password_hash = Argon2::default()
-        .hash_password(config.bootstrap_root_password.as_bytes())
-        .unwrap()
-        .to_string();
+    let root_password_hash = bootstrap_root_password_hash(&config.bootstrap_root_password);
 
     let bootstrap = BootstrapService::new(store.clone())
         .run(&BootstrapConfig {
@@ -255,6 +270,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             provider_runtime: provider_runtime.clone(),
             native_resource_import: std::sync::Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
             runtime_event_stream_projection: api_server::test_support::runtime_event_stream_projection(),
+            local_terminal_disabled: config.local_terminal_disabled,
             terminal_jobs: Default::default(),
             process_started_at,
             communication_activity: Default::default(),

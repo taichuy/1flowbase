@@ -171,11 +171,22 @@ fn shared_service_policy_uses_original_owner_and_caller_workspace() {
     let mut registration = crate::managed_services::support::fixture();
     registration.publisher_namespace = "consumer".into();
     registration.plugin_code = "monitor".into();
-    registration.shared_resource = Some(serde_json::from_value(json!({
-        "contract_id":"example/hosts/v1", "owner":{"publisher_namespace":"original","plugin_code":"ssh"},
-        "schema_version":"shared-v1", "participants":[{"publisher_namespace":"original","plugin_code":"ssh"},{"publisher_namespace":"consumer","plugin_code":"monitor"}],
-        "collections":["hosts"], "record_resources":["hosts"], "record_resource_bindings":{"hosts":{"collection_code":"hosts","id_field":"id"}}, "credentials":true
-    })).unwrap());
+    registration.resource_imports =
+        vec![control_plane::plugin_management::ResolvedPluginResource {
+            installation_id: uuid::Uuid::now_v7(),
+            publisher_namespace: "original".into(),
+            plugin_code: "ssh".into(),
+            plugin_version: "2.4.0".into(),
+            resource_code: "hosts".into(),
+            collections: vec![],
+            credentials: None,
+            data_models: vec![],
+            record_resources: vec![plugin_framework::PluginResourceRecordBinding {
+                resource_code: "hosts".into(),
+                collection_code: "hosts".into(),
+                id_field: "id".into(),
+            }],
+        }];
     let actor = ActorContext::root(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), "root");
     let resource = ManagedServiceRecordResource {
         resource_code: "hosts".into(),
@@ -190,8 +201,67 @@ fn shared_service_policy_uses_original_owner_and_caller_workspace() {
     assert_eq!(shared.workspace_id, actor.current_workspace_id);
     assert_eq!(shared.resource.publisher_namespace, "original");
     assert_eq!(shared.resource.plugin_code, "ssh");
-    registration.shared_resource = None;
+    registration.resource_imports.clear();
     registration.publisher_namespace = "original".into();
     registration.plugin_code = "ssh".into();
     assert_eq!(shared, key(&registration, &actor, &resource, &id).unwrap());
+}
+
+#[test]
+fn importer_uses_provider_id_field_model_without_copying_schema_and_keeps_resource_owners_separate()
+{
+    let mut registration = crate::managed_services::support::fixture();
+    registration.publisher_namespace = "consumer".into();
+    registration.plugin_code = "monitor".into();
+    let imported = ManagedServiceRecordResource {
+        resource_code: "hosts".into(),
+        collection_code: "hosts".into(),
+        id_field: "host_key".into(),
+        label: "Hosts".into(),
+        description: "Hosts".into(),
+        actions: vec![],
+    };
+    registration.resource_imports = vec![control_plane::plugin_management::ResolvedPluginResource {
+        installation_id: uuid::Uuid::now_v7(), publisher_namespace: "original".into(),
+        plugin_code: "ssh".into(), plugin_version: "2.4.0".into(), resource_code: "hosts".into(),
+        credentials: None,
+        collections: vec![plugin_framework::PluginResourceCollection {collection_code: "hosts".into(), access: plugin_framework::PluginResourceAccess::ReadOnly}],
+        record_resources: vec![plugin_framework::PluginResourceRecordBinding {
+            resource_code: "hosts".into(), collection_code: "hosts".into(), id_field: "host_key".into(),
+        }],
+        data_models: serde_json::from_value(json!([{
+            "contribution_version":"1flowbase.plugin-data-model/v1", "storage_binding":"main",
+            "owned_collections":[{"collection_code":"hosts","fields":[{"field_code":"host_key","field_type":"string"}]}]
+        }])).unwrap(),
+    }];
+    assert!(
+        registration.data_models.is_empty(),
+        "importer declares no duplicate schema"
+    );
+    assert_eq!(
+        id_value(&registration, &imported, "host-not-a-uuid").unwrap(),
+        PluginDataValue::String("host-not-a-uuid".into())
+    );
+    let actor = ActorContext::root(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), "root");
+    let key = key(&registration, &actor, &imported, "host-not-a-uuid").unwrap();
+    assert_eq!(key.resource.publisher_namespace, "original");
+    assert_eq!(key.resource.plugin_code, "ssh");
+    assert_eq!(key.record_id, "host-not-a-uuid");
+    assert_eq!(key.workspace_id, actor.current_workspace_id);
+    let own = ManagedServiceRecordResource {
+        resource_code: "notes".into(),
+        collection_code: "notes".into(),
+        id_field: "id".into(),
+        ..imported.clone()
+    };
+    assert_eq!(
+        registration.resource_owner(&own),
+        ("consumer", "monitor", "1.0.0")
+    );
+    assert_eq!(
+        registration.resource_owner(&imported),
+        ("original", "ssh", "2.4.0")
+    );
+    registration.resource_imports[0].data_models.clear();
+    assert!(id_value(&registration, &imported, "host-not-a-uuid").is_err());
 }

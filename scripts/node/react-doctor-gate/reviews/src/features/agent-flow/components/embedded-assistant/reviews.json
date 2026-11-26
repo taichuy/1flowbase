@@ -58,8 +58,8 @@
     {
       "file": "web/app/src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistant.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "6eacd92f2c2b3e48e72e0ded7d273fa96e3d01bd02188322010328806f313e15",
-      "reason": "Antd Menu owns the focus and activation of this action label. Adding a nested native button would create a second focus target inside the menuitem. EmbeddedAgentAssistant Menu label is inside an Antd Menu item, whose focus/click/navigation owner is Menu. The span role supplies the item action label; inserting a nested button would create competing focus/action ownership.",
+      "sourceSha256": "0d49a555d27f9816ba47df9a736e1eb0d8d8f141112c51516a562e4862180208",
+      "reason": "Antd Menu owns the focus and activation of this action label. Adding a nested native button would create a second focus target inside the menuitem. EmbeddedAgentAssistant Menu label is inside an Antd Menu item, whose focus/click/navigation owner is Menu. The span role supplies the item action label; inserting a nested button would create competing focus/action ownership. Reassessed: The menu retains focus and click ownership after the window shell moved into a lazy host. The demand-island regression now follows the trigger through that host.",
       "evidence": [{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-loading-window.test.tsx","sha256":"0d11dc66ac7f96743880754252de6d72407466ce56b5415566f344129ccb2f66"},{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.fixtures.tsx","sha256":"bd4f0af2bd27917c1e6115813cf653fc1938de01af9cffcac279c8935c2a74e4"},{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant.test.tsx","sha256":"eb47d9c0cb0b0c0d91d4bb29e64a0f1be0dd96b93b3f10c284679d112b7b4047"},{"file":"web/app/src/features/agent-flow/_tests/embedded-assistant/embedded-agent-assistant-layout-and-runs.test.tsx","sha256":"d544175f555193b78bbb8476c6e1be29eb49e3d5507c082ced9a4cb961f62b70"}]
     },
     {

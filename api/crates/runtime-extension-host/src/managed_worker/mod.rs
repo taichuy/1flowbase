@@ -34,6 +34,7 @@ struct MountedContribution {
 pub(crate) struct ManagedHostServices {
     pub(crate) plugin_data: Arc<dyn extension_contracts::PluginDataPort>,
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
+    pub(crate) workspace_governance: Option<Arc<dyn extension_contracts::WorkspaceGovernancePort>>,
     pub(crate) execution_gate: Option<(
         crate::execution_gate_host::ExecutionGateRegistry,
         Arc<dyn extension_contracts::PluginExecutionGateAuthority>,
@@ -231,6 +232,7 @@ impl ManagedWorkers {
             plugin_data,
             plugin_credentials,
             execution_gate,
+            workspace_governance,
             plugin_ephemeral,
             file_import,
             file_read,
@@ -378,6 +380,27 @@ impl ManagedWorkers {
             } else {
                 None
             },
+            workspace_governance: workspace_governance.and_then(|port| {
+                let can_read =
+                    permissions.contains(extension_contracts::WORKSPACE_GOVERNANCE_READ_PERMISSION);
+                let can_manage = permissions
+                    .contains(extension_contracts::WORKSPACE_GOVERNANCE_MANAGE_PERMISSION);
+                (can_read || can_manage).then(|| {
+                    (
+                        extension_contracts::WorkspaceGovernanceBinding {
+                            subject: request.handle.identity().subject().clone(),
+                            publisher_namespace: binding.publisher_namespace.clone(),
+                            plugin_code: binding.plugin_code.clone(),
+                            plugin_version: binding.plugin_version.clone(),
+                            can_read,
+                            can_manage,
+                            caller: binding::workspace_governance_caller(&request.principal),
+                            deadline_unix_ms: request.principal.deadline_unix_ms,
+                        },
+                        port,
+                    )
+                })
+            }),
             execution_gate: if permissions.contains("execution.gate") {
                 execution_gate.map(|(registry, authority)| {
                     crate::execution_gate_host::ExecutionGateCall::new(

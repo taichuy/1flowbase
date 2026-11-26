@@ -1,10 +1,49 @@
-import ts from 'typescript';
-import { describe, expect, test } from 'vitest';
+// Monaco virtual-FS typechecking requires the JS TypeScript Compiler API while workspace `typescript` is native TS 7.
+import ts from 'typescript-legacy';
+import { describe, expect, test, vi } from 'vitest';
 
 import { collectNativeModuleDeclarations } from '../../../../../../build/native-module-declarations';
-import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS as FRONTEND_DECLARATIONS } from '../editor-declarations';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../registry';
+import { isFrontstageNativeReactResolvedDeclarationSource } from '../resolved-dependency-sources';
+import { DAYJS_DECLARATION_SOURCES } from 'virtual:1flowbase-native-dayjs-modules';
+
+// This suite checks the full real type contract without fetching dev-server URLs.
+// Resource transport/closure tests exercise the demand loader separately.
+vi.mock('virtual:1flowbase-native-module-declarations', () => ({
+  default: { version: 1, roots: {}, resources: {} }
+}));
+const FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS = [
+  ...FRONTEND_DECLARATIONS,
+  ...collectNativeModuleDeclarations({
+    // The app test runner starts in web/app; jsdom transforms import.meta.url
+    // into an HTTP URL, which cannot identify the installed declaration root.
+    projectRoot: process.cwd(),
+    moduleSources: [
+      ...new Set([
+        ...FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS.map(
+          (module) => module.module_source
+        ).filter(isFrontstageNativeReactResolvedDeclarationSource),
+        ...DAYJS_DECLARATION_SOURCES
+      ])
+    ]
+  })
+];
 
 describe('frontend Monaco module declarations', () => {
+  test('resizable drawer module exposes typed shared drawer props', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import { ResizableDrawer } from '@1flowbase/resizable-drawer';
+const drawer = <ResizableDrawer open title="Admins" resizeLabel="Resize" onClose={() => {}}><div>body</div></ResizableDrawer>;
+// @ts-expect-error resizeLabel is required for accessible resizing.
+const invalid = <ResizableDrawer open title="Admins" onClose={() => {}}><div>body</div></ResizableDrawer>;
+void drawer; void invalid;`
+      })
+    ).toEqual([]);
+  });
+
   test('plugin settings exposes typed host-owned record permissions without caller overrides', () => {
     expect(
       typeCheckSource({

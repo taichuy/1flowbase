@@ -222,38 +222,70 @@ test('the actual native compiler fingerprint tracks compilers, SDK and flags rat
   }
 });
 
-test('Intel archives are staged after package checks and promoted only on a successful source gate', () => {
+test('Unix archives avoid duplicate release builds, cross-compile macos-x64 on Apple Silicon, and promote after Intel smoke + source tests', () => {
   const native = read('native-build.yml');
-  const source = job(native, 'intel-source');
+  const source = job(native, 'source-tests');
   const build = job(native, 'build');
-  const promote = job(native, 'promote-intel');
+  const verifyIntel = job(native, 'verify-macos-x64');
+  const promote = job(native, 'promote');
   assert.match(source, /runs-on: ubuntu-latest/);
-  assert.match(source, /inputs.target == 'all' \|\| inputs.target == 'macos-x64'/);
+  assert.match(source, /inputs.target != 'windows-x64'/);
   assert.match(source, /git rev-parse HEAD/);
   assert.match(source, /node --test scripts\/node\/native-release\/_tests\/\*\.test\.js/);
   assert.match(source, /cargo test .*--bin api-server native_distribution --timings/);
   assert.doesNotMatch(source, /continue-on-error|--ignored/);
   assert.match(build, /needs: select/);
-  assert.doesNotMatch(build, /needs:.*intel-source/);
+  assert.doesNotMatch(build, /needs:.*source-tests/);
+  assert.match(native, /target:'macos-x64'.*runner:'macos-15'.*rust_target:'x86_64-apple-darwin'.*verify_on_intel:true/);
+  assert.match(build, /--target "\$NATIVE_RUST_TARGET"/);
+  assert.match(build, /lipo -archs/);
   const steps = build.split(/\n      - /).slice(1);
   const cargoTests = steps.filter(step => /cargo test .*--bin api-server/.test(step));
-  assert.equal(cargoTests.length, 3); // original behavior, including the two real-package tests
-  for (const step of cargoTests) assert.match(step, /if: matrix.target != 'macos-x64'/);
-  const stage = steps.findIndex(step => step.includes('name: native-intel-candidate'));
-  for (const probe of ['online-upgrade-smoke.js', 'upgrade-smoke.js', 'smoke.js "$stage"', 'shasum -a 256 -c']) {
+  assert.equal(cargoTests.length, 3); // Windows-only cargo test paths; Unix source tests run once in source-tests
+  for (const step of cargoTests) assert.match(step, /if: matrix.target == 'windows-x64'/);
+  const stage = steps.findIndex(step => step.includes('name: native-candidate-${{ matrix.target }}'));
+  for (const probe of ['online-upgrade-smoke.js', 'upgrade-smoke.js', 'smoke.js "$stage"', "createHash('sha256')"]) {
     assert.ok(steps.slice(0, stage).some(step => step.includes(probe)), probe);
   }
-  assert.match(steps.find(step => step.includes('name: 1flowbase-${{ matrix.target }}')), /if: matrix.target != 'macos-x64'/);
-  assert.match(promote, /needs: \[build, intel-source\]/);
-  const condition = promote.match(/if: \$\{\{ (.+) \}\}/)[1].replace(/needs\.intel-source/g, 'needs["intel-source"]');
-  const canPromote = new Function('inputs', 'needs', `return (${condition});`);
+  assert.match(steps.find(step => step.includes('name: 1flowbase-${{ matrix.target }}')), /if: matrix.target == 'windows-x64'/);
+  assert.match(verifyIntel, /runs-on: macos-15-intel/);
+  assert.match(verifyIntel, /needs: \[select, build\]/);
+  assert.match(verifyIntel, /native-backend-macos-x64/);
+  assert.match(verifyIntel, /test "\$\(uname -m\)" = "x86_64"/);
+  for (const probe of ['online-upgrade-smoke.js', 'upgrade-smoke.js', 'smoke.js "$stage"', 'shasum -a 256 -c', 'native-candidate-macos-x64']) {
+    assert.ok(verifyIntel.includes(probe), probe);
+  }
+  assert.match(promote, /needs: \[select, build, verify-macos-x64, source-tests\]/);
+  const condition = promote.match(/if: \$\{\{ (.+) \}\}/)[1]
+    .replace(/needs\.verify-macos-x64/g, 'needs["verify-macos-x64"]')
+    .replace(/needs\.source-tests/g, 'needs["source-tests"]');
+  assert.match(condition, /\balways\(\)|\bcancelled\(\)/);
+  const canPromote = new Function('inputs', 'needs', 'cancelled', `return (${condition});`);
   for (const target of ['all', 'macos-x64', 'linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64']) {
-    for (const built of ['success', 'failure', 'skipped', 'cancelled']) {
-      for (const tested of ['success', 'failure', 'skipped', 'cancelled']) {
-        assert.equal(canPromote({ target }, { build: { result: built }, 'intel-source': { result: tested } }),
-          ['all', 'macos-x64'].includes(target) && built === 'success' && tested === 'success');
+    for (const selected of ['success', 'failure']) {
+      for (const built of ['success', 'failure', 'skipped', 'cancelled']) {
+        for (const verified of ['success', 'failure', 'skipped', 'cancelled']) {
+          for (const tested of ['success', 'failure', 'skipped', 'cancelled']) {
+            for (const isCancelled of [false, true]) {
+              assert.equal(
+                canPromote(
+                  { target },
+                  { select: { result: selected }, build: { result: built }, 'verify-macos-x64': { result: verified }, 'source-tests': { result: tested } },
+                  () => isCancelled
+                ),
+                !isCancelled &&
+                  target !== 'windows-x64' &&
+                  selected === 'success' &&
+                  built === 'success' &&
+                  tested === 'success' &&
+                  (((target === 'macos-x64' || target === 'all') && verified === 'success') ||
+                    (target !== 'macos-x64' && target !== 'all' && verified === 'skipped'))
+              );
+            }
+          }
+        }
       }
     }
   }
-  assert.match(promote, /name: native-intel-candidate[\s\S]*sha256sum -c[\s\S]*name: 1flowbase-macos-x64/);
+  assert.match(promote, /pattern: native-candidate-\*[\s\S]*sha256sum -c[\s\S]*name: 1flowbase-macos-x64/);
 });

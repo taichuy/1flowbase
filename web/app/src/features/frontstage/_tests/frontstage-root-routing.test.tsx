@@ -811,4 +811,60 @@ describe('frontstage topbar root routing', () => {
       '/sales/pages/page-top-level/blocks/missing-block'
     );
   });
+
+  test('starts blockRoots in parallel with pageContent without waiting for pageContent to settle', async () => {
+    const defaultTab = {
+      id: 'tab-overview',
+      page_id: 'page-top-level',
+      title: 'Overview',
+      rank: '001000',
+      is_default: true,
+      route_segment: null,
+      document_root_uid: 'root-overview'
+    };
+    let resolvePageContent!: (value: unknown) => void;
+    pageTreeApi.fetchFrontstagePageTree.mockResolvedValue([topbarGroup]);
+    pageTabsApi.fetchFrontstagePageTabs.mockResolvedValue([defaultTab]);
+    pageContentApi.fetchFrontstagePageContent.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePageContent = resolve;
+      })
+    );
+    blockApi.fetchFrontstageBlockRoots.mockResolvedValue([
+      { block_id: 'parallel-root', tab_id: 'tab-overview' }
+    ]);
+    window.history.pushState({}, '', '/sales/pages/page-top-level');
+
+    render(
+      <AppProviders>
+        <AppRouterProvider />
+      </AppProviders>
+    );
+
+    await waitFor(() => {
+      expect(pageContentApi.fetchFrontstagePageContent).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-top-level',
+        'tab-overview'
+      );
+      expect(blockApi.fetchFrontstageBlockRoots).toHaveBeenCalledWith(
+        'workspace-1',
+        'page-top-level',
+        { tab_id: 'tab-overview' }
+      );
+    });
+
+    act(() => {
+      resolvePageContent({
+        page: { id: 'page-top-level' },
+        tab: defaultTab,
+        document: { rootUid: 'root-overview', payload: {} }
+      });
+    });
+    await waitFor(() => {
+      expect(frontStagePageView.props?.blockRoots).toEqual([
+        { block_id: 'parallel-root', tab_id: 'tab-overview' }
+      ]);
+    });
+  });
 });

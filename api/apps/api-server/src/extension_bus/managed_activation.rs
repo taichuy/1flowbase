@@ -174,7 +174,7 @@ impl ManagedExtensionComposition {
         tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "authority_lease", status = "started", "managed hook admission");
         let lease_result = self
             .store
-            .lock_contribution_authority(binding.handle.identity().subject())
+            .lock_contribution_execution_authority(binding.handle.identity().subject())
             .await;
         tracing::debug!(contribution_id = contribution_id.as_str(), point_id = %point_id, stage = "authority_lease", elapsed_us = lease_started.elapsed().as_micros() as u64, status = if lease_result.is_ok() { "acquired" } else { "failed" }, "managed hook admission");
         let lease = lease_result?;
@@ -301,7 +301,7 @@ impl ManagedExtensionComposition {
         );
         let lease = self
             .store
-            .lock_contribution_authority(binding.handle.identity().subject())
+            .lock_contribution_execution_authority(binding.handle.identity().subject())
             .await?;
         self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
         Ok(lease)
@@ -390,7 +390,7 @@ impl ManagedExtensionComposition {
             .context("managed contribution is not activated")?;
         let lease = self
             .store
-            .lock_contribution_authority(binding.handle.identity().subject())
+            .lock_contribution_execution_authority(binding.handle.identity().subject())
             .await?;
         self.validate_current_binding(binding, workspace_id, lease.as_ref())?;
         let admitted = self

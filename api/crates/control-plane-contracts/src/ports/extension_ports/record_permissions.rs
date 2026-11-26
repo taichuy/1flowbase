@@ -1,9 +1,10 @@
 //! Persistence for host-owned record policy; worker frames never supply identity.
 use async_trait::async_trait;
 use domain::{
-    ActorContext, RecordPermissionKey, RecordPermissionPolicy, RecordPermissionRole,
-    ReplaceRecordPermissions,
+    ActorContext, RecordPermissionKey, RecordPermissionPolicy, RecordPermissionResourceKey,
+    RecordPermissionRole, ReplaceRecordPermissions,
 };
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[async_trait]
@@ -12,6 +13,13 @@ pub trait RecordPermissionRepository: Send + Sync {
         &self,
         key: &RecordPermissionKey,
     ) -> anyhow::Result<Option<RecordPermissionPolicy>>;
+    /// Read explicit policies (including empty restricted policies) from one snapshot.
+    async fn get_record_permissions_batch(
+        &self,
+        workspace_id: Uuid,
+        resource: &RecordPermissionResourceKey,
+        record_ids: &[String],
+    ) -> anyhow::Result<BTreeMap<String, RecordPermissionPolicy>>;
     /// Atomically validate workspace roles, check revision, replace header/grants and append audit.
     /// Inherit with nonempty grants is invalid. A restricted empty header denies every non-root.
     async fn replace_record_permissions(

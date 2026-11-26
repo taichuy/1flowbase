@@ -5,13 +5,21 @@ import authEnUS from '../../features/auth/i18n/en_US.json';
 import authZhHans from '../../features/auth/i18n/zh_Hans.json';
 import { FALLBACK_APP_LOCALE, SUPPORTED_APP_LOCALES } from './locales';
 import { getInitialAppLocale } from './initial-locale';
+import {
+  applicationTranslationLoaders,
+  type ApplicationNamespace
+} from './application-i18n-resources';
+import {
+  applicationNamespacesForPath,
+  applicationTopbarNamespacesForPath
+} from './application-i18n-demand';
+import { createApplicationResourceLoader } from './application-resource-loader';
+import type { AppLocale } from './locales';
 
 const publicTranslationResources = {
   zh_Hans: { auth: authZhHans },
   en_US: { auth: authEnUS }
 } as const;
-
-let applicationResourcesFlight: Promise<void> | undefined;
 
 export const appI18n = i18next.createInstance();
 
@@ -31,21 +39,54 @@ void appI18n.use(initReactI18next).init({
   }
 });
 
-export function loadApplicationI18nResources(): Promise<void> {
-  applicationResourcesFlight ??= import('./application-i18n-resources')
-    .then(({ applicationTranslationResources }) => {
-      for (const [locale, namespaces] of Object.entries(
-        applicationTranslationResources
-      )) {
-        for (const [namespace, resource] of Object.entries(namespaces)) {
-          appI18n.addResourceBundle(locale, namespace, resource, true, true);
-        }
-      }
-    })
-    .catch((error) => {
-      applicationResourcesFlight = undefined;
-      throw error;
-    });
+export const applicationI18nLoader = createApplicationResourceLoader(
+  appI18n,
+  applicationTranslationLoaders
+);
 
-  return applicationResourcesFlight;
+export function isShellTopbarI18nReady(
+  locale: AppLocale,
+  pathname: string
+): boolean {
+  const namespaces = applicationTopbarNamespacesForPath(pathname);
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.ready(locale, namespaces)
+    : applicationI18nLoader.readyPrimary(locale, namespaces);
+}
+
+export function prepareShellTopbarI18n(locale: AppLocale, pathname: string) {
+  const namespaces = applicationTopbarNamespacesForPath(pathname);
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.activate(locale, namespaces)
+    : applicationI18nLoader.activatePrimary(locale, namespaces);
+}
+
+export function isApplicationI18nReady(
+  locale: AppLocale,
+  pathname: string
+): boolean {
+  const namespaces = applicationNamespacesForPath(pathname);
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.ready(locale, namespaces)
+    : applicationI18nLoader.readyPrimary(locale, namespaces);
+}
+
+export function prepareApplicationI18n(locale: AppLocale, pathname: string) {
+  const namespaces = applicationNamespacesForPath(pathname);
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.activate(locale, namespaces)
+    : applicationI18nLoader.activatePrimary(locale, namespaces);
+}
+
+// Explicit full registration for tests/catalog tooling only. Production entry and
+// route loaders use prepareApplicationI18n instead of pulling every namespace.
+export async function loadApplicationI18nResources(): Promise<void> {
+  const namespaces = Object.keys(
+    applicationTranslationLoaders
+  ) as ApplicationNamespace[];
+  await Promise.all(
+    SUPPORTED_APP_LOCALES.map((locale) =>
+      applicationI18nLoader.load(locale, namespaces)
+    )
+  );
 }

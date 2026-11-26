@@ -80,6 +80,7 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
     legacy_mapping(
         "plugin_config.view.all",
         &[
+            "frontend_blocks.type_declarations.view",
             "frontend_blocks.view",
             "host_infrastructure.cache.view",
             "js_dependencies.view",

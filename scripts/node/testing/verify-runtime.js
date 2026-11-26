@@ -1,3 +1,4 @@
+const { spawnSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -82,31 +83,6 @@ function assertKnownKeys(name, value, allowedKeys) {
   }
 }
 
-function resolveCargoDefaults(availableParallelism) {
-  const parallelism = getLocalCpuBudget(availableParallelism);
-
-  return {
-    cargoJobs: parallelism,
-    cargoTestThreads: parallelism,
-  };
-}
-
-function resolveFrontendDefaults(availableParallelism) {
-  const parallelism = assertPositiveInteger(
-    "availableParallelism",
-    availableParallelism,
-  );
-  const vitestMaxWorkers = Math.max(
-    1,
-    Math.floor(parallelism * LOCAL_NODE_TEST_CPU_SHARE),
-  );
-
-  return {
-    turboConcurrency: parallelism,
-    vitestMaxWorkers,
-  };
-}
-
 function readLocalVerifyConfig(repoRoot) {
   const configPath = path.join(repoRoot, LOCAL_VERIFY_CONFIG_FILE);
 
@@ -125,8 +101,89 @@ function readLocalVerifyConfig(repoRoot) {
   }
 }
 
-function getHeavyVerifyLockDir(repoRoot) {
+const GIT_COMMON_DIR_LOCK_SUBDIR = path.join(
+  "test-governance",
+  "locks",
+  "heavy-verify",
+);
+const gitCommonDirCache = new Map();
+
+function resolveGitCommonDirFromMetadata(repoRoot, dotGitPath, stat) {
+  try {
+    if (stat.isDirectory()) {
+      return fs.realpathSync(dotGitPath);
+    }
+    if (!stat.isFile()) {
+      return null;
+    }
+    const raw = fs.readFileSync(dotGitPath, "utf8").trim();
+    if (!raw.startsWith("gitdir:")) {
+      return null;
+    }
+    const gitDir = path.resolve(repoRoot, raw.slice("gitdir:".length).trim());
+    const commonDirFile = path.join(gitDir, "commondir");
+    if (fs.existsSync(commonDirFile)) {
+      const commonRel = fs.readFileSync(commonDirFile, "utf8").trim();
+      if (commonRel) {
+        return fs.realpathSync(path.resolve(gitDir, commonRel));
+      }
+    }
+    return fs.existsSync(gitDir) ? fs.realpathSync(gitDir) : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGitCommonDir(repoRoot) {
+  const dotGitPath = path.join(repoRoot, ".git");
+  let stat;
+  try {
+    stat = fs.statSync(dotGitPath);
+  } catch {
+    return null;
+  }
+  const cacheKey = path.resolve(repoRoot);
+  const cached = gitCommonDirCache.get(cacheKey);
+  if (cached && cached.ino === stat.ino && fs.existsSync(cached.commonDir)) {
+    return cached.commonDir;
+  }
+  try {
+    const result = spawnSync("git", ["rev-parse", "--git-common-dir"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (
+      result.status === 0 &&
+      typeof result.stdout === "string" &&
+      result.stdout.trim() !== ""
+    ) {
+      const commonDir = fs.realpathSync(
+        path.resolve(repoRoot, result.stdout.trim()),
+      );
+      gitCommonDirCache.set(cacheKey, { ino: stat.ino, commonDir });
+      return commonDir;
+    }
+  } catch {
+    // Fall back to direct .git metadata parsing if git CLI is unavailable.
+  }
+  const fallback = resolveGitCommonDirFromMetadata(repoRoot, dotGitPath, stat);
+  if (fallback) {
+    gitCommonDirCache.set(cacheKey, { ino: stat.ino, commonDir: fallback });
+  }
+  return fallback;
+}
+
+function resolveHeavyVerifyLockPath(repoRoot) {
+  const commonDir = resolveGitCommonDir(repoRoot);
+  if (commonDir) {
+    return path.join(commonDir, GIT_COMMON_DIR_LOCK_SUBDIR);
+  }
   return path.join(repoRoot, HEAVY_VERIFY_LOCK_DIR);
+}
+
+function getHeavyVerifyLockDir(repoRoot) {
+  return resolveHeavyVerifyLockPath(repoRoot);
 }
 
 function getHeavyVerifyLockOwnerPath(repoRoot) {
@@ -548,15 +605,22 @@ async function withHeavyVerifyLock(options = {}, run) {
   }
 }
 
-function resolveRuntimeConfig(config, availableParallelism) {
+function resolveRuntimeConfig(config, availableParallelism, ci = false) {
   assertPlainObject("verify runtime config root", config);
   assertKnownKeys(
     "verify runtime config",
     config,
     new Set(["backend", "frontend", "scripts", "locks"]),
   );
-  const backendDefaults = resolveCargoDefaults(availableParallelism);
-  const frontendDefaults = resolveFrontendDefaults(availableParallelism);
+  const cpuBudget = ci ? availableParallelism : getLocalCpuBudget(availableParallelism);
+  const backendDefaults = {
+    cargoJobs: Math.min(cpuBudget, 6),
+    cargoTestThreads: Math.min(cpuBudget, 4),
+  };
+  const frontendDefaults = {
+    turboConcurrency: Math.min(cpuBudget, 4),
+    vitestMaxWorkers: Math.max(1, Math.floor(cpuBudget * LOCAL_NODE_TEST_CPU_SHARE)),
+  };
   const backendConfig =
     config.backend === undefined
       ? {}
@@ -639,16 +703,17 @@ function resolveRuntimeConfig(config, availableParallelism) {
     throw new Error("scripts.testConcurrency must not exceed availableParallelism");
   }
 
+  const boundedTurboConcurrency = Math.min(turboConcurrency, cpuBudget);
   return {
-    scripts: { testConcurrency },
+    scripts: { testConcurrency: Math.min(testConcurrency, cpuBudget) },
     backend: {
-      cargoJobs,
-      cargoTestThreads,
+      cargoJobs: Math.min(cargoJobs, cpuBudget),
+      cargoTestThreads: Math.min(cargoTestThreads, cpuBudget),
       incremental,
     },
     frontend: {
-      turboConcurrency,
-      vitestMaxWorkers,
+      turboConcurrency: boundedTurboConcurrency,
+      vitestMaxWorkers: Math.min(vitestMaxWorkers, Math.floor(cpuBudget / boundedTurboConcurrency)),
     },
     locks: {
       waitTimeoutMinutes,
@@ -676,11 +741,13 @@ function loadVerifyRuntimeConfig({
           cargoTestThreads: availableParallelism,
         },
         frontend: {
-          turboConcurrency: availableParallelism,
+          // Keep the CI app and coverage suites fully parallel within one Turbo slot.
+          turboConcurrency: 1,
           vitestMaxWorkers: availableParallelism,
         },
       },
       availableParallelism,
+      true,
     );
   }
 
@@ -733,5 +800,6 @@ module.exports = {
   loadVerifyRuntimeConfig,
   main,
   readHeavyVerifyLockOwner,
+  resolveHeavyVerifyLockPath,
   withHeavyVerifyLock,
 };

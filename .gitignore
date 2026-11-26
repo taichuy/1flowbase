@@ -68,6 +68,7 @@ web/app/.env.*.local
 .claude/*
 .agents/skills/fuck-my-shit-mountain/*
 .agents/skills/archify/
+.agents/skills/codex-commander/
 docker/1flowbase.code-workspace
 docs/private/*
 docs/ziliao/*
@@ -77,3 +78,5 @@ deploy/*
 .dsh/
 1flowbase-web.tar.gz
 docs/research/*
+.agents/skills/mcp_config.json
+.agents/mcp_config.json

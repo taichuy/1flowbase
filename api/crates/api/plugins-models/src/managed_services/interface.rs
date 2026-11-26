@@ -53,12 +53,13 @@ pub(super) struct Operation {
     pub(super) declaration: plugin_framework::ManagedServiceOperation,
     pub(super) input: jsonschema::Validator,
     pub(super) output: jsonschema::Validator,
+    pub(super) event: Option<Arc<jsonschema::Validator>>,
     pub(super) event_policy: Arc<super::event_projection::OperationPolicy>,
 }
 pub(super) struct Adapter {
     pub(super) state: std::sync::Weak<ApiState>,
     pub(super) registration: ManagedServiceRegistration,
-    pub(super) operations: BTreeMap<String, Operation>,
+    pub(super) operations: BTreeMap<String, Arc<Operation>>,
 }
 impl ConsoleInterfacePort<ManagedServiceInput, ManagedServiceOutput> for Adapter {
     fn execute<'a>(
@@ -84,6 +85,11 @@ impl Adapter {
             .state
             .upgrade()
             .ok_or(Error::UpstreamUnavailable("managed_service_host"))?;
+        if self.registration.root_workspace_only
+            && principal.actor().current_workspace_id != state.bootstrap_workspace_id
+        {
+            return Err(Error::PermissionDenied("permission_denied").into());
+        }
         let op = self
             .operations
             .get(&input.interface_id)
@@ -125,7 +131,7 @@ impl Adapter {
                         super::event_projection::OutputPolicy::BusinessResult(
                             op.event_policy.clone(),
                         ),
-                    ))
+                    ));
                 }
                 super::shared_stream::SnapshotLookup::Fallback(guard) => Some(guard),
             }
@@ -268,19 +274,28 @@ pub fn registry_contribution(
 ) -> anyhow::Result<InterfaceRegistryContribution> {
     let mut operations = BTreeMap::new();
     for op in &registration.declaration.operations {
-        let compile = |_suffix: &str, schema: serde_json::Value| -> anyhow::Result<_> {
-            Ok(jsonschema::options()
-                .with_draft(jsonschema::Draft::Draft202012)
-                .build(&schema)?)
+        let compile = |schema: &serde_json::Value| -> anyhow::Result<_> {
+            Ok(if op.stream.is_some() {
+                jsonschema::validator_for(schema)?
+            } else {
+                jsonschema::options()
+                    .with_draft(jsonschema::Draft::Draft202012)
+                    .build(schema)?
+            })
         };
         operations.insert(
             op.interface_id.clone(),
-            Operation {
+            Arc::new(Operation {
                 declaration: op.clone(),
-                input: compile("input", op.input_schema.clone())?,
-                output: compile("output", op.output_schema.clone())?,
+                input: compile(&op.input_schema)?,
+                output: compile(&op.output_schema)?,
+                event: op
+                    .stream
+                    .as_ref()
+                    .map(|stream| jsonschema::validator_for(&stream.event_schema).map(Arc::new))
+                    .transpose()?,
                 event_policy: Arc::new(super::event_projection::OperationPolicy::new(op)),
-            },
+            }),
         );
     }
     let bindings = registration

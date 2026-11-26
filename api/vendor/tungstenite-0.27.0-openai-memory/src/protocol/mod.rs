@@ -22,7 +22,6 @@ use log::*;
 use std::{
     io::{self, Read, Write},
     mem::replace,
-    usize,
 };
 
 /// Indicates a Client or Server role of the websocket

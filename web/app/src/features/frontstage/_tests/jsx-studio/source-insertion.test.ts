@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import * as ts from 'typescript';
+// In-memory virtual-FS diagnostic checks require the JS TypeScript Compiler API while workspace `typescript` is native TS 7.
+import * as ts from 'typescript-legacy';
 
 import {
   applyFrontstageJsxInsertionPlan,

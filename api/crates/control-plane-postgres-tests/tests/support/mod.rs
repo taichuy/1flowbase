@@ -10,7 +10,7 @@ pub async fn seed_store() -> (
     domain::WorkspaceRecord,
     domain::UserRecord,
 ) {
-    let database = postgres_test_support::PostgresTestSchema::create(&base_database_url())
+    let database = postgres_test_support::PostgresTestSchema::create_migrated(&base_database_url())
         .await
         .unwrap();
     let pool = database.connect().await.unwrap();

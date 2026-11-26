@@ -125,7 +125,7 @@ function buildStateProtocolCommands({
         `--test-threads=${cargoTestThreads}`,
       ],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
     },
   ];
 

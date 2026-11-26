@@ -153,6 +153,10 @@ impl Settings {
         for (key, value) in &self.values {
             env::set_var(key, value);
         }
+        // Older native packages run in production mode but predate this setting.
+        if !self.values.contains_key("API_LOCAL_TERMINAL_DISABLED") {
+            env::set_var("API_LOCAL_TERMINAL_DISABLED", "false");
+        }
         for &key in PATH_KEYS {
             let value = env_file::required(&self.values, key)?;
             env::set_var(key, resolve(root, value));

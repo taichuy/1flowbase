@@ -1,4 +1,5 @@
 import { useAuthStore } from '../../../state/auth-store';
+import * as billingApi from '../api/billing';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { modelProviderCatalogEntries } from '../../../test/model-provider-contract-fixtures';
@@ -19,8 +20,91 @@ const unsupportedAuthentication = async () => {
   throw new Error('provider authentication is not configured');
 };
 
+const listSettingsPricingTargetsSpy = vi.spyOn(
+  billingApi,
+  'listSettingsPricingTargets'
+);
+
+function buildProgressivePricingTargetsResponse(
+  filter: billingApi.SettingsPricingTargetsFilter = {},
+  targets = pricingTargets
+): billingApi.SettingsPricingTargetsPage {
+  const page = filter.page ?? 1;
+  const pageSize = filter.page_size ?? 20;
+  const offset = (page - 1) * pageSize;
+  if (!filter.provider_code) {
+    const counts = new Map<string, number>();
+    for (const target of targets) {
+      if (
+        filter.provider_query &&
+        !target.provider_code
+          .toLowerCase()
+          .includes(filter.provider_query.toLowerCase())
+      ) {
+        continue;
+      }
+      counts.set(
+        target.provider_code,
+        (counts.get(target.provider_code) ?? 0) + 1
+      );
+    }
+    const allProviders = Array.from(counts.entries())
+      .sort(([a], [b]) => {
+        if (a === 'zero' && b !== 'zero') return -1;
+        if (b === 'zero' && a !== 'zero') return 1;
+        return a.localeCompare(b);
+      })
+      .map(([provider_code, model_count]) => ({ provider_code, model_count }));
+    return {
+      providers: allProviders.slice(offset, offset + pageSize),
+      providers_total_count: allProviders.length,
+      items: [],
+      total_count: 0,
+      page,
+      page_size: pageSize,
+      selected_target: null
+    };
+  }
+  const providerTargets = targets.filter(
+    (target) => target.provider_code === filter.provider_code
+  );
+  const filtered = filter.upstream_model_id
+    ? providerTargets.filter((target) =>
+        target.upstream_model_id
+          .toLowerCase()
+          .includes(filter.upstream_model_id!.toLowerCase())
+      )
+    : providerTargets;
+  const selected_target = filter.selected_model_id
+    ? (providerTargets.find(
+        (target) => target.upstream_model_id === filter.selected_model_id
+      ) ?? null)
+    : null;
+  return {
+    providers: [],
+    providers_total_count: 0,
+    items: filtered.slice(offset, offset + pageSize),
+    total_count: filtered.length,
+    page,
+    page_size: pageSize,
+    selected_target
+  };
+}
+
 beforeEach(() => {
-  useAuthStore.setState({ actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace' }, me: null });
+  useAuthStore.setState({
+    actor: {
+      id: 'root',
+      account: 'root',
+      effective_display_role: 'root',
+      current_workspace_id: 'workspace'
+    },
+    me: null
+  });
+  listSettingsPricingTargetsSpy.mockReset();
+  listSettingsPricingTargetsSpy.mockImplementation(async (filter = {}) =>
+    buildProgressivePricingTargetsResponse(filter)
+  );
 });
 
 describe('model-context-window helpers', () => {
@@ -85,7 +169,6 @@ describe('ModelProviderInstanceDrawer', () => {
         catalogEntry={catalogEntry}
         instance={buildSettingsModelProviderInstances()[0]}
         cachedModelCatalog={null}
-        pricingTargets={pricingTargets}
         defaultIncludedInMain={true}
         submitting={false}
         onClose={() => undefined}
@@ -121,7 +204,6 @@ describe('ModelProviderInstanceDrawer', () => {
         }}
         instance={buildSettingsModelProviderInstances()[0]}
         cachedModelCatalog={null}
-        pricingTargets={pricingTargets}
         defaultIncludedInMain={true}
         submitting={false}
         onClose={() => undefined}
@@ -138,7 +220,9 @@ describe('ModelProviderInstanceDrawer', () => {
     );
 
     await screen.findByRole('dialog');
-    expect(screen.queryByRole('button', { name: /检\s*测/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /检\s*测/ })
+    ).not.toBeInTheDocument();
   });
 
   test('uses the shared resizable drawer with the provider width range', async () => {
@@ -149,7 +233,6 @@ describe('ModelProviderInstanceDrawer', () => {
         catalogEntry={modelProviderCatalogEntries[0]}
         instance={null}
         cachedModelCatalog={null}
-        pricingTargets={pricingTargets}
         defaultIncludedInMain={true}
         submitting={false}
         onClose={() => undefined}
@@ -214,7 +297,6 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={catalogEntry}
           instance={null}
           cachedModelCatalog={null}
-          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -292,7 +374,6 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={null}
           cachedModelCatalog={null}
-          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -493,7 +574,6 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={instance}
           cachedModelCatalog={null}
-          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -539,7 +619,6 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={null}
           cachedModelCatalog={null}
-          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -640,7 +719,6 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={instance}
           cachedModelCatalog={null}
-          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -730,7 +808,6 @@ describe('ModelProviderInstanceDrawer', () => {
         catalogEntry={catalogEntry}
         instance={null}
         cachedModelCatalog={null}
-        pricingTargets={pricingTargets}
         defaultIncludedInMain={true}
         submitting={false}
         onClose={() => undefined}
@@ -773,5 +850,86 @@ describe('ModelProviderInstanceDrawer', () => {
         name: /打开授权页面|Open authorization page/
       })
     ).toHaveAttribute('href', 'https://auth.openai.example/authorize');
+  });
+
+  test('progressively loads pricing organizations and models only after opening the model config modal', async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ModelProviderInstanceDrawer
+        open
+        mode="create"
+        catalogEntry={modelProviderCatalogEntries[0]}
+        instance={null}
+        cachedModelCatalog={null}
+        defaultIncludedInMain={true}
+        submitting={false}
+        onClose={() => undefined}
+        onSubmit={submit}
+        onPreviewModels={async () => ({
+          models: [],
+          preview_token: 'preview-1',
+          expires_at: '2026-04-22T12:00:00Z'
+        })}
+        onRevealSecret={async () => 'super-secret'}
+        onAuthenticate={unsupportedAuthentication}
+      />
+    );
+
+    expect(await screen.findByLabelText('API Endpoint')).toBeInTheDocument();
+    expect(listSettingsPricingTargetsSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '新增' }));
+    expect(await screen.findByLabelText('模型 ID')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(listSettingsPricingTargetsSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_code: 'zero',
+          selected_model_id: 'any',
+          page: 1,
+          page_size: 50
+        })
+      );
+    });
+
+    // Switch organization to openai -> Stage 2 loads only openai models
+    const providerSelect = screen.getByRole('combobox', { name: '厂家 Code' });
+    fireEvent.mouseDown(providerSelect);
+    fireEvent.click(await screen.findByTitle('openai'));
+
+    await waitFor(() => {
+      expect(listSettingsPricingTargetsSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_code: 'openai',
+          page: 1,
+          page_size: 50
+        })
+      );
+    });
+
+    const modelSelect = screen.getByRole('combobox', { name: '上游模型 ID' });
+    fireEvent.mouseDown(modelSelect);
+    fireEvent.click(await screen.findByTitle('gpt-4o'));
+    await waitFor(() =>
+      expect(listSettingsPricingTargetsSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_code: 'openai',
+          selected_model_id: 'gpt-4o',
+          page: 1
+        })
+      )
+    );
+
+    expect(await screen.findByText('1M / 2.50$')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('模型 ID'), {
+      target: { value: 'custom-gpt-4o' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('新增 模型配置')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('openai / gpt-4o')).toBeInTheDocument();
   });
 });

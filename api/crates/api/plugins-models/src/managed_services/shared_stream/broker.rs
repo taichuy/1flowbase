@@ -37,7 +37,9 @@ pub(super) struct Producer {
 }
 #[async_trait::async_trait]
 pub(super) trait SourceBackend: Send + Sync {
-    fn ready(&self, event: &Value) -> bool;
+    fn is_ready(&self, _event: &Value) -> bool {
+        true
+    }
     async fn authorize(
         &self,
         principal: &UserPrincipal,
@@ -51,6 +53,9 @@ pub(super) trait SourceBackend: Send + Sync {
         cancel: watch::Receiver<bool>,
     ) -> Result<Producer, ApiError>;
     async fn cache(&self, revision: &str, interval: u64, event: &Value) -> Result<(), ApiError>;
+    async fn cached(&self, _revision: &str) -> Result<Option<Value>, ApiError> {
+        Ok(None)
+    }
     async fn invalidate(&self, revision: &str) -> Result<(), ApiError>;
 }
 #[derive(Clone)]
@@ -65,6 +70,8 @@ pub(super) struct Notice {
     pub revision: String,
     pub event: Option<Value>,
     pub error: Option<&'static str>,
+    // Sticky across coalesced notices: once superseded, a cold seed cannot return.
+    pub seed_replayable: bool,
 }
 struct Core {
     members: BTreeMap<uuid::Uuid, Member>,
@@ -86,9 +93,12 @@ struct Registry {
     serial: BTreeMap<SerialKey, Weak<AsyncMutex<()>>>,
     inspections: BTreeMap<SourceKey, Weak<AsyncMutex<()>>>,
 }
-fn registry() -> &'static Mutex<Registry> {
-    static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
-    REGISTRY.get_or_init(Mutex::default)
+#[derive(Default)]
+pub(in crate::managed_services) struct Broker(Mutex<Registry>);
+
+pub(in crate::managed_services) fn global() -> &'static Arc<Broker> {
+    static BROKER: OnceLock<Arc<Broker>> = OnceLock::new();
+    BROKER.get_or_init(|| Arc::new(Broker::default()))
 }
 fn serial_inner(all: &mut Registry, key: &SourceKey) -> Arc<AsyncMutex<()>> {
     all.serial.retain(|_, value| value.strong_count() > 0);
@@ -99,90 +109,96 @@ fn serial_inner(all: &mut Registry, key: &SourceKey) -> Arc<AsyncMutex<()>> {
     all.serial.insert(key.serial(), Arc::downgrade(&value));
     value
 }
-pub(super) fn serial(key: &SourceKey) -> Arc<AsyncMutex<()>> {
-    serial_inner(
-        &mut registry().lock().unwrap_or_else(|e| e.into_inner()),
-        key,
-    )
-}
-/// Serialize short source inspection independently of the producer's lifetime.
-/// Holding this through unary fallback and cache fill also coalesces concurrent
-/// misses before their resolver callbacks acquire authority/effect resources.
-pub(super) fn inspection(key: &SourceKey) -> Arc<AsyncMutex<()>> {
-    let mut all = registry().lock().unwrap_or_else(|e| e.into_inner());
-    all.inspections.retain(|_, value| value.strong_count() > 0);
-    if let Some(inspection) = all.inspections.get(key).and_then(Weak::upgrade) {
-        return inspection;
+impl Broker {
+    #[cfg(test)]
+    pub(super) fn new() -> Arc<Self> {
+        Arc::new(Self::default())
     }
-    let inspection = Arc::new(AsyncMutex::new(()));
-    all.inspections
-        .insert(key.clone(), Arc::downgrade(&inspection));
-    inspection
-}
-pub(super) fn active(key: &SourceKey) -> Option<Arc<Entry>> {
-    registry()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .entries
-        .get(key)
-        .filter(|entry| {
-            !entry
+
+    pub(super) fn serial(&self, key: &SourceKey) -> Arc<AsyncMutex<()>> {
+        serial_inner(&mut self.0.lock().unwrap_or_else(|e| e.into_inner()), key)
+    }
+    /// Serialize short source inspection independently of the producer's lifetime.
+    /// Holding this through unary fallback and cache fill also coalesces concurrent
+    /// misses before their resolver callbacks acquire authority/effect resources.
+    pub(super) fn inspection(&self, key: &SourceKey) -> Arc<AsyncMutex<()>> {
+        let mut all = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        all.inspections.retain(|_, value| value.strong_count() > 0);
+        if let Some(inspection) = all.inspections.get(key).and_then(Weak::upgrade) {
+            return inspection;
+        }
+        let inspection = Arc::new(AsyncMutex::new(()));
+        all.inspections
+            .insert(key.clone(), Arc::downgrade(&inspection));
+        inspection
+    }
+    pub(super) fn active(&self, key: &SourceKey) -> Option<Arc<Entry>> {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entries
+            .get(key)
+            .filter(|entry| {
+                !entry
+                    .core
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .members
+                    .is_empty()
+            })
+            .cloned()
+    }
+    pub(in crate::managed_services) fn retire(&self, installation: Option<uuid::Uuid>) {
+        let all = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        for entry in all
+            .entries
+            .values()
+            .filter(|entry| installation.is_none_or(|id| entry.key.installation == id))
+        {
+            entry.core.lock().unwrap_or_else(|e| e.into_inner()).retired = true;
+            entry.wake();
+        }
+    }
+    pub(in crate::managed_services) async fn revoke_record_permissions(
+        &self,
+        installation: uuid::Uuid,
+        key: &domain::RecordPermissionKey,
+    ) {
+        let entries = self
+            .0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entries
+            .values()
+            .filter(|entry| {
+                entry.key.installation == installation
+                    && entry.key.resource == key.resource.resource_code
+                    && entry.key.record == key.record_id
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        for entry in entries {
+            let members = entry
                 .core
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .members
-                .is_empty()
-        })
-        .cloned()
-}
-pub(in crate::managed_services) fn retire(installation: Option<uuid::Uuid>) {
-    let all = registry().lock().unwrap_or_else(|e| e.into_inner());
-    for entry in all
-        .entries
-        .values()
-        .filter(|entry| installation.is_none_or(|id| entry.key.installation == id))
-    {
-        entry.core.lock().unwrap_or_else(|e| e.into_inner()).retired = true;
-        entry.wake();
-    }
-}
-pub(in crate::managed_services) async fn revoke_record_permissions(
-    installation: uuid::Uuid,
-    key: &domain::RecordPermissionKey,
-) {
-    let entries = registry()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .entries
-        .values()
-        .filter(|entry| {
-            entry.key.installation == installation
-                && entry.key.resource == key.resource.resource_code
-                && entry.key.record == key.record_id
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    for entry in entries {
-        let members = entry
-            .core
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .members
-            .iter()
-            .filter(|(_, member)| {
-                member.principal.actor().current_workspace_id == key.workspace_id
-                    && !member.principal.actor().is_root
-            })
-            .map(|(id, member)| (*id, member.clone()))
-            .collect::<Vec<_>>();
-        for (id, member) in members {
-            if entry
-                .backend
-                .authorize(&member.principal, &member.payload)
-                .await
-                .is_err()
-            {
-                entry.remove(id);
+                .iter()
+                .filter(|(_, member)| {
+                    member.principal.actor().current_workspace_id == key.workspace_id
+                        && !member.principal.actor().is_root
+                })
+                .map(|(id, member)| (*id, member.clone()))
+                .collect::<Vec<_>>();
+            for (id, member) in members {
+                if entry
+                    .backend
+                    .authorize(&member.principal, &member.payload)
+                    .await
+                    .is_err()
+                {
+                    entry.remove(id);
+                }
             }
         }
     }
@@ -190,6 +206,7 @@ pub(in crate::managed_services) async fn revoke_record_permissions(
 pub(super) struct Lease {
     pub entry: Arc<Entry>,
     pub id: uuid::Uuid,
+    pub seed: Option<Value>,
 }
 impl Drop for Lease {
     fn drop(&mut self) {
@@ -242,64 +259,108 @@ impl Lease {
             .await
     }
 }
-pub(super) async fn join(
-    key: SourceKey,
-    backend: Arc<dyn SourceBackend>,
-    mut member: Member,
-    revision: String,
-) -> Result<Lease, ApiError> {
-    super::cache::ttl_ms(member.interval)?;
-    member.principal = backend
-        .authorize(&member.principal, &member.payload)
-        .await?;
-    let id = uuid::Uuid::now_v7();
-    let (entry, created) = {
-        let mut all = registry().lock().unwrap_or_else(|e| e.into_inner());
-        let (entry, created) = if let Some(entry) = all.entries.get(&key) {
-            (entry.clone(), false)
-        } else {
-            let entry = Arc::new(Entry {
-                serial: serial_inner(&mut all, &key),
-                key: key.clone(),
-                backend,
-                core: Mutex::new(Core {
-                    members: BTreeMap::new(),
-                    revision: revision.clone(),
-                    retired: false,
-                }),
-                signal: watch::channel(0).0,
-                notices: watch::channel(Notice::default()).0,
-                finished: watch::channel(false).0,
-            });
-            all.entries.insert(key, entry.clone());
-            (entry, true)
-        };
-        {
-            let mut core = entry.core.lock().unwrap_or_else(|e| e.into_inner());
-            if core.retired {
-                return Err(control_plane::errors::ControlPlaneError::Conflict(
-                    "managed_service_generation_mismatch",
-                )
-                .into());
-            }
-            if core.revision != revision {
-                core.revision = revision;
-                entry.notices.send_modify(|notice| {
-                    notice.sequence += 1;
-                    notice.event = None;
-                    notice.error = None;
-                    notice.revision = core.revision.clone();
-                });
-            }
-            core.members.insert(id, member);
-        }
-        (entry, created)
-    };
-    entry.wake();
-    if created {
-        tokio::spawn(entry.clone().drive());
+impl Broker {
+    #[cfg(test)]
+    pub(super) async fn join(
+        self: &Arc<Self>,
+        key: SourceKey,
+        backend: Arc<dyn SourceBackend>,
+        mut member: Member,
+        revision: String,
+    ) -> Result<Lease, ApiError> {
+        member.principal = backend
+            .authorize(&member.principal, &member.payload)
+            .await?;
+        let _inspection = self.inspection(&key).lock_owned().await;
+        self.join_admitted(key, backend, member, revision).await
     }
-    Ok(Lease { entry, id })
+
+    /// The caller must hold the source inspection guard and have admitted `member`.
+    pub(super) async fn join_admitted(
+        self: &Arc<Self>,
+        key: SourceKey,
+        backend: Arc<dyn SourceBackend>,
+        member: Member,
+        revision: String,
+    ) -> Result<Lease, ApiError> {
+        super::cache::ttl_ms(member.interval)?;
+        // Look up before inserting a lease so cancellation never leaves an undriven entry.
+        let seed = if self.active(&key).is_none() {
+            match backend.cached(&revision).await {
+                Ok(event) => event,
+                Err(error) => {
+                    tracing::warn!(error = %error.0, "shared source snapshot unavailable");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let id = uuid::Uuid::now_v7();
+        let (entry, created) = {
+            let mut all = self.0.lock().unwrap_or_else(|e| e.into_inner());
+            let (entry, created) = if let Some(entry) = all.entries.get(&key) {
+                (entry.clone(), false)
+            } else {
+                let entry = Arc::new(Entry {
+                    serial: serial_inner(&mut all, &key),
+                    key: key.clone(),
+                    backend,
+                    core: Mutex::new(Core {
+                        members: BTreeMap::new(),
+                        revision: revision.clone(),
+                        retired: false,
+                    }),
+                    signal: watch::channel(0).0,
+                    notices: watch::channel(match &seed {
+                        Some(event) => Notice {
+                            sequence: 1,
+                            revision: revision.clone(),
+                            event: Some(event.clone()),
+                            error: None,
+                            seed_replayable: true,
+                        },
+                        None => Notice::default(),
+                    })
+                    .0,
+                    finished: watch::channel(false).0,
+                });
+                all.entries.insert(key, entry.clone());
+                (entry, true)
+            };
+            {
+                let mut core = entry.core.lock().unwrap_or_else(|e| e.into_inner());
+                if core.retired {
+                    return Err(control_plane::errors::ControlPlaneError::Conflict(
+                        "managed_service_generation_mismatch",
+                    )
+                    .into());
+                }
+                if core.revision != revision {
+                    core.revision = revision;
+                    entry.notices.send_modify(|notice| {
+                        notice.sequence += 1;
+                        notice.seed_replayable = false;
+                        notice.event = None;
+                        notice.error = None;
+                        notice.revision = core.revision.clone();
+                    });
+                }
+                core.members.insert(id, member);
+            }
+            (entry, created)
+        };
+        let lease = Lease {
+            entry,
+            id,
+            seed: if created { seed } else { None },
+        };
+        lease.entry.wake();
+        if created {
+            tokio::spawn(lease.entry.clone().drive(Arc::clone(self)));
+        }
+        Ok(lease)
+    }
 }
 #[derive(Clone, PartialEq, Eq)]
 struct Configuration {
@@ -314,6 +375,7 @@ impl Entry {
             core.revision = revision.to_owned();
             self.notices.send_modify(|notice| {
                 notice.sequence += 1;
+                notice.seed_replayable = false;
                 notice.revision = revision.to_owned();
                 notice.event = None;
                 notice.error = None;
@@ -352,6 +414,12 @@ impl Entry {
     fn publish(&self, revision: &str, event: Option<Value>, error: Option<&'static str>) {
         self.notices.send_modify(|notice| {
             notice.sequence += 1;
+            notice.seed_replayable = notice.seed_replayable
+                && notice.revision == revision
+                && error.is_none()
+                && !event
+                    .as_ref()
+                    .is_some_and(|event| self.backend.is_ready(event));
             notice.revision = revision.to_owned();
             notice.event = event;
             notice.error = error;
@@ -359,8 +427,8 @@ impl Entry {
     }
     /// Registry and member locks always follow this order, making last-leave and
     /// a concurrent new join atomic. The serial permit stays owned through cleanup.
-    fn remove_if_unused(self: &Arc<Self>) -> bool {
-        let mut all = registry().lock().unwrap_or_else(|e| e.into_inner());
+    fn remove_if_unused(self: &Arc<Self>, broker: &Broker) -> bool {
+        let mut all = broker.0.lock().unwrap_or_else(|e| e.into_inner());
         let core = self.core.lock().unwrap_or_else(|e| e.into_inner());
         if !core.retired && !core.members.is_empty() {
             return false;
@@ -374,7 +442,7 @@ impl Entry {
         }
         true
     }
-    async fn drive(self: Arc<Self>) {
+    async fn drive(self: Arc<Self>, broker: Arc<Broker>) {
         let mut signal = self.signal.subscribe();
         // Also serializes old-generation drain and a legacy unary snapshot miss.
         let _serial = self.serial.clone().lock_owned().await;
@@ -382,7 +450,7 @@ impl Entry {
         loop {
             signal.borrow_and_update();
             let Some((configuration, member)) = self.configuration() else {
-                if self.remove_if_unused() {
+                if self.remove_if_unused(&broker) {
                     self.publish("", None, Some("managed_service_source_stopped"));
                     self.finished.send_replace(true);
                     return;
@@ -490,6 +558,7 @@ impl Entry {
                 failures = failures.saturating_add(1);
                 self.notices.send_modify(|notice| {
                     notice.sequence += 1;
+                    notice.seed_replayable = false;
                     notice.revision = configuration.revision.clone();
                     notice.error = Some("managed_service_source_retrying");
                     notice.event = None;
@@ -507,12 +576,13 @@ impl Entry {
                 let _ = self.backend.invalidate(&configuration.revision).await;
                 self.notices.send_modify(|notice| {
                     notice.sequence += 1;
+                    notice.seed_replayable = false;
                     notice.revision = configuration.revision.clone();
                     notice.error = Some("managed_service_source_stopped");
                     if notice
                         .event
                         .as_ref()
-                        .is_some_and(|event| self.backend.ready(event))
+                        .is_some_and(|event| self.backend.is_ready(event))
                     {
                         notice.event = None;
                     }

@@ -9,7 +9,7 @@ import {
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
   NATIVE_TRUSTED_BLOCK_PERMISSION,
   NATIVE_TRUSTED_BLOCK_RUNTIME
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../../packages/ui/package.json';
 

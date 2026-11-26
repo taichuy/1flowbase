@@ -26,5 +26,5 @@ test('the shared registry loads without crop CSS; only a crop block requests its
   expect(new TextDecoder().decode(asset?.bytes)).toContain(
     '.reactEasyCrop_Container'
   );
-  expect(document.head.textContent).not.toContain('.reactEasyCrop_Container');
+  expect(document.head).not.toHaveTextContent('.reactEasyCrop_Container');
 });

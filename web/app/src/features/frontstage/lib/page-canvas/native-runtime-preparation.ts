@@ -2,12 +2,13 @@ import {
   type NativeReactArtifactEvaluationResult,
   type NativeReactComponentArtifact,
   type NativeReactResolvedModuleAsset
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 import { i18nText } from '../../../../shared/i18n/text';
 
 import {
   createFrontstageRuntimeDemandCandidates,
+  resolveFrontstageRuntimeDemand,
   resolveFrontstageRuntimePreparationKind,
   type FrontstageRuntimeDemandByBlockId,
   type FrontstageRuntimeDemandPriority
@@ -170,25 +171,66 @@ interface ScheduledPreparation {
   observedAtMs: number;
 }
 
-const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 2;
+export const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 4;
+const FRONTSTAGE_MAIN_THREAD_FRAME_BUDGET_MS = 8;
+const DEFAULT_MAX_MOUNTED_COMMITS_PER_FRAME = 2;
 const FRONTSTAGE_NATIVE_INTERACTION_LEASE_MS = 200;
+const FALLBACK_FRAME_INTERVAL_MS = 16;
+
+export interface FrontstageNativePreparationSchedulerOptions {
+  frameBudgetMs?: number;
+  maxMountedCommitsPerFrame?: number;
+  now?: () => number;
+  nextFrame?: (signal: AbortSignal) => Promise<void>;
+}
+
+interface MainThreadAdmissionItem {
+  readonly current: ScheduledPreparation;
+  readonly generation: number;
+  readonly abortController: AbortController;
+  readonly kind: 'module_resolve' | 'commit';
+  readonly mountsDom: boolean;
+  readonly order: number;
+  readonly execute: () => void;
+  readonly resolve: () => void;
+  readonly reject: (reason: unknown) => void;
+}
 
 /** Owns one page's bounded Native React preparation queue; React roots belong to P2. */
 export class FrontstageNativePreparationScheduler implements FrontstageNativePreparationSource {
   private readonly scheduled = new Map<string, ScheduledPreparation>();
   private readonly listeners = new Set<() => void>();
   private readonly blockListeners = new Map<string, Set<() => void>>();
+  private readonly mainThreadQueue: MainThreadAdmissionItem[] = [];
+  private mainThreadFlushing = false;
+  private mainThreadFlushController: AbortController | null = null;
+  private mainThreadSerial = 0;
   private visible = true;
   private interactionLeaseUntilMs = 0;
+  private readonly frameBudgetMs: number;
+  private readonly maxMountedCommitsPerFrame: number;
+  private readonly nowMs: () => number;
+  private readonly nextFrameFn: (signal: AbortSignal) => Promise<void>;
 
   constructor(
-    readonly maxConcurrent = DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY
+    readonly maxConcurrent = DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY,
+    options: FrontstageNativePreparationSchedulerOptions = {}
   ) {
     if (!Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1) {
       throw new Error(
         'Native preparation concurrency must be a positive integer.'
       );
     }
+    this.frameBudgetMs =
+      options.frameBudgetMs ?? FRONTSTAGE_MAIN_THREAD_FRAME_BUDGET_MS;
+    this.maxMountedCommitsPerFrame =
+      options.maxMountedCommitsPerFrame ??
+      DEFAULT_MAX_MOUNTED_COMMITS_PER_FRAME;
+    this.nowMs =
+      options.now ??
+      (() =>
+        typeof performance !== 'undefined' ? performance.now() : Date.now());
+    this.nextFrameFn = options.nextFrame ?? waitForNextAnimationFrame;
   }
 
   subscribe(listener: () => void): () => void {
@@ -250,8 +292,11 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
     }
 
     for (const task of tasks) {
-      const priority =
-        demands?.[task.blockId] ?? (task.slotIndex === 0 ? 1 : 3);
+      const priority = resolveFrontstageRuntimeDemand(
+        demands,
+        task.blockId,
+        task.slotIndex
+      );
       let current = this.scheduled.get(task.blockId);
       if (!current) {
         current = {
@@ -372,6 +417,11 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
   }
 
   dispose(): void {
+    this.mainThreadFlushController?.abort();
+    this.mainThreadFlushController = null;
+    for (const queued of this.mainThreadQueue.splice(0)) {
+      queued.reject(new DOMException('Preparation aborted.', 'AbortError'));
+    }
     for (const current of this.scheduled.values()) {
       current.abortController?.abort();
       current.abortController = null;
@@ -439,7 +489,19 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
       cacheTier?: FrontstageRuntimeObservationCacheTier
     ) => {
       if (stage === 'module_resolve') {
-        await this.admitMainThreadStage(current, generation, abortController);
+        await this.enqueueMainThreadWork(
+          current,
+          generation,
+          abortController,
+          'module_resolve',
+          false,
+          () => {
+            if (!retained) current.snapshot = this.snapshot(current, stage);
+            this.observe(current, generation, stage, cacheTier);
+            this.emit([current.task.blockId]);
+          }
+        );
+        return;
       }
       if (!this.isCurrent(current, generation, abortController)) {
         throw new DOMException('Preparation aborted.', 'AbortError');
@@ -458,17 +520,29 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
             prepared.identityInput.sourceSha256
         );
         // Returning to unchanged DOM needs no mount/evaluation scheduling turn.
-        if (!unchanged)
-          await this.admitMainThreadStage(current, generation, abortController);
-        if (!this.isCurrent(current, generation, abortController)) return null;
-        current.abortController = null;
         if (unchanged && retained) {
+          if (!this.isCurrent(current, generation, abortController))
+            return null;
+          current.abortController = null;
           current.snapshot = retained;
-        } else {
-          if (retained) current.generation += 1;
-          current.snapshot = this.readySnapshot(current, prepared);
+          this.emit([current.task.blockId]);
+          this.pump();
+          return null;
         }
-        this.emit([current.task.blockId]);
+        const mountsDom = retained !== null || current.priority <= 1;
+        await this.enqueueMainThreadWork(
+          current,
+          generation,
+          abortController,
+          'commit',
+          mountsDom,
+          () => {
+            current.abortController = null;
+            if (retained) current.generation += 1;
+            current.snapshot = this.readySnapshot(current, prepared);
+            this.emit([current.task.blockId]);
+          }
+        );
         this.pump();
         return null;
       })
@@ -504,27 +578,184 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
       });
   }
 
-  private async admitMainThreadStage(
+  private enqueueMainThreadWork(
     current: ScheduledPreparation,
     generation: number,
-    abortController: AbortController
+    abortController: AbortController,
+    kind: 'module_resolve' | 'commit',
+    mountsDom: boolean,
+    execute: () => void
   ): Promise<void> {
-    while (
-      !current.task.explicitRefresh &&
-      Date.now() < this.interactionLeaseUntilMs
-    ) {
-      await waitForPreparationTurn(
-        this.interactionLeaseUntilMs - Date.now(),
-        abortController.signal
+    if (!this.isCurrent(current, generation, abortController)) {
+      return Promise.reject(
+        abortController.signal.reason ??
+          new DOMException('Preparation aborted.', 'AbortError')
       );
-      if (!this.isCurrent(current, generation, abortController)) return;
     }
-    await schedulePreparationTurn(
-      current.task.explicitRefresh || current.priority <= 1
-        ? 'user-visible'
-        : 'background',
-      abortController.signal
+    return new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        const index = this.mainThreadQueue.indexOf(item);
+        if (index >= 0) this.mainThreadQueue.splice(index, 1);
+        reject(
+          abortController.signal.reason ??
+            new DOMException('Preparation aborted.', 'AbortError')
+        );
+      };
+      const item: MainThreadAdmissionItem = {
+        current,
+        generation,
+        abortController,
+        kind,
+        mountsDom,
+        order: ++this.mainThreadSerial,
+        execute,
+        resolve: () => {
+          abortController.signal.removeEventListener('abort', onAbort);
+          resolve();
+        },
+        reject: (reason) => {
+          abortController.signal.removeEventListener('abort', onAbort);
+          reject(reason);
+        }
+      };
+      abortController.signal.addEventListener('abort', onAbort, { once: true });
+      this.mainThreadQueue.push(item);
+      if (!this.mainThreadFlushing) {
+        void this.flushMainThreadQueue();
+      }
+    });
+  }
+
+  private sortMainThreadQueue(): void {
+    if (this.mainThreadQueue.length <= 1) return;
+    this.mainThreadQueue.sort(
+      (left, right) =>
+        Number(Boolean(right.current.task.explicitRefresh)) -
+          Number(Boolean(left.current.task.explicitRefresh)) ||
+        left.current.priority - right.current.priority ||
+        (left.kind === right.kind ? 0 : left.kind === 'commit' ? -1 : 1) ||
+        left.current.task.slotIndex - right.current.task.slotIndex ||
+        left.order - right.order
     );
+  }
+
+  private async flushMainThreadQueue(): Promise<void> {
+    this.mainThreadFlushing = true;
+    const flushController = new AbortController();
+    this.mainThreadFlushController = flushController;
+    try {
+      // Yield one initial macrotask turn so concurrent microtask completions
+      // coalesce and sort by (priority, slotIndex) before Frame 1 begins.
+      this.sortMainThreadQueue();
+      const firstPriority =
+        this.mainThreadQueue[0] &&
+        (this.mainThreadQueue[0].current.task.explicitRefresh ||
+          this.mainThreadQueue[0].current.priority <= 1)
+          ? 'user-visible'
+          : 'background';
+      await schedulePreparationTurn(firstPriority, flushController.signal);
+
+      let frameConsumedMs = 0;
+      let frameMountedCommits = 0;
+      let frameAdmissions = 0;
+
+      while (this.mainThreadQueue.length > 0 && !flushController.signal.aborted) {
+        this.sortMainThreadQueue();
+        const next = this.mainThreadQueue[0]!;
+        if (
+          !this.isCurrent(next.current, next.generation, next.abortController)
+        ) {
+          this.mainThreadQueue.shift();
+          next.reject(new DOMException('Preparation aborted.', 'AbortError'));
+          continue;
+        }
+
+        while (
+          !next.current.task.explicitRefresh &&
+          Date.now() < this.interactionLeaseUntilMs
+        ) {
+          await waitForPreparationTurn(
+            this.interactionLeaseUntilMs - Date.now(),
+            flushController.signal
+          );
+          frameConsumedMs = 0;
+          frameMountedCommits = 0;
+          frameAdmissions = 0;
+          this.sortMainThreadQueue();
+          if (this.mainThreadQueue[0] !== next) break;
+        }
+        if (this.mainThreadQueue[0] !== next) continue;
+        if (
+          !this.isCurrent(next.current, next.generation, next.abortController)
+        ) {
+          this.mainThreadQueue.shift();
+          next.reject(new DOMException('Preparation aborted.', 'AbortError'));
+          continue;
+        }
+
+        const exceedsTimeBudget =
+          frameAdmissions > 0 && frameConsumedMs >= this.frameBudgetMs;
+        const exceedsMountQuantum =
+          next.mountsDom &&
+          frameMountedCommits >= this.maxMountedCommitsPerFrame;
+        const inputPending =
+          frameAdmissions > 0 &&
+          !next.current.task.explicitRefresh &&
+          isBrowserInputPending();
+
+        if (exceedsTimeBudget || exceedsMountQuantum || inputPending) {
+          await this.nextFrameFn(flushController.signal);
+          frameConsumedMs = 0;
+          frameMountedCommits = 0;
+          frameAdmissions = 0;
+          continue;
+        }
+
+        if (next.current.priority >= 2 && frameMountedCommits > 0) {
+          await schedulePreparationTurn('background', flushController.signal);
+          frameConsumedMs = 0;
+          frameMountedCommits = 0;
+          frameAdmissions = 0;
+          continue;
+        }
+
+        const nextIndex = this.mainThreadQueue.indexOf(next);
+        if (nextIndex < 0) continue;
+        this.mainThreadQueue.splice(nextIndex, 1);
+        if (
+          !this.isCurrent(next.current, next.generation, next.abortController)
+        ) {
+          next.reject(new DOMException('Preparation aborted.', 'AbortError'));
+          continue;
+        }
+
+        frameAdmissions += 1;
+        if (next.mountsDom) {
+          frameMountedCommits += 1;
+        }
+        const execStartMs = this.nowMs();
+        try {
+          next.execute();
+          next.resolve();
+        } catch (error) {
+          next.reject(error);
+        }
+        // Include synchronous commit + microtask evaluation chain in active CPU budget,
+        // never counting idle macrotask timer sleep as main-thread blocking time.
+        await Promise.resolve();
+        frameConsumedMs += Math.max(0, this.nowMs() - execStartMs);
+      }
+    } catch {
+      // Aborted via dispose(); queued items already rejected.
+    } finally {
+      if (this.mainThreadFlushController === flushController) {
+        this.mainThreadFlushController = null;
+      }
+      this.mainThreadFlushing = false;
+      if (this.mainThreadQueue.length > 0) {
+        void this.flushMainThreadQueue();
+      }
+    }
   }
 
   private isCurrent(
@@ -652,6 +883,46 @@ async function schedulePreparationTurn(
     return;
   }
   await waitForPreparationTurn(0, signal);
+}
+
+function isBrowserInputPending(): boolean {
+  const nav = globalThis.navigator as
+    | (Navigator & {
+        scheduling?: { isInputPending?: () => boolean };
+      })
+    | undefined;
+  return nav?.scheduling?.isInputPending?.() === true;
+}
+
+function waitForNextAnimationFrame(signal: AbortSignal): Promise<void> {
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.requestAnimationFrame === 'function' &&
+    (typeof document === 'undefined' || document.visibilityState === 'visible')
+  ) {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(
+          signal.reason ??
+            new DOMException('Preparation aborted.', 'AbortError')
+        );
+        return;
+      }
+      const handle = window.requestAnimationFrame(() => {
+        signal.removeEventListener('abort', abort);
+        resolve();
+      });
+      signal.addEventListener('abort', abort, { once: true });
+      function abort() {
+        window.cancelAnimationFrame(handle);
+        reject(
+          signal.reason ??
+            new DOMException('Preparation aborted.', 'AbortError')
+        );
+      }
+    });
+  }
+  return waitForPreparationTurn(FALLBACK_FRAME_INTERVAL_MS, signal);
 }
 
 function waitForPreparationTurn(

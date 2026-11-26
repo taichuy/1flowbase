@@ -304,12 +304,18 @@ describe('FrontStagePage - page tree move', () => {
     return { onMovePageNode };
   }
 
+  async function findMoveTreeDialog() {
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('顶部导航栏');
+    return dialog;
+  }
+
   async function openMoveDialog(pageTitle = '页面 page-2') {
     await openPageTreeOperationMenuAndFlush(getPageTreeItem(pageTitle));
     expect(screen.queryByText('上移')).not.toBeInTheDocument();
     expect(screen.queryByText('下移')).not.toBeInTheDocument();
     await clickAndFlush(await findLatestVisibleText('移动到'));
-    return screen.findByRole('dialog');
+    return findMoveTreeDialog();
   }
 
   test('sidebar group operations move the whole group into another group', async () => {
@@ -317,7 +323,7 @@ describe('FrontStagePage - page tree move', () => {
     const group = screen.getByTestId('frontstage-tree-node-group-分组 1');
     await openPageTreeOperationMenuAndFlush(group);
     await clickAndFlush(await findLatestVisibleText('移动到'));
-    const dialog = await screen.findByRole('dialog');
+    const dialog = await findMoveTreeDialog();
     await clickAndFlush(within(dialog).getByText('分组 2'));
     await clickAndFlush(
       within(dialog).getByRole('button', { name: /确\s*定/ })

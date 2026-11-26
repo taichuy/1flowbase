@@ -116,3 +116,19 @@ test('DV-F05 verify repo frontend includes the static dev experience gate', () =
     'dev-experience',
   ]);
 });
+
+
+test('three tiers reuse the existing scoped and release commands without layering full verify on PR', async () => {
+  const { buildPrVerifyPlan } = require('../../gate-router/core.js');
+  const options = { repoRoot: '/repo-root', env: { PATH: process.env.PATH } };
+  const fast = buildRepoCommands({ ...options, target: 'level1' });
+  assert.deepEqual(fast.map(({ label }) => label), ['repo-gate-router', 'repo-hygiene', 'repo-i18n-hygiene',
+    'repo-vite-lazy-deps-gate', 'repo-backend-static', 'repo-backend-fmt', 'repo-fast-script-tests']);
+  const pr = buildRepoCommands({ ...options, target: 'level2', plan: buildPrVerifyPlan({ changedFiles: ['web/app/src/shared/layout.tsx'] }) });
+  assert.deepEqual(pr.map(({ label }) => label), ['repo-dev-experience', 'repo-vite-lazy-deps-gate', 'repo-frontend-pr']);
+  const ci = buildRepoCommands({ ...options, target: 'level3' });
+  assert.deepEqual(ci.map(({ label }) => label), ['ci-verify-repo', 'ci-coverage-all']);
+  await main(['level2', '--base-ref', 'a'.repeat(40)], { runRepoImpl(args) {
+    assert.deepEqual(args, ['level2', '--base-ref', 'a'.repeat(40)]);
+  } });
+});

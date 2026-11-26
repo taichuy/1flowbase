@@ -32,6 +32,8 @@ enum Purpose {
 test_support_item! { pub(super), [#[derive(Serialize, Deserialize)]
 ]
 struct Transaction {
+    #[serde(default)]
+    pub invitation_token: Option<String>,
     pub login_entry_id: Uuid,
     pub connection_id: Uuid,
     pub auth_type: String,

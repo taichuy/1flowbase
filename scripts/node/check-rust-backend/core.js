@@ -173,6 +173,32 @@ function reviewPath(file) {
     && path.posix.normalize(file) === file;
 }
 
+function normalizeLineEndings(text) {
+  return String(text).replace(/\r\n/gu, '\n');
+}
+
+function sha256Text(text) {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+function computeReviewTargetSha256(content, anchor) {
+  const normalizedContent = normalizeLineEndings(
+    Buffer.isBuffer(content) ? content.toString('utf8') : content
+  );
+  if (anchor === undefined) {
+    return sha256Text(normalizedContent);
+  }
+  if (typeof anchor !== 'string' || anchor.trim().length === 0) {
+    return null;
+  }
+  const normalizedAnchor = normalizeLineEndings(anchor);
+  const firstIndex = normalizedContent.indexOf(normalizedAnchor);
+  if (firstIndex === -1 || normalizedContent.indexOf(normalizedAnchor, firstIndex + 1) !== -1) {
+    return null;
+  }
+  return sha256Text(normalizedAnchor);
+}
+
 function validateReview(entry, repoRoot, hashes) {
   const problems = [];
   const nonempty = (value) => typeof value === 'string' && value.trim().length > 0;
@@ -183,9 +209,13 @@ function validateReview(entry, repoRoot, hashes) {
   if (!nonempty(entry.reason)) problems.push('missing source-specific reason');
   if (Object.hasOwn(entry, 'line')) problems.push('historical line is not review evidence');
 
-  function bind(file, expectedHash, label) {
+  function bind(file, expectedHash, label, anchor) {
     if (!reviewPath(file)) { problems.push(`${label} must be a canonical api Rust path`); return; }
     if (!SHA256.test(expectedHash || '')) { problems.push(`${label} lacks a full SHA256`); return; }
+    if (anchor !== undefined && !nonempty(anchor)) {
+      problems.push(`${label} anchor must be a non-empty excerpt: ${file}`);
+      return;
+    }
     if (!hashes.has(file)) {
       try {
         const absolute = fs.realpathSync(path.join(repoRoot, file));
@@ -193,14 +223,39 @@ function validateReview(entry, repoRoot, hashes) {
         if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
           throw new Error('path escapes repository');
         }
-        hashes.set(file, { hash: createHash('sha256').update(fs.readFileSync(absolute)).digest('hex') });
+        const content = normalizeLineEndings(fs.readFileSync(absolute).toString('utf8'));
+        hashes.set(file, { content, hash: sha256Text(content) });
       } catch (error) { hashes.set(file, { error: error.message }); }
     }
     const actual = hashes.get(file);
-    if (actual.error) problems.push(`${label} unavailable: ${file}`);
-    else if (actual.hash !== expectedHash) problems.push(`${label} SHA256 changed: ${file}`);
+    if (actual.error) {
+      problems.push(`${label} unavailable: ${file}`);
+      return;
+    }
+    if (anchor !== undefined) {
+      const normalizedAnchor = normalizeLineEndings(anchor);
+      const firstIndex = actual.content.indexOf(normalizedAnchor);
+      if (firstIndex === -1) {
+        problems.push(`${label} SHA256 changed: ${file} (reviewed anchor no longer matches)`);
+        return;
+      }
+      if (actual.content.indexOf(normalizedAnchor, firstIndex + 1) !== -1) {
+        problems.push(`${label} anchor is ambiguous: ${file}`);
+        return;
+      }
+      if (sha256Text(normalizedAnchor) !== expectedHash) {
+        problems.push(`${label} SHA256 changed: ${file}`);
+      }
+      return;
+    }
+    if (actual.hash !== expectedHash) problems.push(`${label} SHA256 changed: ${file}`);
   }
-  bind(entry.file, entry.source_sha256, 'finding source');
+  if (entry.source_anchor !== undefined && nonempty(entry.snippet)
+    && typeof entry.source_anchor === 'string'
+    && !normalizeLineEndings(entry.source_anchor).includes(normalizeLineEndings(entry.snippet))) {
+    problems.push('finding source anchor must include exact diagnostic snippet');
+  }
+  bind(entry.file, entry.source_sha256, 'finding source', entry.source_anchor);
   if (!Array.isArray(entry.evidence) || entry.evidence.length === 0) {
     problems.push('missing caller/type/owner evidence');
   } else {
@@ -212,7 +267,7 @@ function validateReview(entry, repoRoot, hashes) {
       if (!nonempty(evidence.reason)) problems.push('missing evidence-specific reason');
       if (evidencePaths.has(evidence.file)) problems.push('duplicate evidence file');
       evidencePaths.add(evidence.file);
-      bind(evidence.file, evidence.sha256, 'review evidence');
+      bind(evidence.file, evidence.sha256, 'review evidence', evidence.anchor);
     }
     if (!entry.evidence.some((item) => item?.file !== entry.file)) {
       problems.push('evidence must include a separate caller/type/owner source');
@@ -338,6 +393,8 @@ async function main(_argv = [], deps = {}) {
 module.exports = {
   walkFiles,
   collectRustBackendFindings,
+  computeReviewTargetSha256,
   main,
+  normalizeLineEndings,
   scanRustSource,
 };

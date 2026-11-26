@@ -90,7 +90,7 @@ pub fn bindings_metadata() -> &'static [BindingMetadata] {
 
 test_support_item! { pub(super), []
 enum PublicInput {
-    Start { login_entry_id: Uuid },
+    Start { login_entry_id: Uuid, invitation_token: Option<String> },
     Complete(Box<super::VerifiedCallback>),
 }
 }
@@ -222,15 +222,24 @@ impl Adapter {
     }
     async fn public(&self, input: PublicInput) -> Result<PublicOutput, ApiError> {
         match input {
-            PublicInput::Start { login_entry_id } => {
+            PublicInput::Start {
+                login_entry_id,
+                invitation_token,
+            } => {
                 let entry = self.entry(login_entry_id).await?;
                 let _runtime = self
                     .authentication
                     .runtime
                     .retain_runtime()
                     .ok_or_else(transaction::denied)?;
-                let (cookies, authorization_url) =
-                    super::begin(&self.authentication, entry, None).await?;
+                let (cookies, authorization_url) = super::begin_with_invitation(
+                    &self.authentication,
+                    entry,
+                    None,
+                    transaction::Purpose::Bind,
+                    invitation_token,
+                )
+                .await?;
                 Ok(PublicOutput::Authorization(AuthorizeOutput {
                     cookies,
                     authorization_url,
@@ -241,6 +250,7 @@ impl Adapter {
                     login_entry_id,
                     identity,
                     registration_eligible,
+                    invitation_token,
                     binding_actor,
                     authority,
                     purpose,
@@ -254,6 +264,11 @@ impl Adapter {
                 let kernel = AuthKernel::new(
                     self.store.clone(),
                     SessionIssuer::new(Arc::clone(&self.sessions), self.session_ttl_days),
+                )
+                .with_workspace_policy(
+                    self.authentication
+                        .workspace_policy
+                        .identity_context(self.store.clone()),
                 );
                 let output = if let Some(actor) = binding_actor {
                     if purpose == super::transaction::Purpose::PasswordSetup {
@@ -282,6 +297,7 @@ impl Adapter {
                                 login_entry_id,
                                 identity,
                                 registration_eligible,
+                                invitation_token,
                             })
                             .await?,
                     )
@@ -670,6 +686,7 @@ pub(super) async fn invoke_authorize(
     let kernel = api_host_kernel::console_invocation::invocation_kernel(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
+        state.bootstrap_workspace_id,
     );
     let outcome = kernel
         .invoke::<AuthorizeInput, AuthorizeOutput, TargetError>(

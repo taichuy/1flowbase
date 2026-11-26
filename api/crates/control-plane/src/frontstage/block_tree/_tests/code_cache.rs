@@ -64,6 +64,7 @@ fn node() -> domain::FrontstageBlockNodeRecord {
         title: None,
         description: None,
         code_ref: "frontstage.block.block".into(),
+        source_sha256: None,
         schema_version: 1,
         input_mapping: BTreeMap::new(),
         output_mapping: BTreeMap::new(),

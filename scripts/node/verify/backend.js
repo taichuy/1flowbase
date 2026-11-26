@@ -177,9 +177,10 @@ function buildBackendTestCommands({
   repoRoot = getRepoRoot(),
   env = process.env,
   selection,
+  skipStaticGate = false,
 }) {
   return [
-    buildRustBackendStaticGateCommand({ repoRoot, env }),
+    ...(skipStaticGate ? [] : [buildRustBackendStaticGateCommand({ repoRoot, env })]),
     buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental, testSelection: selection }),
   ];
 }

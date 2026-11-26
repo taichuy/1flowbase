@@ -209,6 +209,24 @@ export function getStyleBoundaryCommonResponse(
 
   if (
     method.toUpperCase() === 'GET' &&
+    requestUrl.pathname === '/api/console/workspaces'
+  ) {
+    return createStyleBoundaryJsonResponse({
+      data: [
+        {
+          id: 'workspace-1',
+          name: 'Default Workspace',
+          logo_url: null,
+          introduction: '',
+          is_current: true
+        }
+      ],
+      meta: null
+    });
+  }
+
+  if (
+    method.toUpperCase() === 'GET' &&
     requestUrl.pathname === '/api/console/frontstage/pages'
   ) {
     return createStyleBoundaryJsonResponse({ data: [], meta: null });

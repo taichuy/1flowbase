@@ -1,26 +1,24 @@
 import { describe, expect, test } from 'vitest';
-import type { ConsolePluginSettingsCodeModule } from '@1flowbase/api-client';
+import type { ConsoleFrontendBlockRuntimeCodeModule } from '@1flowbase/api-client';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../../block-catalog';
 import { collectContributionModules } from '../registry';
 
-const module: ConsolePluginSettingsCodeModule = {
+const module: ConsoleFrontendBlockRuntimeCodeModule = {
   source: '@fixture/calendar',
   version: '0.1.0',
   exports: ['Calendar'],
   binding: 'fetched',
-  assets: [],
-  type_declarations: 'declare module "@fixture/calendar" {}'
+  assets: []
 };
-const host = (exports: string[]): ConsolePluginSettingsCodeModule => ({
+const host = (exports: string[]): ConsoleFrontendBlockRuntimeCodeModule => ({
   source: 'react',
   version: '19.2.5',
   exports,
   binding: 'host',
-  assets: [],
-  type_declarations: 'declare module "react" {}'
+  assets: []
 });
 const entry = (
-  code_modules: ConsolePluginSettingsCodeModule[],
+  code_modules: ConsoleFrontendBlockRuntimeCodeModule[],
   disable_reason: NormalizedFrontstageBlockCatalogEntry['raw']['disable_reason'] = null,
   owner = 'installation-1'
 ) =>

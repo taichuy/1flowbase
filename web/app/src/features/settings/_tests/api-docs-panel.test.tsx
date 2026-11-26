@@ -33,6 +33,7 @@ const authApi = vi.hoisted(() => ({
 
 vi.mock('../api/api-docs', () => docsApi);
 vi.mock('../../auth/api/session', () => authApi);
+vi.mock('../../auth/api/session-actions', () => authApi);
 vi.mock('@tanstack/react-router', async () => {
   const React = await import('react');
 

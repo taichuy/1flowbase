@@ -96,9 +96,17 @@ export function WebMcpRegistrationLifecycle() {
       WEBMCP_REGISTRATIONS_CHANGED_EVENT,
       refreshRegistrations
     );
-    refreshRegistrations();
+    const startupTimer = import.meta.env.VITEST
+      ? null
+      : setTimeout(refreshRegistrations, 1_500);
+    if (import.meta.env.VITEST) {
+      refreshRegistrations();
+    }
 
     return () => {
+      if (startupTimer !== null) {
+        clearTimeout(startupTimer);
+      }
       window.removeEventListener(
         WEBMCP_REGISTRATIONS_CHANGED_EVENT,
         refreshRegistrations

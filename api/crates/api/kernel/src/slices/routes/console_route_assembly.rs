@@ -247,7 +247,9 @@ where
     }
 
     pub fn into_router(self) -> Router<S> {
-        self.router
+        self.router.layer(axum::middleware::map_response(
+            crate::middleware::console_response_cache::prevent_implicit_console_caching,
+        ))
     }
 }
 
@@ -261,3 +263,7 @@ pub fn route_templates_match(left: &str, right: &str) -> bool {
                     && (right.starts_with(':') || right.starts_with('{')))
         })
 }
+
+#[cfg(test)]
+#[path = "_tests/console_route_cache.rs"]
+mod cache_tests;

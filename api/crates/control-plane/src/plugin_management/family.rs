@@ -326,6 +326,15 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         self.ensure_model_provider_target(&installation)?;
+        if installation.contract_version == "1flowbase.extension-bus/v1"
+            && installation.desired_state == domain::PluginDesiredState::ActiveRequested
+        {
+            super::dependencies::provider_change_preflight(
+                &installation,
+                None,
+                &self.repository.list_installations().await?,
+            )?;
+        }
         let requires_restart = is_host_extension_installation(&installation);
         let _local_installation = self
             .ready_current_node_installation(command.installation_id)
@@ -787,6 +796,13 @@ where
                 || target.provider_code != current.provider_code)
         {
             return Err(ControlPlaneError::InvalidInput("plugin_family_target_mismatch").into());
+        }
+        if current.contract_version == "1flowbase.extension-bus/v1" {
+            super::dependencies::provider_change_preflight(
+                current,
+                Some(target),
+                &self.repository.list_installations().await?,
+            )?;
         }
         let task_id = Uuid::now_v7();
         let task = self

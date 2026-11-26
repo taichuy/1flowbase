@@ -87,9 +87,16 @@ async fn error(response: axum::response::Response, status: StatusCode, mime: &st
     assert_eq!(response.headers()["content-type"], mime);
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let actual = if mime == "application/x-protobuf" {
-        tonic_types::pb::Status::decode(bytes.as_ref())
-            .unwrap()
-            .message
+        {
+            #[derive(prost::Message)]
+            struct OtlpRpcStatus {
+                #[prost(int32, tag = "1")]
+                code: i32,
+                #[prost(string, tag = "2")]
+                message: String,
+            }
+            OtlpRpcStatus::decode(bytes.as_ref()).unwrap().message
+        }
     } else {
         serde_json::from_slice::<Value>(&bytes).unwrap()["message"]
             .as_str()

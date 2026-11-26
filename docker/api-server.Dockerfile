@@ -48,7 +48,7 @@ FROM node:24.22.1-alpine AS application-template-bootstrap
 
 ARG APPLICATION_TEMPLATE_REPOSITORY=taichuy/1flowbase-official-plugins
 # Immutable application template snapshot; changing a package also bumps its release_version.
-ARG APPLICATION_TEMPLATE_REF=883c0425d58b285fb52a9d75aac4602ef74ab8d5
+ARG APPLICATION_TEMPLATE_REF=0fb52793c105797faf3565bd00a7002f4be543d6
 
 RUN apk add --no-cache 'ca-certificates>=20261020-r0' git curl
 COPY scripts/shell/package-application-templates.sh /usr/local/bin/package-application-templates
@@ -88,7 +88,8 @@ ENV MALLOC_ARENA_MAX=8
 ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
     API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore \
     API_MODEL_PRICING_BOOTSTRAP_ROOT=/app/api/resources/model-pricing \
-    API_APPLICATION_TEMPLATE_ROOT=/app/api/resources/application-templates
+    API_APPLICATION_TEMPLATE_ROOT=/app/api/resources/application-templates \
+    API_LOCAL_TERMINAL_DISABLED=true
 
 COPY api/plugins /app/api/plugins
 COPY --chmod=0755 docker/deployment/initialize.sh /usr/local/bin/1flowbase-initialize

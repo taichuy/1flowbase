@@ -144,22 +144,24 @@ async fn http_request_node_truncates_response_body_at_configured_budget() {
 }
 
 #[tokio::test]
-async fn http_request_node_caps_configured_response_budget_at_ten_mib() {
+async fn http_request_node_honors_configured_response_budget_above_ten_mib() {
+    let body_len = 10 * 1024 * 1024 + 1024;
     let (base_url, _captured, server) = spawn_http_fixture(vec![response(
-        "/too-large",
+        "/above-ten-mib",
         200,
         "application/octet-stream",
-        vec![b'x'; 10 * 1024 * 1024 + 1],
+        vec![b'x'; body_len],
     )])
     .await;
     let plan = http_request_plan(
         json!({
             "method": "GET",
-            "url": format!("{base_url}/too-large"),
+            "url": format!("{base_url}/above-ten-mib"),
             "body_type": "none",
             "timeout_ms": 30000,
             "max_response_bytes": 20 * 1024 * 1024,
-            "verify_ssl": true
+            "verify_ssl": true,
+            "store_response_as_file": true
         }),
         BTreeMap::new(),
     );
@@ -181,15 +183,23 @@ async fn http_request_node_caps_configured_response_budget_at_ten_mib() {
             .as_str()
             .unwrap()
             .len(),
-        10 * 1024 * 1024
+        body_len
+    );
+    assert_eq!(
+        outcome.variable_pool["node-http"]["files"][0]["size"],
+        json!(body_len)
     );
     assert_eq!(
         outcome.node_traces[1].metrics_payload["body_truncated"],
-        json!(true)
+        json!(false)
+    );
+    assert_eq!(
+        outcome.node_traces[1].metrics_payload["max_response_bytes"],
+        json!(20 * 1024 * 1024)
     );
     assert_eq!(
         outcome.node_traces[1].metrics_payload["response_bytes_observed"],
-        json!(10 * 1024 * 1024 + 1)
+        json!(body_len)
     );
     server.abort();
 }

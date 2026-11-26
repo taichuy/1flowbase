@@ -144,6 +144,34 @@ export function createFrontendModuleExtraLib(
 }`
     };
   }
+  if (moduleSource === '@1flowbase/resizable-drawer') {
+    return {
+      source: moduleSource,
+      filePath: 'file:///node_modules/@1flowbase/resizable-drawer/index.d.ts',
+      content: `declare module '@1flowbase/resizable-drawer' {
+  import type { ReactElement, ReactNode } from 'react';
+  export interface ResizableDrawerProps {
+    open: boolean;
+    title: ReactNode;
+    ariaLabel?: string;
+    children: ReactNode;
+    onClose: () => void;
+    defaultWidth?: number;
+    minWidth?: number;
+    maxWidth?: number;
+    viewportGutter?: number;
+    resizeLabel: string;
+    extra?: ReactNode;
+    footer?: ReactNode;
+    destroyOnClose?: boolean;
+    rootClassName?: string;
+    bodyClassName?: string;
+    zIndex?: number;
+  }
+  export function ResizableDrawer(props: ResizableDrawerProps): ReactElement;
+}`
+    };
+  }
   if (moduleSource === '@1flowbase/plugin-settings') {
     return {
       source: moduleSource,

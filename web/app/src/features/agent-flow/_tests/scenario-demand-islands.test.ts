@@ -13,7 +13,9 @@ describe('BGP scenario demand islands', () => {
     const router = await source('src/app/router.tsx');
     const helpMenu = await source('src/app-shell/HelpChromeMenu.tsx');
 
-    expect(bootstrap).toContain("import('../app-shell/AppShellFrame')");
+    const startup = await source('src/app/bootstrap/AuthenticatedStartup.tsx');
+    expect(bootstrap).toContain("import('./bootstrap/AuthenticatedStartup')");
+    expect(startup).toContain("import('../../app-shell/AppShellFrame')");
     expect(router).toContain(
       '/^\\/applications\\/[^/]+(?:\\/|$)/u.test(window.location.pathname)'
     );
@@ -50,7 +52,12 @@ describe('BGP scenario demand islands', () => {
     const preview = await source(
       'src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantPreview.tsx'
     );
-    expect(trigger).toContain('embedded-agent-assistant-window-shell');
+    const host = await source(
+      'src/features/agent-flow/components/embedded-assistant/EmbeddedAgentAssistantWindowHost.tsx'
+    );
+    expect(trigger).toMatch(/lazy\(\(\) =>\s*import\('\.\/EmbeddedAgentAssistantWindowHost'\)/u);
+    expect(trigger).toContain('{previewMounted ? (');
+    expect(host).toMatch(/lazy\(async \(\) => \{[\s\S]*?import\('\.\/EmbeddedAgentAssistantPreview'\)/u);
     expect(preview).toContain("import('./AssistantRunActivityPanel')");
     expect(preview).toContain(
       "import('../assistant-plugin/AssistantPanelPlugin')"

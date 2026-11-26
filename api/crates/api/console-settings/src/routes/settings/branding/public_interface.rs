@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use interface_runtime::{
     AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
@@ -13,40 +13,94 @@ use interface_runtime::{
     TargetReference,
 };
 
-use super::{BrandingInput, BrandingOutput};
+use super::BrandingInput;
 use crate::{
-    app_state::ApiState, error_response::ApiError, response::ApiSuccess,
-    routes::console_interface::ConsoleInterfaceTargetError,
+    app_state::ApiState, error_response::ApiError, openapi_interface::json_contract::JsonApiOutput,
+    response::ApiSuccess, routes::console_interface::ConsoleInterfaceTargetError,
 };
 use axum::{extract::State, Json};
 use control_plane::system_branding::SystemBrandingService;
-use control_plane_contracts::ports::SystemBranding;
+use control_plane_contracts::ports::{CommercialBrandingConfig, PublicSystemMetadata};
 const INTERFACE_ID: &str = "public.system-metadata.get";
 const HANDLER_REFERENCE: &str = "api-server.public-branding.read";
 
+#[derive(Debug, Clone)]
+pub struct CommercialLicenseBrandingSource {
+    pub config_path: PathBuf,
+    pub packaged_default_path: PathBuf,
+}
+
+#[derive(serde::Serialize)]
+#[serde(transparent)]
+pub struct PublicBrandingOutput(pub PublicSystemMetadata);
+impl JsonApiOutput for PublicBrandingOutput {}
+
+impl InterfaceContract for PublicBrandingOutput {
+    const CONTRACT_ID: &'static str = "public-system-metadata-output";
+    const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        Some(crate::extension_bus::managed_projection::object_schema([(
+            "system_name",
+            crate::extension_bus::managed_projection::text_schema(),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        Some(
+            serde_json::json!({"system_name": crate::extension_bus::managed_projection::text(&self.0.system_name)?}),
+        )
+    }
+}
+
+async fn read_commercial_branding(
+    source: Option<&CommercialLicenseBrandingSource>,
+) -> Option<CommercialBrandingConfig> {
+    let source = source?;
+    match tokio::fs::read(&source.config_path).await {
+        Ok(bytes) => Some(serde_json::from_slice(&bytes).unwrap_or_default()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            match tokio::fs::read(&source.packaged_default_path).await {
+                Ok(bytes) => Some(serde_json::from_slice(&bytes).unwrap_or_default()),
+                Err(_) => Some(CommercialBrandingConfig::default()),
+            }
+        }
+        Err(_) => Some(CommercialBrandingConfig::default()),
+    }
+}
+
 struct BrandingHandler {
     store: storage_durable_postgres::MainDurableStore,
+    commercial_source: Option<CommercialLicenseBrandingSource>,
 }
-impl InterfaceHandler<BrandingInput, BrandingOutput, ConsoleInterfaceTargetError, PublicPrincipal>
-    for BrandingHandler
+impl
+    InterfaceHandler<
+        BrandingInput,
+        PublicBrandingOutput,
+        ConsoleInterfaceTargetError,
+        PublicPrincipal,
+    > for BrandingHandler
 {
     fn invoke(
         &self,
         _context: InterfaceHandlerContext<PublicPrincipal>,
         _input: BrandingInput,
-    ) -> InterfaceHandlerFuture<BrandingOutput, ConsoleInterfaceTargetError> {
+    ) -> InterfaceHandlerFuture<PublicBrandingOutput, ConsoleInterfaceTargetError> {
         let store = self.store.clone();
+        let commercial_source = self.commercial_source.clone();
         Box::pin(async move {
-            SystemBrandingService::new(store)
+            let base = SystemBrandingService::new(store)
                 .read()
                 .await
-                .map(BrandingOutput)
                 .map_err(|error| {
                     InterfaceTargetFailure::new(
                         "system_branding",
                         ConsoleInterfaceTargetError(ApiError::from(error)),
                     )
-                })
+                })?;
+            let commercial = read_commercial_branding(commercial_source.as_ref()).await;
+            Ok(PublicBrandingOutput(PublicSystemMetadata::compose(
+                base,
+                commercial.as_ref(),
+            )))
         })
     }
 }
@@ -59,11 +113,11 @@ pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly
 }
 
 /// Read public system display metadata without signing in.
-/// Returns only the installation branding and administrator-authored filing HTML.
+/// Returns synthesized installation branding, filing HTML, and active commercial white-label projection.
 #[utoipa::path(get, path = "/api/public/system-metadata", responses((status = 200, body = serde_json::Value)))]
 pub async fn get_system_metadata(
     State(state): State<Arc<ApiState>>,
-) -> Result<Json<ApiSuccess<SystemBranding>>, ApiError> {
+) -> Result<Json<ApiSuccess<PublicSystemMetadata>>, ApiError> {
     use interface_runtime::{
         InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol,
     };
@@ -86,7 +140,7 @@ pub async fn get_system_metadata(
         )
         .await?;
     let outcome = InterfaceInvocationKernel::new(Arc::new(BrandingAuthorization))
-        .invoke::<BrandingInput, BrandingOutput, ConsoleInterfaceTargetError>(
+        .invoke::<BrandingInput, PublicBrandingOutput, ConsoleInterfaceTargetError>(
             snapshot,
             authenticated.into_envelope(BrandingInput::Read),
         )
@@ -119,6 +173,7 @@ impl InterfaceAuthorizationPort<PublicPrincipal> for BrandingAuthorization {
 
 pub fn compile_registry(
     store: storage_durable_postgres::MainDurableStore,
+    commercial_source: Option<CommercialLicenseBrandingSource>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let interface_id = InterfaceId::new(INTERFACE_ID).expect("static interface id is valid");
     let identity = InterfaceIdentity::new(
@@ -127,7 +182,7 @@ pub fn compile_registry(
     );
     let contracts = InterfaceContracts::unary(
         contract::<BrandingInput>(),
-        contract::<BrandingOutput>(),
+        contract::<PublicBrandingOutput>(),
         contract::<ConsoleInterfaceTargetError>(),
     );
     let operation = AuthorizationOperation::new("public.system-metadata.read")
@@ -197,7 +252,7 @@ pub fn compile_registry(
     );
     crate::openapi_interface::contract::register_static_api_operation::<
         BrandingInput,
-        BrandingOutput,
+        PublicBrandingOutput,
     >(&mut compiler, &binding, "graph:public-branding-v1")?;
     compiler.register_binding(
         binding,
@@ -211,13 +266,16 @@ pub fn compile_registry(
     )?;
     compiler.bind_handler::<
         BrandingInput,
-        BrandingOutput,
+        PublicBrandingOutput,
         ConsoleInterfaceTargetError,
         PublicPrincipal,
     >(
         &interface_id,
         HandlerReference::new(HANDLER_REFERENCE).expect("static handler is valid"),
-        Arc::new(BrandingHandler { store }),
+        Arc::new(BrandingHandler {
+            store,
+            commercial_source,
+        }),
     )?;
     compiler.compile()
 }

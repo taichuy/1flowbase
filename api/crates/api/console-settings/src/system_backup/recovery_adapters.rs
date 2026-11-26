@@ -21,7 +21,6 @@ use domain::{
     ContentDigest, UserStatus,
 };
 use sha2::{Digest, Sha256};
-use sqlx::postgres::PgPoolOptions;
 use tokio::io::AsyncReadExt;
 
 /// Resets the three excluded ephemeral domains through explicit host capabilities.
@@ -91,24 +90,12 @@ impl RecoveryEphemeralState for StoppedServerRecoveryEphemeralState {
         &self,
         _context: &PostRestoreRecoveryContext,
     ) -> Result<(), PostRestoreDependencyError> {
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&self.database_url)
-            .await
-            .map_err(|_| PostRestoreDependencyError)?;
-        let result = sqlx::query(
-            r#"
-            update users
-               set session_version = session_version + 1,
-                   updated_at = now()
-            "#,
+        match storage_durable_postgres::system_recovery::bump_all_user_session_versions_at_url(
+            &self.database_url,
         )
-        .execute(&pool)
         .await
-        .map_err(|_| PostRestoreDependencyError);
-        pool.close().await;
-        match result {
-            Ok(receipt) if receipt.rows_affected() > 0 => Ok(()),
+        {
+            Ok(rows_affected) if rows_affected > 0 => Ok(()),
             _ => Err(PostRestoreDependencyError),
         }
     }
@@ -163,7 +150,7 @@ impl PostRestoreReconcileTarget for PostgreSqlPostRestoreReconciler {
             Ok(())
         }
         .await;
-        store.pool().close().await;
+        store.close().await;
         result
     }
 }
@@ -206,14 +193,13 @@ impl PostgreSqlPostRestoreHealthVerifier {
         context: &PostRestoreRecoveryContext,
         expected_migration_head: &domain::MigrationHead,
     ) -> Result<(), PostRestoreDependencyError> {
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&self.database_url)
-            .await
-            .map_err(|_| PostRestoreDependencyError)?;
-        let store = storage_durable_postgres::MainDurableStore::new(pool.clone());
+        let store =
+            storage_durable_postgres::MainDurableStore::connect_for_recovery(&self.database_url)
+                .await
+                .map_err(|_| PostRestoreDependencyError)?;
         let result = async {
-            let actual = storage_durable_postgres::migration_head(&pool)
+            let actual = store
+                .migration_head()
                 .await
                 .map_err(|_| PostRestoreDependencyError)?;
             if &actual != expected_migration_head {
@@ -255,53 +241,24 @@ impl PostgreSqlPostRestoreHealthVerifier {
                 return Err(PostRestoreDependencyError);
             }
 
-            let permission_count =
-                sqlx::query_scalar::<_, i64>("select count(*) from permission_definitions")
-                    .fetch_one(&pool)
-                    .await
-                    .map_err(|_| PostRestoreDependencyError)?;
-            if permission_count < access_control::permission_catalog().len() as i64 {
+            let readiness = store
+                .post_restore_catalog_readiness_counts(&self.node_id)
+                .await
+                .map_err(|_| PostRestoreDependencyError)?;
+            if readiness.permission_definitions < access_control::permission_catalog().len() as i64
+            {
                 return Err(PostRestoreDependencyError);
             }
-            let unhealthy_node_artifacts = sqlx::query_scalar::<_, i64>(
-                r#"
-                select count(*)
-                  from extension_artifact_instances
-                 where node_id = $1 and artifact_status <> 'ready'
-                "#,
-            )
-            .bind(&self.node_id)
-            .fetch_one(&pool)
-            .await
-            .map_err(|_| PostRestoreDependencyError)?;
-            if unhealthy_node_artifacts != 0 {
+            if readiness.unhealthy_node_artifacts != 0 {
                 return Err(PostRestoreDependencyError);
             }
-            let missing_active_installations = sqlx::query_scalar::<_, i64>(
-                r#"
-                select count(*)
-                  from extension_installations installation
-                 where installation.desired_state = 'active_requested'
-                   and not exists (
-                       select 1
-                         from extension_artifact_instances artifact
-                        where artifact.node_id = $1
-                          and artifact.installation_id = installation.id
-                          and artifact.artifact_status = 'ready'
-                   )
-                "#,
-            )
-            .bind(&self.node_id)
-            .fetch_one(&pool)
-            .await
-            .map_err(|_| PostRestoreDependencyError)?;
-            if missing_active_installations != 0 {
+            if readiness.missing_active_installations != 0 {
                 return Err(PostRestoreDependencyError);
             }
             Ok(())
         }
         .await;
-        pool.close().await;
+        store.close().await;
         result
     }
 
@@ -503,53 +460,21 @@ impl RecoveryAuditProjector for PostgreSqlRecoveryAuditProjector {
             "requested_target_snapshot": projection.requested_target_snapshot,
             "effective_after_snapshot": projection.effective_after_snapshot,
         });
-        let pool = PgPoolOptions::new()
-            .max_connections(1)
-            .connect(&self.database_url)
+        let matched =
+            storage_durable_postgres::system_recovery::upsert_system_recovery_audit_log_at_url(
+                &self.database_url,
+                storage_durable_postgres::system_recovery::SystemRecoveryAuditLogRow {
+                    audit_id: projection.audit_id,
+                    actor_user_id: projection.actor_user_id,
+                    recovery_job_id: projection.recovery_job_id,
+                    event_code: projection.outcome.event_code(),
+                    payload,
+                    occurred_at: projection.occurred_at,
+                },
+            )
             .await
             .map_err(|_| PostRestoreDependencyError)?;
-        let projected = sqlx::query_scalar::<_, uuid::Uuid>(
-            r#"
-            insert into audit_logs (
-                id,
-                workspace_id,
-                scope_id,
-                actor_user_id,
-                target_type,
-                target_id,
-                event_code,
-                payload,
-                created_by,
-                updated_by,
-                created_at,
-                updated_at
-            )
-            values ($1, null, $2, $3, 'system_recovery', $4,
-                    $5, $6, $3, $3, $7, $7)
-            on conflict (id) do update set id = excluded.id
-             where audit_logs.workspace_id is not distinct from excluded.workspace_id
-               and audit_logs.scope_id = excluded.scope_id
-               and audit_logs.actor_user_id is not distinct from excluded.actor_user_id
-               and audit_logs.target_type = excluded.target_type
-               and audit_logs.target_id is not distinct from excluded.target_id
-               and audit_logs.event_code = excluded.event_code
-               and audit_logs.payload = excluded.payload
-               and audit_logs.created_at = excluded.created_at
-            returning id
-            "#,
-        )
-        .bind(projection.audit_id)
-        .bind(domain::SYSTEM_SCOPE_ID)
-        .bind(projection.actor_user_id)
-        .bind(projection.recovery_job_id.as_uuid())
-        .bind(projection.outcome.event_code())
-        .bind(payload)
-        .bind(projection.occurred_at)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|_| PostRestoreDependencyError)?;
-        pool.close().await;
-        if projected == Some(projection.audit_id) {
+        if matched {
             Ok(())
         } else {
             Err(PostRestoreDependencyError)

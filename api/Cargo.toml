@@ -32,22 +32,20 @@ members = [
   "crates/observability",
   "crates/postgres-test-support"
 ]
-exclude = ["vendor/tungstenite-0.27.0-openai-memory", "vendor/tungstenite-0.29.0-memory"]
+exclude = ["vendor/tungstenite-0.27.0-openai-memory", "vendor/tungstenite-0.29.0-memory", "vendor/tokio-tungstenite-0.28.0-openai-memory"]
 resolver = "2"
 
 [workspace.package]
 rust-version = "1.99"
 edition = "2021"
 license = "MIT"
-version = "0.6.6"
+version = "0.6.7"
 
 [workspace.dependencies]
 base16ct = "1.0.0"
 anyhow = "1.0.104"
 argon2 = "0.6.0"
 async-trait = "0.1.92"
-aws-config = { version = "1.12.0", default-features = false, features = ["behavior-version-latest", "rt-tokio", "rustls"] }
-aws-sdk-s3 = { version = "1.152.0", default-features = false, features = ["rt-tokio"] }
 axum = { version = "0.8.9", features = ["macros"] }
 axum-extra = { version = "0.12.6", features = ["cookie"] }
 base64 = "0.23.1"
@@ -57,15 +55,15 @@ zstd = "0.14.2"
 futures-util = "0.3.34"
 hmac = "0.13.0"
 http = "1.5.0"
-jsonschema = "0.58.6"
+jsonschema = { version = "0.58.6", default-features = false, features = ["idna"] }
 moka = { version = "0.12.16", features = ["future"] }
 opentelemetry-proto = { version = "=0.33.1", default-features = false, features = ["gen-tonic-messages", "trace", "with-serde"] }
 prost = "=0.14.4"
 percent-encoding = "2.3.2"
 rand_core = { version = "0.10.1" }
 rand = "0.10.3"
-rand_regex = { version = "0.19.0", default-features = false }
-reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls", "query", "form", "socks"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider", "query", "form", "socks", "stream"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 regex = "1.13.1"
 regex-syntax = "0.8.11"
 rust_decimal = { version = "1.43.0", features = ["serde-with-str"] }
@@ -76,16 +74,15 @@ semver = "1.0.28"
 sha2 = "0.11.1"
 # Keep upstream's sequential default: parallel /proc scans spend more CPU on
 # Rayon scheduling than on our narrow observations (sysinfo issue #1352).
-sysinfo = "0.39.6"
+sysinfo = { version = "0.39.6", default-features = false, features = ["system", "disk", "network", "user"] }
 # The native template transaction owner requires exact savepoint-depth checks.
 sqlx-core = { version = "0.9.0", default-features = false }
-sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring", "uuid", "macros", "time", "json", "migrate"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring", "uuid", "derive", "time", "json", "migrate"] }
 tar = "0.4.46"
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["serde", "formatting", "parsing", "macros"] }
 time-tz = "2.0.0"
 tokio = { version = "1.53.3", features = ["full"] }
-tonic-types = { version = "=0.14.6", default-features = false }
 tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.7.1", features = ["cors", "trace"] }
 tracing = "0.1.44"
@@ -95,6 +92,33 @@ utoipa-swagger-ui = { version = "10.0.1", features = ["axum", "vendored"] }
 url = "2.5.8"
 uuid = { version = "1.28.0", features = ["serde", "v7"] }
 zip = { version = "9.0.3", default-features = false, features = ["deflate"] }
+
+[profile.release]
+strip = "debuginfo"
+
+# Protocol crates are I/O-bound HTTP/OpenAPI glue (~200k LOC of axum/utoipa/serde).
+# Keep runtime, crypto, storage, and orchestration hot paths at default opt-level = 3,
+# while avoiding O3 codegen blowup on route/schema glue crates.
+[profile.release.package.api-console-interaction]
+opt-level = 1
+
+[profile.release.package.api-console-settings]
+opt-level = 1
+
+[profile.release.package.api-applications]
+opt-level = 1
+
+[profile.release.package.api-plugins-models]
+opt-level = 1
+
+[profile.release.package.api-mcp]
+opt-level = 1
+
+[profile.release.package.api-public-gateway]
+opt-level = 1
+
+[profile.release.package.api-host-kernel]
+opt-level = 2
 
 [profile.dev]
 debug = 1
@@ -134,9 +158,15 @@ codegen-units = 256
 [profile.test.package.sha2]
 opt-level = 3
 
+[profile.test.package.argon2]
+opt-level = 3
+
 # Preserve both production protocol implementations; only frame buffer owners differ.
 [patch."https://github.com/openai-oss-forks/tungstenite-rs"]
 tungstenite = { path = "vendor/tungstenite-0.27.0-openai-memory" }
+
+[patch."https://github.com/openai-oss-forks/tokio-tungstenite"]
+tokio-tungstenite = { path = "vendor/tokio-tungstenite-0.28.0-openai-memory" }
 
 [patch.crates-io]
 tungstenite = { path = "vendor/tungstenite-0.29.0-memory" }

@@ -156,6 +156,8 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         let tenant = TenantRecord {
             id: Uuid::now_v7(),
             code: "root-tenant".to_string(),
+            status: domain::TenantStatus::Active,
+            cell_id: "default".to_string(),
             name: "Root Tenant".to_string(),
             is_root: true,
             is_hidden: true,

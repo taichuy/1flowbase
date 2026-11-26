@@ -31,7 +31,7 @@ describe('event table shared pagination', () => {
     expect(
       document.querySelector('.data-table__pagination-total')
     ).toHaveTextContent('53');
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
     expect(screen.getByText('Event 21')).toBeInTheDocument();
     expect(screen.queryByText('Event 1')).not.toBeInTheDocument();
     fireEvent.mouseDown(screen.getByRole('combobox'));
@@ -43,7 +43,7 @@ describe('event table shared pagination', () => {
     expect(within(table).getAllByRole('row')).toHaveLength(4);
     expect(screen.getByText('Event 51')).toBeInTheDocument();
     expect(screen.getByText('Event 53')).toBeInTheDocument();
-    fireEvent.click(screen.getByTitle('1'));
+    fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 1$/i }));
     expect(within(table).getAllByRole('row')).toHaveLength(51);
     expect(screen.getByText('Event 50')).toBeInTheDocument();
     expect(screen.queryByText('Event 51')).not.toBeInTheDocument();
@@ -68,7 +68,7 @@ test('runtime pagination is restored from and written to the URL without changin
     </ConfigProvider>
   );
   expect(screen.getByText('Event 21')).toBeInTheDocument();
-  fireEvent.click(screen.getByTitle('3'));
+  fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 3$/i }));
   expect(window.location.search).toContain('activity_page=3');
   expect(window.location.search).toContain('scope=system');
   view.unmount();

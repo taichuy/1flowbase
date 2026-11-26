@@ -7,6 +7,7 @@ fn password_never_enters_sign_in_event_schema_or_value() {
         path: "/api/public/auth/sign-in".into(),
     };
     let input = PublicSignInInput(LoginCommand {
+        invitation_token: None,
         login_entry_id: Uuid::nil(),
         identifier: "alice".into(),
         password: "SIGN-IN-PASSWORD-SENTINEL".into(),

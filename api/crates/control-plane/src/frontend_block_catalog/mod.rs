@@ -1,7 +1,7 @@
 pub mod custom_blocks;
 use anyhow::Result;
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, BTreeMap, HashMap},
     path::PathBuf,
     sync::Arc,
 };
@@ -30,6 +30,8 @@ use crate::{
 };
 
 const FRONTEND_BLOCKS_VIEW_OPERATION_ID: &str = "frontend_blocks.view";
+const FRONTEND_BLOCK_TYPE_DECLARATIONS_VIEW_OPERATION_ID: &str =
+    "frontend_blocks.type_declarations.view";
 
 pub struct ListFrontendBlockCatalogQuery {
     pub actor_user_id: Uuid,
@@ -76,7 +78,7 @@ where
     ) -> Result<Option<FrontendModuleAssetResource>> {
         let entries = self
             .repository
-            .list_workspace_frontend_blocks(&self.node_id, query.workspace_id)
+            .list_workspace_frontend_blocks_runtime(&self.node_id, query.workspace_id)
             .await?;
         let active = resolve_frontend_contributions(
             &self.repository,
@@ -175,6 +177,22 @@ pub struct FrontendBlockCatalogView {
     pub entries: Vec<FrontendContributionBinding>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontendBlockTypeDeclarationEntry {
+    pub installation_id: Uuid,
+    pub plugin_id: String,
+    pub plugin_version: String,
+    pub source: String,
+    pub version: String,
+    pub binding: domain::FrontendModuleBinding,
+    pub type_declarations: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontendBlockTypeDeclarationsView {
+    pub entries: Vec<FrontendBlockTypeDeclarationEntry>,
+}
+
 pub struct FrontendBlockCatalogService<R> {
     repository: R,
     node_id: String,
@@ -226,7 +244,7 @@ where
 
         let mut entries = self
             .repository
-            .list_workspace_frontend_blocks(&self.node_id, actor.current_workspace_id)
+            .list_workspace_frontend_blocks_runtime(&self.node_id, actor.current_workspace_id)
             .await?;
         let managed_defaults = self
             .repository
@@ -264,6 +282,74 @@ where
         )
         .await?;
         Ok(FrontendBlockCatalogView { entries })
+    }
+
+    pub async fn list_frontend_block_type_declarations(
+        &self,
+        query: ListFrontendBlockCatalogQuery,
+    ) -> Result<FrontendBlockTypeDeclarationsView> {
+        let actor = self
+            .repository
+            .load_actor_context_for_user(query.actor_user_id)
+            .await?;
+        if !actor.is_root {
+            let policies = self
+                .repository
+                .load_role_console_policies_for_user(&actor)
+                .await?;
+            let group = domain::ConsolePolicyGroup::other("other.frontend-blocks")
+                .expect("compiled frontend block policy group must be valid");
+            let operation_id = domain::ConsoleOperationId::try_from(
+                FRONTEND_BLOCK_TYPE_DECLARATIONS_VIEW_OPERATION_ID,
+            )
+            .expect("compiled frontend block type declarations operation id must be valid");
+            if !domain::effective_console_simple_operation(&policies, &group, &operation_id) {
+                return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+            }
+        }
+
+        let entries = self
+            .repository
+            .list_workspace_frontend_blocks(&self.node_id, actor.current_workspace_id)
+            .await?;
+        let active = resolve_frontend_contributions(
+            &self.repository,
+            &self.node_id,
+            actor.current_workspace_id,
+            &self.resolver,
+            entries,
+        )
+        .await?;
+        let mut deduplicated = BTreeMap::new();
+        for binding in active {
+            let entry = binding.catalog_entry;
+            for module in entry.code_modules {
+                let type_declarations = module.resolved_type_declarations();
+                if type_declarations.trim().is_empty() {
+                    continue;
+                }
+                let key = (
+                    entry.installation_id,
+                    entry.plugin_version.clone(),
+                    module.source.clone(),
+                    module.version.clone(),
+                );
+                deduplicated
+                    .entry(key)
+                    .or_insert_with(|| FrontendBlockTypeDeclarationEntry {
+                        installation_id: entry.installation_id,
+                        plugin_id: entry.plugin_id.clone(),
+                        plugin_version: entry.plugin_version.clone(),
+                        source: module.source,
+                        version: module.version,
+                        binding: module.binding,
+                        type_declarations,
+                    });
+            }
+        }
+        Ok(FrontendBlockTypeDeclarationsView {
+            entries: deduplicated.into_values().collect(),
+        })
     }
 }
 

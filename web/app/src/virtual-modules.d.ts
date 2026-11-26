@@ -31,3 +31,19 @@ declare module 'virtual:1flowbase-default-login-artifact' {
     | null;
   export default artifact;
 }
+
+declare module 'virtual:1flowbase-auth-translations' {
+  type Auth = Pick<
+    typeof import('./features/auth/i18n/en_US.json'),
+    'sign_in' | 'external_auth' | 'auto'
+  >;
+  export const en_US: Auth;
+  export const zh_Hans: Auth;
+}
+
+declare module 'virtual:1flowbase-opening-copy' {
+  export const enTagline: string;
+  export const zhTagline: string;
+  export const enFooter: string;
+  export const zhFooter: string;
+}

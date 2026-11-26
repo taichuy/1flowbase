@@ -2,7 +2,9 @@
 use super::ManagedServiceRegistration;
 use crate::{app_state::ApiState, error_response::ApiError};
 use control_plane::errors::ControlPlaneError as Error;
-use control_plane_contracts::ports::PluginRepository;
+use control_plane_contracts::ports::{
+    ContributionAuthorityLease, PluginContributionAuthorityRepository,
+};
 use domain::{ActorContext, RecordPermissionKey, RecordPermissionResourceKey};
 use extension_contracts::*;
 use plugin_framework::{
@@ -63,7 +65,7 @@ pub(crate) fn key(
     resource: &ManagedServiceRecordResource,
     record: &str,
 ) -> Result<RecordPermissionKey, ApiError> {
-    let (publisher, plugin, _) = registration.resource_owner();
+    let (publisher, plugin, _) = registration.resource_owner(resource);
     Ok(RecordPermissionKey {
         resource: RecordPermissionResourceKey {
             publisher_namespace: publisher.into(),
@@ -86,7 +88,7 @@ fn id_value(
         PluginDataFieldType::Uuid
     } else {
         registration
-            .data_models
+            .resource_data_models(resource)
             .iter()
             .flat_map(|m| &m.owned_collections)
             .find(|c| c.collection_code == resource.collection_code)
@@ -121,39 +123,60 @@ pub(crate) async fn operation_allowed(
     actor: &ActorContext,
     op: &ManagedServiceOperation,
 ) -> Result<bool, ApiError> {
-    use crate::middleware::require_settings_feature_permission::*;
-    let access =
-        compiled_console_route_access(&state.console_operation_registry, &op.method, &op.path)
-            .map_err(Error::PermissionDenied)?;
     let policies = state
         .console_policy_reader
         .load_role_console_policies_for_user(actor)
         .await?;
-    Ok(authorize_compiled_console_access(&access, actor, &policies))
+    operation_allowed_with_policies(state, actor, op, &policies)
+}
+
+pub(super) fn operation_allowed_with_policies(
+    state: &ApiState,
+    actor: &ActorContext,
+    op: &ManagedServiceOperation,
+    policies: &[domain::RoleConsolePolicy],
+) -> Result<bool, ApiError> {
+    use crate::middleware::require_settings_feature_permission::*;
+    let access =
+        compiled_console_route_access(&state.console_operation_registry, &op.method, &op.path)
+            .map_err(Error::PermissionDenied)?;
+    Ok(authorize_compiled_console_access(&access, actor, policies))
 }
 /// Reject inactive owners before touching data. The Host picks identity from the frozen registry.
-pub(crate) async fn ensure_active(
-    state: &ApiState,
+fn ensure_live_registration(
     registration: &ManagedServiceRegistration,
+    lease: &dyn ContributionAuthorityLease,
 ) -> Result<(), ApiError> {
-    let current = state
-        .store
-        .get_installation(registration.installation_id)
-        .await?
+    let current = lease
+        .installation(registration.installation_id)
         .ok_or(Error::Conflict("managed_service_inactive"))?;
     if current.desired_state != domain::PluginDesiredState::ActiveRequested
         || current.organization != registration.publisher_namespace
         || current.provider_code != registration.plugin_code
         || current.plugin_version != registration.plugin_version
-        || domain::managed_installation_scope(&current, domain::SYSTEM_SCOPE_ID)
+        || current.contract_version != "1flowbase.extension-bus/v1"
+        || domain::managed_installation_scope(current, domain::DEFAULT_SCOPE_ID)
             != domain::SYSTEM_SCOPE_ID
     {
         return Err(Error::Conflict("managed_service_inactive").into());
     }
-    let resolved = control_plane::plugin_management::installation_shared_resource(&current)?;
-    if resolved != registration.shared_resource.as_ref() {
-        return Err(Error::Conflict("shared_resource_generation_mismatch").into());
+    let resolved =
+        control_plane::plugin_management::resolve_resource_imports(current, lease.installations())?;
+    if resolved != registration.resource_imports {
+        return Err(Error::Conflict("plugin_resource_generation_mismatch").into());
     }
+    Ok(())
+}
+pub(crate) async fn ensure_active(
+    state: &ApiState,
+    registration: &ManagedServiceRegistration,
+) -> Result<(), ApiError> {
+    let lease = state
+        .store
+        .lock_installation_resource_authority(registration.installation_id, domain::SYSTEM_SCOPE_ID)
+        .await?;
+    ensure_live_registration(registration, lease.as_ref())?;
+    lease.release().await?;
     let composition = state.provider_runtime.managed_composition()?;
     let snapshot = match state
         .extension_boot_snapshot
@@ -185,11 +208,36 @@ pub(crate) async fn ensure_record(
     resource: &ManagedServiceRecordResource,
     record: &str,
 ) -> Result<(), ApiError> {
-    if record.is_empty() || record.len() > 1024 {
-        return Err(Error::InvalidInput("record_id").into());
+    ensure_records(state, registration, actor, resource, &[record])
+        .await
+        .map(|_| ())
+}
+
+pub(crate) async fn ensure_records(
+    state: &ApiState,
+    registration: &ManagedServiceRegistration,
+    actor: &ActorContext,
+    resource: &ManagedServiceRecordResource,
+    records: &[impl AsRef<str>],
+) -> Result<Vec<String>, ApiError> {
+    let mut ids = Vec::with_capacity(records.len());
+    let mut invalid = None;
+    for record in records {
+        match canonical_record_id(registration, resource, record.as_ref()) {
+            Ok(id) => ids.push(id),
+            Err(error) => {
+                // Earlier IDs still take precedence over a later malformed ID.
+                invalid = Some(error);
+                break;
+            }
+        }
     }
-    ensure_active(state, registration).await?;
-    let (publisher, plugin, version) = registration.resource_owner();
+    if ids.is_empty() {
+        return invalid.map_or(Ok(ids), Err);
+    }
+    let unique = ids.iter().collect::<std::collections::BTreeSet<_>>();
+    let expected = unique.len() as u64;
+    let (publisher, plugin, version) = registration.resource_owner(resource);
     let binding = PluginDataBinding {
         managed_subject: None,
         publisher_namespace: publisher.into(),
@@ -206,7 +254,6 @@ pub(crate) async fn ensure_record(
         // This Host-only existence lookup is separate from the user's row authorization below.
         record_permissions: None,
     };
-    let value = id_value(registration, resource, record)?;
     let request = PluginDataRequest {
         idempotency_key: None,
         operations: vec![PluginDataOperation::Count {
@@ -215,21 +262,25 @@ pub(crate) async fn ensure_record(
             },
             filters: vec![PluginDataFilter {
                 field: resource.id_field.clone(),
-                operator: PluginDataFilterOperator::Equal,
-                value: Some(value),
+                operator: PluginDataFilterOperator::In,
+                value: Some(PluginDataValue::Json(serde_json::json!(unique))),
             }],
         }],
     };
-    let response = state
+    let lease = state
         .store
-        .execute(&binding, &request)
-        .await
-        .map_err(|_| Error::UpstreamUnavailable("record_permission_record_lookup"))?;
-    if !matches!(response.results.first(), Some(PluginDataOperationResult::Count {count}) if *count == 1)
+        .lock_installation_resource_authority(registration.installation_id, domain::SYSTEM_SCOPE_ID)
+        .await?;
+    ensure_live_registration(registration, lease.as_ref())?;
+    let response = lease.commit_plugin_data(&binding, &request).await.map_err(|error| {
+        tracing::warn!(kind = ?error.kind, code = %error.code, "record permission lookup failed");
+        Error::UpstreamUnavailable("record_permission_record_lookup")
+    })?;
+    if !matches!(response.results.first(), Some(PluginDataOperationResult::Count {count}) if *count == expected)
     {
         return Err(Error::NotFound("record_permission_record").into());
     }
-    Ok(())
+    invalid.map_or(Ok(ids), Err)
 }
 fn selector_value<'a>(
     payload: &'a Value,

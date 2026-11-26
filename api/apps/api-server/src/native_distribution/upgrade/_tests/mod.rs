@@ -231,3 +231,134 @@ fn corrective_release_removes_assets_and_temporary_files_from_failed_attempts() 
     assert!(!f.old.join("web/.update-failed-release.js.tmp").exists());
     Manifest::read(&f.old).unwrap().verify(&f.old).unwrap();
 }
+
+#[test]
+fn unchanged_managed_files_skip_rewrite_clean_stale_temps_and_respect_mode_changes() {
+    let f = Fixture::new();
+
+    // Unchanged `.env.example` keeps its inode; stale temp file must still be deleted.
+    fs::write(f.old.join(".update-.env.example.tmp"), "stale temp").unwrap();
+
+    // Stale managed file present in `old` must be deleted by the new release.
+    fs::write(f.old.join("web/obsolete.js"), "legacy bundle").unwrap();
+    let mut old_manifest = Manifest::read(&f.old).unwrap();
+    old_manifest.files.insert(
+        "web/obsolete.js".into(),
+        files::hash(&f.old.join("web/obsolete.js")).unwrap(),
+    );
+
+    // Identical content with different Unix mode (`0o644` -> `0o755`) must trigger replacement.
+    fs::write(f.old.join("start.sh"), "#!/bin/sh\necho ok\n").unwrap();
+    fs::write(f.new.join("start.sh"), "#!/bin/sh\necho ok\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(f.old.join("start.sh"), fs::Permissions::from_mode(0o644)).unwrap();
+        fs::set_permissions(f.new.join("start.sh"), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    old_manifest.files.insert(
+        "start.sh".into(),
+        files::hash(&f.old.join("start.sh")).unwrap(),
+    );
+    files::json(&f.old.join(manifest::NAME), &old_manifest).unwrap();
+
+    // New nested directory asset must be created, synced, and verified.
+    fs::create_dir_all(f.new.join("web/assets/nested")).unwrap();
+    fs::write(f.new.join("web/assets/nested/app.js"), "console.log('ok');").unwrap();
+    let mut new_manifest = Manifest::read(&f.new).unwrap();
+    new_manifest.files.insert(
+        "start.sh".into(),
+        files::hash(&f.new.join("start.sh")).unwrap(),
+    );
+    new_manifest.files.insert(
+        "web/assets/nested/app.js".into(),
+        files::hash(&f.new.join("web/assets/nested/app.js")).unwrap(),
+    );
+    files::json(&f.new.join(manifest::NAME), &new_manifest).unwrap();
+
+    #[cfg(unix)]
+    let env_example_ino = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(f.old.join(".env.example")).unwrap().ino()
+    };
+
+    apply_from(&f.new, &f.old, |_| Ok(()), |_, _| Ok(())).unwrap();
+
+    assert!(!f.old.join(".update-.env.example.tmp").exists());
+    assert!(!f.old.join("web/obsolete.js").exists());
+    assert_eq!(
+        fs::read_to_string(f.old.join("web/assets/nested/app.js")).unwrap(),
+        "console.log('ok');"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        assert_eq!(
+            fs::metadata(f.old.join(".env.example")).unwrap().ino(),
+            env_example_ino
+        );
+        assert_eq!(
+            fs::metadata(f.old.join("start.sh"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+    }
+    Manifest::read(&f.old).unwrap().verify(&f.old).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn staged_copy_and_replace_refuse_symlinks_and_sync_unique_directories() {
+    use std::os::unix::fs::symlink;
+
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    let root = Scratch(std::env::temp_dir().join(format!("native-files-{}", uuid::Uuid::now_v7())));
+    fs::create_dir_all(root.0.join("src/sub/deep")).unwrap();
+    fs::write(root.0.join("src/sub/deep/file.txt"), "payload").unwrap();
+
+    let mut dirty = BTreeSet::new();
+    files::copy_staged(&root.0.join("src"), &root.0.join("dest"), &mut dirty).unwrap();
+    assert!(dirty.contains(&root.0.join("dest")));
+    assert!(dirty.contains(&root.0.join("dest/sub")));
+    assert!(dirty.contains(&root.0.join("dest/sub/deep")));
+    files::sync_directories(&dirty, &root.0.join("dest")).unwrap();
+    assert_eq!(
+        fs::read_to_string(root.0.join("dest/sub/deep/file.txt")).unwrap(),
+        "payload"
+    );
+
+    let file_hash = files::hash(&root.0.join("src/sub/deep/file.txt")).unwrap();
+    symlink(
+        root.0.join("src/sub/deep/file.txt"),
+        root.0.join("dest-link"),
+    )
+    .unwrap();
+    assert!(!files::matches_managed_file(
+        &root.0.join("src/sub/deep/file.txt"),
+        &root.0.join("dest-link"),
+        &file_hash
+    )
+    .unwrap());
+
+    symlink(
+        root.0.join("src/sub/deep/file.txt"),
+        root.0.join("src/sub/link.txt"),
+    )
+    .unwrap();
+    let mut rejected_dirty = BTreeSet::new();
+    assert!(files::copy_staged(
+        &root.0.join("src"),
+        &root.0.join("dest-symlink"),
+        &mut rejected_dirty
+    )
+    .is_err());
+}

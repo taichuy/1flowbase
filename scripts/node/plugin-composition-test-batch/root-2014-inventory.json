@@ -1141,6 +1141,7 @@
     "http.console.files.import-remote.v1",
     "http.console.frontstage.blocks.code-replace.post.v1",
     "http.console.frontstage.blocks.code-search.get.v1",
+    "http.console.frontstage.bootstrap.get.v1",
     "http.console.http-node-proxy-options.list.v1",
     "http.console.identity.authentication-methods.read.v1",
     "http.console.identity.external-authorize.v1",

@@ -165,6 +165,7 @@ pub fn public_error_code(error: &anyhow::Error, fallback: &'static str) -> &'sta
             | Error::InvalidInput(code)
             | Error::UpstreamUnavailable(code),
         ) => return code,
+        Some(Error::PluginDependency { .. }) => return "plugin_dependency",
         Some(Error::PluginUnavailable) => return "plugin_unavailable",
         Some(Error::InvalidComponentModuleExport { .. }) => return "invalid_component_export",
         Some(Error::InvalidStateTransition { .. }) => return "invalid_state_transition",
@@ -181,3 +182,7 @@ pub fn public_error_code(error: &anyhow::Error, fallback: &'static str) -> &'sta
     }
     fallback
 }
+
+#[cfg(test)]
+#[path = "_tests/status.rs"]
+mod tests;

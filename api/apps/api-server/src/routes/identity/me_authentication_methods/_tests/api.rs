@@ -51,6 +51,7 @@ impl Fixture {
         );
         let login = kernel
             .complete_external_login(CompleteExternalLoginCommand {
+                invitation_token: None,
                 login_entry_id: entry.id,
                 identity: identity.clone(),
                 registration_eligible: true,

@@ -748,15 +748,11 @@ jobs:
           name: test-governance-${{ matrix.scope }}
           path: tmp/test-governance
 
-  coverage-backend-api-server-sharded:
+  coverage-backend-api-server-build:
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
     needs: resolve-quality-gate-target
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -778,16 +774,67 @@ jobs:
           restore-keys: |
             rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
             rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
       - name: Prove native profile pool preserves coverage counters
-        if: ${{ matrix.shard == 1 }}
-        run: node scripts/node/coverage-shadow/profile-pool-proof.js tmp/test-governance/coverage-shadow/api-server/pool-equivalence.json
+        run: node scripts/node/coverage-shadow/profile-pool-proof.js tmp/test-governance/coverage-shadow/api-server/build/pool-equivalence.json
       - name: Build API server coverage worker fixtures
         uses: ./.github/actions/build-sdk-worker-fixtures
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+      - name: Freeze instrumented executables, full inventory and worker fixtures
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          ONEFLOWBASE_COVERAGE_ARCHIVE_DIR: tmp/test-governance/coverage-shadow/api-server/build
+        run: |
+          set -euo pipefail
+          node scripts/node/coverage-shadow/cli.js build-archive api-server
+          mkdir -p "$ONEFLOWBASE_COVERAGE_ARCHIVE_DIR/workers"
+          cp "$MANAGED_HOOK_WORKER_FIXTURE" "$MANAGED_EVENT_WORKER_FIXTURE" \
+            "$NOTIFICATION_WORKER_FIXTURE" "$NOTIFICATION_AUTHORIZATION_WORKER_FIXTURE" \
+            "$ONEFLOWBASE_COVERAGE_ARCHIVE_DIR/workers/"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-shadow-api-server-build-${{ env.QUALITY_GATE_TARGET_SHA }}
+          path: tmp/test-governance/coverage-shadow/api-server/build
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  coverage-backend-api-server-sharded:
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.scope == 'ci') }}
+    needs:
+      - resolve-quality-gate-target
+      - coverage-backend-api-server-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve-quality-gate-target.outputs.target_sha }}
+      - name: Resolve quality gate target SHA
+        run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
+      - uses: taiki-e/install-action@nextest
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-shadow-api-server-build-${{ env.QUALITY_GATE_TARGET_SHA }}
+          path: tmp/test-governance/coverage-shadow/api-server/build
+      - name: Restore executable worker fixtures from the producer
+        run: |
+          set -euo pipefail
+          for example in managed_hook_worker managed_event_worker notification_worker notification_authorization_worker; do
+            worker="$GITHUB_WORKSPACE/tmp/test-governance/coverage-shadow/api-server/build/workers/$example"
+            chmod +x "$worker"
+            printf '%s=%s\n' "${example^^}_FIXTURE" "$worker" >> "$GITHUB_ENV"
+          done
       - uses: ./.github/actions/quality-gate
         env:
-          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          ONEFLOWBASE_COVERAGE_ARCHIVE_DIR: tmp/test-governance/coverage-shadow/api-server/build
           GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
           QUALITY_GATE_TARGET_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
         with:
@@ -797,7 +844,7 @@ jobs:
           publish_issue: "false"
       - name: Preserve profile pool equivalence evidence
         if: ${{ matrix.shard == 1 }}
-        run: cp tmp/test-governance/coverage-shadow/api-server/pool-equivalence.json tmp/test-governance/coverage-shadow/api-server/shard-1/pool-equivalence.json
+        run: cp tmp/test-governance/coverage-shadow/api-server/build/pool-equivalence.json tmp/test-governance/coverage-shadow/api-server/shard-1/pool-equivalence.json
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -809,6 +856,7 @@ jobs:
     needs:
       - resolve-quality-gate-target
       - coverage-backend-api-server-sharded
+      - coverage-backend-api-server-build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -818,18 +866,14 @@ jobs:
       - name: Resolve quality gate target SHA
         run: echo "QUALITY_GATE_TARGET_SHA=${{ needs.resolve-quality-gate-target.outputs.target_sha }}" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
-      - uses: actions/cache/restore@v5
+      - uses: actions/download-artifact@v8
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
-          key: rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
-          restore-keys: |
-            rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-${{ hashFiles('api/Cargo.lock') }}-
-            rust-quality-gate-coverage-v2-${{ runner.os }}-api-server-shadow-
+          name: coverage-shadow-api-server-build-${{ env.QUALITY_GATE_TARGET_SHA }}
+          path: tmp/test-governance/coverage-shadow/api-server/build
       - uses: actions/download-artifact@v8
         with:
           pattern: coverage-shadow-api-server-profraw-*
@@ -840,7 +884,7 @@ jobs:
           node-version-file: web/.nvmrc
       - name: Merge and enforce sharded API coverage
         env:
-          CARGO_TARGET_DIR: ../tmp/quality-gate-cache/rust-coverage/api-server-shadow/target
+          ONEFLOWBASE_COVERAGE_ARCHIVE_DIR: tmp/test-governance/coverage-shadow/api-server/build
           QUALITY_GATE_TARGET_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
           GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
           GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}

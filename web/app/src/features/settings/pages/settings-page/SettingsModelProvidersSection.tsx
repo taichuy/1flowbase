@@ -295,7 +295,6 @@ export function SettingsModelProvidersSection(_props: { canManage?: boolean } = 
     modalInstances,
     modalCatalogEntry,
     modalProviderOption,
-    pricingTargets,
     overviewRows
   } = useModelProviderData({
     drawerState,
@@ -608,7 +607,6 @@ export function SettingsModelProvidersSection(_props: { canManage?: boolean } = 
         catalogEntry={drawerCatalogEntry}
         instance={drawerInstance}
         cachedModelCatalog={drawerModelCatalog}
-        pricingTargets={pricingTargets}
         defaultIncludedInMain={drawerDefaultIncludedInMain}
         submitting={createMutation.isPending || updateMutation.isPending}
         onClose={() => {

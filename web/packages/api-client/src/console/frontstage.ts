@@ -1,5 +1,14 @@
-import { apiFetch, apiFetchResource, apiFetchStream } from '../transport';
+import {
+  apiFetch,
+  apiFetchIfModified,
+  apiFetchResource,
+  apiFetchStream
+} from '../transport';
 import type { UiComponentOrigin } from './administration/ui-management';
+import type {
+  ConsoleFrontstageBlockNode,
+  ConsoleFrontstageBlockNodeCode
+} from './frontstage-block-tree/types';
 
 export type ConsoleFrontstageNavigationPlacement = 'topbar' | 'sidebar';
 export type ConsoleFrontstagePageContentPresentation = 'single' | 'tabs';
@@ -52,6 +61,24 @@ export interface ConsoleFrontstagePageDetail {
   page: ConsoleFrontstagePageNode;
   tab: ConsoleFrontstagePageTab;
   document: ConsoleFrontstageTabDocument;
+}
+
+export interface ConsoleFrontstageBootstrapQuery {
+  slug?: string;
+  page_id?: string;
+  tab_reference?: string;
+  limit?: number;
+  code_limit?: number;
+}
+
+export interface ConsoleFrontstageBootstrapResponse {
+  pages: ConsoleFrontstagePageTreeNode[];
+  resolved_page_id: string | null;
+  resolved_tab_id: string | null;
+  tabs: ConsoleFrontstagePageTab[];
+  page_detail: ConsoleFrontstagePageDetail | null;
+  block_roots: ConsoleFrontstageBlockNode[] | null;
+  block_codes: ConsoleFrontstageBlockNodeCode[] | null;
 }
 
 export interface ConsoleFrontstagePageCreationResponse {
@@ -452,6 +479,49 @@ export function dispatchFrontstageAction<T = unknown>(
     body: input,
     csrfToken,
     baseUrl
+  });
+}
+
+function buildConsoleFrontstageBootstrapPath(
+  query: ConsoleFrontstageBootstrapQuery = {}
+): string {
+  const params = new URLSearchParams();
+  if (query.slug) params.set('slug', query.slug);
+  if (query.page_id) params.set('page_id', query.page_id);
+  if (query.tab_reference) params.set('tab_reference', query.tab_reference);
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  if (query.code_limit !== undefined) {
+    params.set('code_limit', String(query.code_limit));
+  }
+  const suffix = params.size > 0 ? `?${params.toString()}` : '';
+  return `/api/console/frontstage/bootstrap${suffix}`;
+}
+
+export function getConsoleFrontstageBootstrap(
+  query: ConsoleFrontstageBootstrapQuery = {},
+  baseUrl?: string
+): Promise<ConsoleFrontstageBootstrapResponse> {
+  return apiFetch<ConsoleFrontstageBootstrapResponse>({
+    path: buildConsoleFrontstageBootstrapPath(query),
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function revalidateConsoleFrontstageBootstrap(
+  query: ConsoleFrontstageBootstrapQuery = {},
+  ifNoneMatch?: string | null,
+  baseUrl?: string,
+  signal?: AbortSignal
+): Promise<
+  | { status: 'modified'; value: ConsoleFrontstageBootstrapResponse; etag?: string | null }
+  | { status: 'not_modified'; etag?: string | null }
+> {
+  return apiFetchIfModified<ConsoleFrontstageBootstrapResponse>({
+    path: buildConsoleFrontstageBootstrapPath(query),
+    baseUrl,
+    signal,
+    headers: ifNoneMatch ? { 'if-none-match': ifNoneMatch } : undefined
   });
 }
 

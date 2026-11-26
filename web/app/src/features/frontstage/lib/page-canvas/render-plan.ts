@@ -41,6 +41,7 @@ export interface FrontstageBlockRenderPlanItem {
   sourceBlockId: string | null;
   codeRef: string;
   sourceCodeRef: string | null;
+  source_sha256?: string | null;
   rendererVersion: string | null;
   sourceIndex: number;
   order: number;
@@ -304,6 +305,9 @@ export function createFrontstageBlockRenderPlanItem(
     sourceBlockId: block.sourceId,
     codeRef: block.codeRef,
     sourceCodeRef: block.sourceCodeRef,
+    ...(block.source_sha256 !== undefined
+      ? { source_sha256: block.source_sha256 }
+      : {}),
     rendererVersion: block.rendererVersion,
     sourceIndex,
     order: block.order,

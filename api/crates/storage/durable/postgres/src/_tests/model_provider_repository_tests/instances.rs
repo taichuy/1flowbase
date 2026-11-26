@@ -651,37 +651,8 @@ async fn model_provider_repository_backfills_main_instance_settings_when_upgradi
     )
     .await;
 
-    sqlx::raw_sql(MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL)
-        .execute(store.pool())
-        .await
-        .unwrap();
-    sqlx::raw_sql(MAIN_MODEL_DISTRIBUTION_RULES_MIGRATION_SQL)
-        .execute(store.pool())
-        .await
-        .unwrap();
-    sqlx::raw_sql(MAIN_MODEL_ROUTING_POLICY_ORDER_MIGRATION_SQL)
-        .execute(store.pool())
-        .await
-        .unwrap();
-    sqlx::raw_sql(MAIN_MODEL_ROUTING_POLICY_EXCLUSIONS_MIGRATION_SQL)
-        .execute(store.pool())
-        .await
-        .unwrap();
-    sqlx::raw_sql(OPEN_PROVIDER_DISTRIBUTION_RULE_IDENTITY_MIGRATION_SQL)
-        .execute(store.pool())
-        .await
-        .unwrap();
-    sqlx::raw_sql(PROVIDER_DISTRIBUTION_RULE_VERSION_MIGRATION_SQL)
-        .execute(store.pool())
-        .await
-        .unwrap();
+    migrate_provider_history(store.pool(), MAIN_INSTANCE_AGGREGATION_VERSION).await;
 
-    let main_instance =
-        ModelProviderRepository::get_main_instance(&store, workspace.id, "fixture_provider")
-            .await
-            .unwrap()
-            .unwrap();
-    assert!(main_instance.auto_include_new_instances);
     let main_instance_count: i64 = sqlx::query_scalar(
         r#"
         select count(*)::bigint
@@ -713,6 +684,14 @@ async fn model_provider_repository_backfills_main_instance_settings_when_upgradi
     .unwrap();
     assert_eq!(included_flags, vec![true, true]);
 
+    run_migrations(store.pool()).await.unwrap();
+    let main_instance =
+        ModelProviderRepository::get_main_instance(&store, workspace.id, "fixture_provider")
+            .await
+            .unwrap()
+            .unwrap();
+    assert!(main_instance.auto_include_new_instances);
+
     let instances = ModelProviderRepository::list_instances(&store, workspace.id)
         .await
         .unwrap();
@@ -725,10 +704,7 @@ async fn model_provider_repository_backfills_missing_context_window_override_tok
 ) {
     let (store, workspace, actor, installation_id) =
         seed_store_before_main_instance_aggregation().await;
-    sqlx::raw_sql(MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL)
-        .execute(store.pool())
-        .await
-        .unwrap();
+    migrate_provider_history(store.pool(), MAIN_INSTANCE_AGGREGATION_VERSION).await;
     let instance_id = insert_legacy_instance(
         &store,
         workspace.id,
@@ -738,17 +714,25 @@ async fn model_provider_repository_backfills_missing_context_window_override_tok
         vec!["gpt-4o-mini".into(), "gpt-4.1-mini".into()],
     )
     .await;
-    let migration_sql = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("migrations/20260423235000_add_model_provider_context_window_override.sql"),
+    migrate_provider_history(store.pool(), CONTEXT_WINDOW_OVERRIDE_VERSION).await;
+    // A typed None cannot distinguish a missing key from an explicit JSON null.
+    let configured: Value = sqlx::query_scalar(
+        "select configured_models_json from model_provider_instances where id = $1",
     )
+    .bind(instance_id)
+    .fetch_one(store.pool())
+    .await
     .unwrap();
+    let models = configured.as_array().unwrap();
+    assert_eq!(models.len(), 2);
+    for model in models {
+        assert_eq!(
+            model.get("context_window_override_tokens"),
+            Some(&Value::Null)
+        );
+    }
 
-    sqlx::raw_sql(sqlx::AssertSqlSafe(migration_sql.as_str()))
-        .execute(store.pool())
-        .await
-        .unwrap();
-
+    run_migrations(store.pool()).await.unwrap();
     let instance = ModelProviderRepository::get_instance(&store, workspace.id, instance_id)
         .await
         .unwrap()

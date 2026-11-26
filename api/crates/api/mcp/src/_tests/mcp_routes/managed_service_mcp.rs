@@ -1,7 +1,7 @@
 use super::*;
 use domain::{RoleConsoleGroupPolicy, RoleConsolePolicy};
 fn registration() -> ManagedServiceRegistration {
-    ManagedServiceRegistration { shared_resource: None, publisher_namespace: "test".into(), data_models: Vec::new(),
+    ManagedServiceRegistration { root_workspace_only: false, resource_imports: Vec::new(), publisher_namespace: "test".into(), data_models: Vec::new(),
         display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
         installation_id: Uuid::from_u128(99), plugin_code:"ssh".into(),plugin_version:"1.0.0".into(),pages:vec![],
         declaration:serde_json::from_value(json!({

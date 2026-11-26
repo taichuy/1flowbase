@@ -1,4 +1,4 @@
-import { Layout, Typography } from 'antd';
+import { Layout } from 'antd';
 import type { PropsWithChildren, ReactNode } from 'react';
 
 export { AppThemeProvider } from './app-theme-provider';
@@ -34,9 +34,7 @@ export function AppShell({
               alt=""
               aria-hidden="true"
             />
-            <Typography.Title level={4} className="app-shell-title">
-              {title}
-            </Typography.Title>
+            <h4 className="ant-typography app-shell-title">{title}</h4>
           </div>
           <div className="app-shell-nav">{navigation}</div>
         </div>

@@ -227,6 +227,7 @@ pub struct FrontstageBlockNodeRecord {
     pub title: Option<String>,
     pub description: Option<String>,
     pub code_ref: String,
+    pub source_sha256: Option<String>,
     pub schema_version: u32,
     pub input_mapping: BTreeMap<String, String>,
     pub output_mapping: BTreeMap<String, String>,

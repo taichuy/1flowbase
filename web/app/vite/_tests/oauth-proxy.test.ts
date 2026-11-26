@@ -240,3 +240,39 @@ test('projects the same public authority into WebSocket upgrade requests', async
     );
   }
 });
+
+test('uses target origin for HTTPS upstreams without overwriting Host from x-forwarded-host', () => {
+  const proxy = oauthAwareApiProxy('https://remote.example.test');
+  expect(proxy.changeOrigin).toBe(true);
+  expect(proxy.xfwd).toBe(false);
+
+  const handlers = new Map<string, (...args: unknown[]) => void>();
+  proxy.configure?.(
+    {
+      on(event: string, handler: (...args: unknown[]) => void) {
+        handlers.set(event, handler);
+      }
+    } as never,
+    proxy
+  );
+
+  for (const event of ['proxyReq', 'proxyReqWs']) {
+    let rewrittenHost: string | null = null;
+    handlers.get(event)?.(
+      {
+        setHeader(name: string, value: string) {
+          if (name.toLowerCase() === 'host') rewrittenHost = value;
+        }
+      },
+      {
+        method: 'GET',
+        url: '/api/console/session',
+        headers: {
+          host: 'localhost:3100',
+          'x-forwarded-host': 'tunnel.example.com'
+        }
+      }
+    );
+    expect(rewrittenHost).toBeNull();
+  }
+});

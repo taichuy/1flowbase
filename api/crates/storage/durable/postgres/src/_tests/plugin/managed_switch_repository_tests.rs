@@ -109,6 +109,7 @@ fn permission_catalog() -> control_plane_contracts::CompiledConsolePolicyCatalog
     control_plane_contracts::CompiledConsolePolicyCatalog {
         complete: true,
         groups: vec![control_plane_contracts::CompiledConsolePolicyGroup {
+            root_workspace_only: false,
             group: domain::ConsolePolicyGroup::settings_feature("northwind.settings-page.settings")
                 .unwrap(),
             full_operations: vec![domain::ConsoleOperationPolicy::simple(

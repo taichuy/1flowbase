@@ -136,3 +136,18 @@ pub use extension_contracts::{
 pub use plugin_execution_gate::{
     PluginExecutionGateClient, PluginExecutionGateClientError, PluginExecutionGatePermit,
 };
+
+#[path = "host_services/workspace_governance.rs"]
+mod workspace_governance;
+pub use extension_contracts::{
+    WorkspaceGovernanceCallerDto, WorkspaceGovernanceInitialMemberDto, WorkspaceGovernanceRequest,
+    WorkspaceGovernanceResponse, WorkspaceGovernanceTenantDto, WorkspaceGovernanceTenantTargetDto,
+    WorkspaceGovernanceUserDto, WorkspaceGovernanceUserQueryDto, WorkspaceGovernanceWorkspaceDto,
+    WorkspaceGovernanceWorkspaceSummaryDto, WORKSPACE_GOVERNANCE_MANAGE_PERMISSION,
+    WORKSPACE_GOVERNANCE_READ_PERMISSION,
+};
+pub use workspace_governance::*;
+#[path = "host_services/workspace_policy.rs"]
+mod workspace_policy;
+pub use extension_contracts::workspace_policy_contract::*;
+pub use workspace_policy::{workspace_policy_input, workspace_policy_output};

@@ -1,5 +1,5 @@
 mod code_cache;
-pub use code_cache::BlockCodeCache;
+pub use code_cache::{etag_matches, BlockCodeCache};
 mod source_editing;
 pub use source_editing::*;
 
@@ -508,7 +508,7 @@ where
             ))?;
         let entries = self
             .repository
-            .list_workspace_frontend_blocks(node_id, workspace_id)
+            .list_workspace_frontend_blocks_runtime(node_id, workspace_id)
             .await?;
         let entry = entries
             .into_iter()
@@ -962,7 +962,7 @@ fn block_audit(
     )
 }
 
-fn map_block_repository_error(error: anyhow::Error) -> anyhow::Error {
+pub(super) fn map_block_repository_error(error: anyhow::Error) -> anyhow::Error {
     if let Some(tree_error) = error.downcast_ref::<OrderedTreeCommandError>() {
         let mapped = match tree_error {
             OrderedTreeCommandError::NodeNotFound => {

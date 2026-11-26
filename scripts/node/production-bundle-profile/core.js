@@ -113,16 +113,26 @@ function collectHtmlEntryAssets(html) {
 }
 
 function collectStaticImports(source) {
+  // Legacy fixture/bundle fallback only. Current builds provide compiler edges.
+  // The already-installed Vite/Oxc parser distinguishes imports from comments,
+  // regexes and declaration/template strings; a regular expression cannot.
+  const { createRequire } = require("node:module");
+  const { parseSync } = createRequire(
+    path.resolve(__dirname, "../../../web/package.json"),
+  )("vite");
+  const parsed = parseSync("bundle.js", source);
   const imports = new Set();
-  const patterns = [
-    /\b(?:import|export)\s*[\s\S]*?\sfrom\s*["']([^"']+)["']/gu,
-    /\bimport\s*["']([^"']+)["']/gu,
-  ];
-  for (const pattern of patterns) {
-    let match = pattern.exec(source);
-    while (match) {
-      if (match[1].startsWith(".")) imports.add(normalizeAssetPath(match[1]));
-      match = pattern.exec(source);
+  for (const statement of parsed.program.body) {
+    if (
+      statement.type !== "ImportDeclaration" &&
+      statement.type !== "ExportNamedDeclaration" &&
+      statement.type !== "ExportAllDeclaration"
+    ) {
+      continue;
+    }
+    const specifier = statement.source?.value;
+    if (typeof specifier === "string" && specifier.startsWith(".")) {
+      imports.add(normalizeAssetPath(specifier));
     }
   }
   return [...imports];
@@ -140,6 +150,11 @@ function collectInitialAssetClosure(distDirectory) {
   const assetsDirectory = path.join(distDirectory, "assets");
   const html = fs.readFileSync(path.join(distDirectory, "index.html"), "utf8");
   const pending = collectHtmlEntryAssets(html);
+  const manifestPath = path.join(distDirectory, "scenario-chunk-manifest.json");
+  const manifest = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, "utf8")) : null;
+  const graph = manifest?.version === 2
+    ? new Map(manifest.chunks.map((chunk) => [normalizeAssetPath(chunk.file), chunk]))
+    : null;
   const visited = new Set();
 
   while (pending.length > 0) {
@@ -149,9 +164,15 @@ function collectInitialAssetClosure(distDirectory) {
     if (!fs.existsSync(absolutePath)) continue;
     visited.add(asset);
     if (!asset.endsWith(".js")) continue;
-    const source = fs.readFileSync(absolutePath, "utf8");
-    for (const specifier of collectStaticImports(source)) {
-      pending.push(resolveImportedAsset(asset, specifier));
+    if (graph) {
+      const chunk = graph.get(asset);
+      if (!chunk) throw new Error(`Compiler graph is missing ${asset}`);
+      pending.push(...[...chunk.imports, ...chunk.css].map(normalizeAssetPath));
+    } else {
+      const source = fs.readFileSync(absolutePath, "utf8");
+      for (const specifier of collectStaticImports(source)) {
+        pending.push(resolveImportedAsset(asset, specifier));
+      }
     }
   }
 
@@ -215,6 +236,27 @@ function profileProductionBundle(distDirectory, budget = DEFAULT_BUDGET) {
     collectInitialAssetClosure(distDirectory),
     budget,
   );
+}
+
+function profileScenarioBundle(distDirectory, scene) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(distDirectory, "scenario-chunk-manifest.json"), "utf8"));
+  if (manifest.version !== 2 || !manifest.scenes?.[scene]?.roots?.length) {
+    throw new Error(`Missing compiler-owned scene: ${scene}`);
+  }
+  const chunks = new Map(manifest.chunks.map((chunk) => [chunk.file, chunk]));
+  const files = new Set(manifest.scenes[scene].staticClosure);
+  for (const file of [...files]) for (const css of chunks.get(file)?.css ?? []) files.add(css);
+  return {
+    scene,
+    coverage: "Compiler static closure and CSS only; dynamic/Worker/data demands require the real browser scene trace",
+    roots: manifest.scenes[scene].roots,
+    dynamicBoundaries: [...new Set(manifest.scenes[scene].staticClosure.flatMap((file) => chunks.get(file)?.dynamicImports ?? []))].sort(),
+    ...profileAssetFiles(distDirectory, [...files], {
+      initialGzipBytesMax: Infinity,
+      largestInitialGzipBytesMax: Infinity,
+      javaScriptCountMax: Infinity,
+    }),
+  };
 }
 
 function classifyAsset(file) {
@@ -294,6 +336,7 @@ module.exports = {
   classifyAsset,
   collectHtmlEntryAssets,
   collectStaticImports,
+  profileScenarioBundle,
   observeAssetDemand,
   percentile,
   profileAssetFiles,

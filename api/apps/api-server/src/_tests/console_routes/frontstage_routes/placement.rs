@@ -197,8 +197,28 @@ async fn cross_workspace_parent_is_rejected() {
         "a",
     )
     .await;
-    assert_eq!(other_group_status, StatusCode::CREATED);
-    let other_group_id = other_group_payload["data"]["id"].as_str().unwrap();
+    assert_eq!(
+        other_group_status,
+        StatusCode::FORBIDDEN,
+        "{other_group_payload}"
+    );
+    let (author, actor_user_id) = frontstage_fixture_author(&database_url).await;
+    let other_group_id = author
+        .create_group(control_plane::frontstage::CreateFrontstageGroupCommand {
+            actor_user_id,
+            workspace_id: other_workspace_id,
+            title: Some("Other".into()),
+            icon: None,
+            tooltip: None,
+            parent_id: None,
+            rank: Some("a".into()),
+            placement: domain::frontstage::FrontstageNavigationPlacement::Sidebar,
+            slug: None,
+        })
+        .await
+        .unwrap()
+        .id
+        .to_string();
     let csrf = switch_workspace(&app, &cookie, &other_csrf, &workspace_id).await;
 
     let (page_status, _) = create_page(
@@ -207,7 +227,7 @@ async fn cross_workspace_parent_is_rejected() {
         &csrf,
         &workspace_id,
         Some("Bad Parent"),
-        Some(other_group_id),
+        Some(&other_group_id),
         "a",
     )
     .await;

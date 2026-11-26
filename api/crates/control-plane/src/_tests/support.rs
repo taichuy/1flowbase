@@ -8,8 +8,7 @@ mod runtime_events;
 
 pub use access::{MemoryMemberRepository, MemoryRoleRepository};
 pub use auth::{
-    memory_actor_context, password_hash, MemoryAuthRepository, MemorySessionStore,
-    MemoryWorkspaceRepository,
+    memory_actor_context, password_hash, MemoryAuthRepository, MemoryWorkspaceRepository,
 };
 pub use bootstrap::MemoryBootstrapRepository;
 pub use file_management::MemoryFileManagementRepository;

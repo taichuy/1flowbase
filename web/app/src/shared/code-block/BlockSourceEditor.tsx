@@ -1,3 +1,5 @@
+import { Button } from 'antd';
+import type { CancellationToken, editor, languages, Position } from 'monaco-editor';
 import type { BeforeMount, Monaco, OnMount } from '@monaco-editor/react';
 import {
   Suspense,
@@ -8,7 +10,12 @@ import {
   useState
 } from 'react';
 
-import type { BlockSourceExtraLib } from './extra-lib';
+import type {
+  BlockSourceDeclarationLoader,
+  BlockSourceExtraLib
+} from './extra-lib';
+import { createDeclarationSession } from './declarations/session';
+import { i18nText } from '../i18n/text';
 import { loadMonacoEditorModule } from './monaco-runtime';
 import { LoadingState } from '../ui/loading-state/LoadingState';
 
@@ -18,6 +25,7 @@ export interface BlockSourceEditorProps {
   ariaLabel: string;
   diagnostics?: readonly BlockSourceEditorDiagnostic[];
   extraLibs?: readonly BlockSourceExtraLib[];
+  declarationLoader?: BlockSourceDeclarationLoader;
   height?: string | number;
   path: string;
   readOnly?: boolean;
@@ -55,6 +63,7 @@ export function BlockSourceEditor({
   ariaLabel,
   diagnostics = EMPTY_DIAGNOSTICS,
   extraLibs = EMPTY_EXTRA_LIBS,
+  declarationLoader,
   height = '100%',
   onChange,
   onMount,
@@ -70,28 +79,97 @@ export function BlockSourceEditor({
     model: NonNullable<ReturnType<Parameters<OnMount>[0]['getModel']>>;
     owner: string;
   } | null>(null);
-  const registeredExtraLibsRef = useRef<{
-    source: readonly BlockSourceExtraLib[];
-    disposables: Array<{ dispose: () => void }>;
-  } | null>(null);
+  const declarationSessionRef = useRef<ReturnType<
+    typeof createDeclarationSession
+  > | null>(null);
+  const [declarationError, setDeclarationError] = useState(false);
+  const [declarationRetry, setDeclarationRetry] = useState(0);
   const registerExtraLibs = useCallback(
     (monaco: Monaco) => {
-      if (registeredExtraLibsRef.current?.source === extraLibs) return;
-      registeredExtraLibsRef.current?.disposables.forEach((disposable) =>
-        disposable.dispose()
-      );
-      registeredExtraLibsRef.current = {
-        source: extraLibs,
-        disposables: extraLibs.map((extraLib) =>
-          monaco.languages.typescript.typescriptDefaults.addExtraLib(
-            extraLib.content,
-            extraLib.filePath
-          )
-        )
-      };
+      declarationSessionRef.current ??= createDeclarationSession(monaco);
+      declarationSessionRef.current.register(extraLibs);
     },
     [extraLibs]
   );
+
+  useEffect(() => {
+    if (!declarationLoader) return;
+    let cancelled = false;
+    // Start alongside the Monaco import, not after Monaco finishes mounting.
+    void declarationLoader.loadForSource(value).then(
+      (files) => {
+        if (cancelled) return;
+        declarationSessionRef.current?.register(files);
+        setDeclarationError(false);
+      },
+      () => {
+        if (!cancelled) setDeclarationError(true);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [declarationLoader, value, ready, declarationRetry]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    const session = declarationSessionRef.current;
+    if (!ready || !declarationLoader || !editor || !monaco || !session) return;
+    let disposed = false;
+    let retriggered = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const provider = monaco.languages.registerCompletionItemProvider(
+      'typescript',
+      {
+        triggerCharacters: ['"', "'", '/'],
+        async provideCompletionItems(
+          model: editor.ITextModel,
+          _position: Position,
+          _context: languages.CompletionContext,
+          token: CancellationToken
+        ) {
+          if (model !== editor.getModel()) return { suggestions: [] };
+          try {
+            const changed = await session.loadAll(declarationLoader);
+            if (!disposed) setDeclarationError(false);
+            // Built-in TS suggestions may have started before addExtraLib. Once
+            // the complete import inventory is installed, run that provider again.
+            if (
+              changed &&
+              !retriggered &&
+              !disposed &&
+              !token.isCancellationRequested &&
+              model === editor.getModel()
+            ) {
+              retriggered = true;
+              timer = setTimeout(() => {
+                if (
+                  !disposed &&
+                  model === editor.getModel() &&
+                  editor.hasTextFocus()
+                ) {
+                  editor.trigger(
+                    'native-declarations',
+                    'editor.action.triggerSuggest',
+                    {}
+                  );
+                }
+              }, 0);
+            }
+          } catch {
+            if (!disposed) setDeclarationError(true);
+          }
+          return { suggestions: [] };
+        }
+      }
+    );
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      provider.dispose();
+    };
+  }, [declarationLoader, ready, declarationRetry]);
 
   const registerDiagnostics = useCallback(
     (editor: Parameters<OnMount>[0], monaco: Monaco) => {
@@ -152,9 +230,8 @@ export function BlockSourceEditor({
 
   useEffect(
     () => () => {
-      registeredExtraLibsRef.current?.disposables.forEach((disposable) =>
-        disposable.dispose()
-      );
+      declarationSessionRef.current?.dispose();
+      declarationSessionRef.current = null;
       const registeredMarkers = registeredMarkersRef.current;
       if (registeredMarkers) {
         registeredMarkers.monaco.editor.setModelMarkers(
@@ -174,6 +251,15 @@ export function BlockSourceEditor({
       role="group"
       style={{ height }}
     >
+      {declarationError ? (
+        <Button
+          size="small"
+          onClick={() => setDeclarationRetry((attempt) => attempt + 1)}
+        >
+          {i18nText('frontstage', 'auto.code_load_or_save_failed')} ·{' '}
+          {i18nText('frontstage', 'auto.retry')}
+        </Button>
+      ) : null}
       <Suspense fallback={<LoadingState compact />}>
         <Editor
           height="100%"

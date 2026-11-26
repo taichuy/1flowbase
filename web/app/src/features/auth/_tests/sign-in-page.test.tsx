@@ -5,14 +5,24 @@ const { systemMetadata } = vi.hoisted(() => ({
     hide_login_tagline: false,
     system_description: 'Configured description',
     filing_html:
-      '<a href="https://beian.miit.gov.cn/" data-free="yes">备案号</a>'
+      '<a href="https://beian.miit.gov.cn/" data-free="yes">备案号</a>',
+    page_title: undefined as string | undefined,
+    login_hero_title: undefined as string | undefined,
+    login_hero_tagline: undefined as string | null | undefined,
+    hide_powered_by: undefined as boolean | undefined
   }
 }));
-vi.mock('../../../shared/api/system-metadata', () => ({
-  useSystemMetadata: () => ({ data: systemMetadata })
+vi.mock('../lib/public-system-metadata', () => ({
+  usePublicSystemMetadata: () => ({ data: systemMetadata })
 }));
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
   navigateSpy,
@@ -35,11 +45,11 @@ const {
   }
 }));
 
-vi.mock('@tanstack/react-router', async () => {
-  const actual = await vi.importActual<typeof import('@tanstack/react-router')>(
-    '@tanstack/react-router'
-  );
-  return { ...actual, useNavigate: () => navigateSpy };
+vi.mock('../lib/anonymous-navigation', async () => {
+  const actual = await vi.importActual<
+    typeof import('../lib/anonymous-navigation')
+  >('../lib/anonymous-navigation');
+  return { ...actual, navigatePublicRoute: navigateSpy };
 });
 
 vi.mock('../api/session', () => ({
@@ -93,7 +103,6 @@ vi.mock('../components/BuiltinPasswordSignIn', () => ({
   BuiltinPasswordSignIn: () => <form aria-label="Escape password sign in" />
 }));
 
-import { AppProviders } from '../../../app/AppProviders';
 import { useAuthStore } from '../../../state/auth-store';
 import { SignInPage } from '../pages/SignInPage';
 
@@ -110,6 +119,11 @@ const passwordInstance = {
 };
 
 describe('SignInPage', () => {
+  // Transform the real lazy provider graph outside per-interaction waits.
+  // The mocked block still suspends below, exercising the actual fallback.
+  beforeAll(async () => {
+    await import('../components/public-runtime/CustomAuthRuntime');
+  });
   beforeEach(() => {
     window.localStorage.clear();
     window.history.pushState({}, '', '/sign-in');
@@ -162,9 +176,9 @@ describe('SignInPage', () => {
     fetchLoginEntries.mockImplementation(() => new Promise(() => undefined));
 
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -179,9 +193,9 @@ describe('SignInPage', () => {
     publicAuthBlockControl.suspend = true;
 
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     await waitFor(() => expect(renderedBlocks).toHaveBeenCalled());
@@ -195,9 +209,9 @@ describe('SignInPage', () => {
 
   test('mounts the only authenticator Block directly and accepts its session', async () => {
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     fireEvent.click(
@@ -226,9 +240,9 @@ describe('SignInPage', () => {
     });
 
     const view = render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -249,9 +263,9 @@ describe('SignInPage', () => {
     });
 
     view.rerender(
-      <AppProviders>
+      <>
         <SignInPage loginEntryId="auth-qr" />
-      </AppProviders>
+      </>
     );
     expect(
       await screen.findByRole('button', { name: 'Run auth-qr' })
@@ -274,9 +288,9 @@ describe('SignInPage', () => {
     });
 
     view.rerender(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     expect(
       await screen.findByRole('button', { name: 'Password' })
@@ -285,6 +299,45 @@ describe('SignInPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Run auth-qr' })
     ).not.toBeInTheDocument();
+  });
+
+  test('changing selection discards a pending authentication result from the old entry', async () => {
+    const qr = {
+      ...passwordInstance,
+      id: 'auth-qr',
+      auth_type: 'qr-code',
+      public_ui_block: 'qr block'
+    };
+    fetchLoginEntries.mockResolvedValue({
+      login_entries: [passwordInstance, qr]
+    });
+    const currentMe = await fetchCurrentMe();
+    let resolveMe!: (me: typeof currentMe) => void;
+    fetchCurrentMe.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMe = resolve;
+        })
+    );
+    const view = render(<SignInPage loginEntryId={passwordInstance.id} />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Run auth-password-local' })
+    );
+    expect(resolveMe).toBeTypeOf('function');
+
+    view.rerender(<SignInPage loginEntryId={qr.id} />);
+    expect(
+      await screen.findByRole('button', { name: 'Run auth-qr' })
+    ).toBeInTheDocument();
+    await act(async () => resolveMe(currentMe));
+    expect(navigateSpy).not.toHaveBeenCalledWith({ to: '/' });
+    expect(useAuthStore.getState().csrfToken).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run auth-qr' }));
+    await waitFor(() =>
+      expect(navigateSpy).toHaveBeenCalledExactlyOnceWith({ to: '/' })
+    );
+    expect(useAuthStore.getState().csrfToken).toBe('csrf-123');
   });
 
   test('AC-001 restores a valid authenticator from the URL on first render', async () => {
@@ -303,9 +356,9 @@ describe('SignInPage', () => {
     });
 
     render(
-      <AppProviders>
+      <>
         <SignInPage loginEntryId="auth-qr" />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -332,9 +385,9 @@ describe('SignInPage', () => {
     });
 
     render(
-      <AppProviders>
+      <>
         <SignInPage loginEntryId="missing-authenticator" />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -357,9 +410,9 @@ describe('SignInPage', () => {
     });
 
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -372,9 +425,9 @@ describe('SignInPage', () => {
   test('AC-001 shows the escape form when login instance discovery fails', async () => {
     fetchLoginEntries.mockRejectedValue(new Error('network failed'));
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -407,9 +460,9 @@ describe('declarative authentication entry actions', () => {
 
   test('one chooser click starts external authorization without routing to or mounting a block', async () => {
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     const button = await screen.findByRole('button', { name: external.title });
     expect(externalRedirect).not.toHaveBeenCalled();
@@ -458,11 +511,11 @@ describe('declarative authentication entry actions', () => {
             (mode === 'cancelled' ? 'cancelled' : 'external_auth_failed')
         );
       render(
-        <AppProviders>
+        <>
           <SignInPage
             loginEntryId={mode === 'deep-link' ? external.id : undefined}
           />
-        </AppProviders>
+        </>
       );
       const button = await screen.findByRole('button', {
         name: external.title
@@ -489,9 +542,9 @@ describe('declarative authentication entry actions', () => {
       throw new Error('blocked');
     });
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     const button = await screen.findByRole('button', { name: external.title });
     fireEvent.click(button);
@@ -516,9 +569,9 @@ describe('declarative authentication entry actions', () => {
       '/sign-in?auth_error=identity_unlinked&language=zh'
     );
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('该 GitHub 身份已解绑');
@@ -530,13 +583,17 @@ describe('declarative authentication entry actions', () => {
 });
 
 test('renders raw registration HTML below the powered-by footer', async () => {
+  window.localStorage.clear();
+  window.history.replaceState({}, '', '/sign-in?language=zh');
   render(
-    <AppProviders>
+    <>
       <SignInPage />
-    </AppProviders>
+    </>
   );
   expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
-  expect(document.querySelector('.hero-slogan-line')).toHaveTextContent('对话即是壁垒，AI应用原生底座');
+  expect(document.querySelector('.hero-slogan-line')).toHaveTextContent(
+    '对话即是壁垒，AI应用原生底座'
+  );
   expect(screen.queryByText('Configured description')).not.toBeInTheDocument();
   const link = await screen.findByRole('link', { name: '备案号' });
   expect(link).toHaveAttribute('href', 'https://beian.miit.gov.cn/');
@@ -548,17 +605,17 @@ test('renders raw registration HTML below the powered-by footer', async () => {
 
 test('the hide switch removes the fixed login tagline while keeping sign-in and filing available', async () => {
   const view = render(
-    <AppProviders>
+    <>
       <SignInPage />
-    </AppProviders>
+    </>
   );
   expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
   systemMetadata.hide_login_tagline = true;
   try {
     view.rerender(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     expect(document.querySelector('.hero-text-block')).not.toBeInTheDocument();
     expect(document.querySelector('.hero-slogan-line')).not.toBeInTheDocument();
@@ -567,12 +624,105 @@ test('the hide switch removes the fixed login tagline while keeping sign-in and 
     expect(screen.getByRole('link', { name: '备案号' })).toBeVisible();
     systemMetadata.hide_login_tagline = false;
     view.rerender(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
   } finally {
     systemMetadata.hide_login_tagline = false;
   }
 });
+
+test('commercial metadata customizes page title, hero title/tagline, and hides powered-by without affecting filing or hide_login_tagline', async () => {
+  systemMetadata.page_title = 'Acme AI Platform';
+  systemMetadata.login_hero_title = 'Acme Native';
+  systemMetadata.login_hero_tagline = '专属企业原生底座';
+  systemMetadata.hide_powered_by = true;
+  systemMetadata.hide_login_tagline = false;
+  try {
+    const view = render(<SignInPage />);
+    expect(
+      await screen.findByText('Acme Native', { exact: true })
+    ).toBeVisible();
+    expect(document.querySelector('.hero-slogan-line')).toHaveTextContent(
+      '专属企业原生底座'
+    );
+    expect(document.title).toBe('Acme AI Platform');
+    expect(screen.queryByText('Powered by 1flowbase')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '备案号' })).toBeVisible();
+
+    systemMetadata.hide_login_tagline = true;
+    view.rerender(<SignInPage />);
+    expect(document.querySelector('.hero-text-block')).not.toBeInTheDocument();
+    expect(screen.queryByText('Powered by 1flowbase')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '备案号' })).toBeVisible();
+  } finally {
+    systemMetadata.page_title = undefined;
+    systemMetadata.login_hero_title = undefined;
+    systemMetadata.login_hero_tagline = undefined;
+    systemMetadata.hide_powered_by = undefined;
+    systemMetadata.hide_login_tagline = false;
+  }
+});
+
+test('AC-002 ?invite= enables invited registration and forwards invitationToken to external OAuth', async () => {
+  const githubEntry = {
+    ...passwordInstance,
+    id: 'auth-github',
+    auth_type: 'github-oauth',
+    entry_action: 'external_login' as const,
+    is_builtin: false,
+    title: 'GitHub',
+    sort_order: 10
+  };
+  fetchLoginEntries.mockResolvedValue({
+    default_login_entry_id: passwordInstance.id,
+    onboarding_mode: 'invite_only',
+    login_entries: [passwordInstance, githubEntry]
+  });
+  window.history.pushState({}, '', '/sign-in?invite=inv_team_42');
+
+  const view = render(<SignInPage loginEntryId={passwordInstance.id} />);
+  expect(await screen.findByTestId('sign-in-invitation-banner')).toBeVisible();
+  await waitFor(() =>
+    expect(renderedBlocks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: passwordInstance.id,
+        public_variables: { self_registration_enabled: true }
+      }),
+      true
+    )
+  );
+
+  view.rerender(<SignInPage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'GitHub' }));
+  expect(externalRedirect).toHaveBeenCalledWith(
+    'auth-github',
+    undefined,
+    'inv_team_42'
+  );
+});
+
+test.each([
+  'invite_only',
+  'reject',
+  'default_workspace',
+  'personal_workspace'
+] as const)(
+  'AC-013 %s does not render a manual invitation field',
+  async (onboarding_mode) => {
+    fetchLoginEntries.mockResolvedValue({
+      default_login_entry_id: passwordInstance.id,
+      onboarding_mode,
+      login_entries: [passwordInstance]
+    });
+    window.history.pushState({}, '', '/sign-in');
+
+    render(<SignInPage />);
+    await waitFor(() => expect(renderedBlocks).toHaveBeenCalled());
+    expect(
+      screen.queryByLabelText(/邀请码|Invitation code/i)
+    ).not.toBeInTheDocument();
+  }
+);

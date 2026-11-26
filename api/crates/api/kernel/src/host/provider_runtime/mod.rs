@@ -97,6 +97,8 @@ pub use model_provider_slot::{
 
 #[derive(Clone)]
 pub struct ApiRuntimeServices {
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) workspace_policy_fixture: Option<Arc<dyn control_plane::auth::WorkspacePolicyPort>>,
     managed_composition:
         Option<Arc<dyn crate::extension_bus::managed_activation::ManagedCompositionPort>>,
     runtime_backend: Arc<dyn RuntimeBackend>,
@@ -200,6 +202,16 @@ impl ApiRuntimeServices {
         self
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn with_workspace_policy_fixture(
+        mut self,
+        policy: Arc<dyn control_plane::auth::WorkspacePolicyPort>,
+    ) -> Self {
+        self.workspace_policy_fixture = Some(policy);
+        self
+    }
+
     pub fn managed_composition(
         &self,
     ) -> anyhow::Result<Arc<dyn crate::extension_bus::managed_activation::ManagedCompositionPort>>
@@ -261,6 +273,8 @@ impl ApiRuntimeServices {
         Ok(Self {
             #[cfg(any(test, feature = "test-support"))]
             fixture_resources: None,
+            #[cfg(any(test, feature = "test-support"))]
+            workspace_policy_fixture: None,
             managed_composition: None,
             local_artifact_references: cfg!(test),
             runtime_backend,
@@ -310,6 +324,8 @@ impl ApiRuntimeServices {
         Self {
             #[cfg(any(test, feature = "test-support"))]
             fixture_resources: None,
+            #[cfg(any(test, feature = "test-support"))]
+            workspace_policy_fixture: None,
             managed_composition: None,
             local_artifact_references: true,
             runtime_backend,
@@ -366,6 +382,8 @@ impl ApiRuntimeServices {
         Self {
             #[cfg(any(test, feature = "test-support"))]
             fixture_resources: None,
+            #[cfg(any(test, feature = "test-support"))]
+            workspace_policy_fixture: None,
             managed_composition: None,
             local_artifact_references: cfg!(test),
             runtime_backend,

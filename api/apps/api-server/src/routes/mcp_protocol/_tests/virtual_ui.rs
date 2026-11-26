@@ -698,7 +698,8 @@ fn managed_mcp_get_uses_flat_body_path_query_body_fields_and_retains_existing_co
         }]
     })).unwrap();
     let service = crate::managed_services::ManagedServiceRegistration {
-        shared_resource: None,
+        root_workspace_only: false,
+        resource_imports: Vec::new(),
         publisher_namespace: "test".into(),
         data_models: Vec::new(),
         display_name: "Fixture plugin".into(),
@@ -1345,4 +1346,64 @@ fn mcp_get_advertises_a_string_file_path_beside_url_host_parameters() {
     assert!(validator.is_valid(&json!({"host_id":"saved-host","path":"/tmp/file.txt"})));
     assert!(!validator.is_valid(&json!({"host_id":"saved-host","path":{"host_id":"saved-host"}})));
     assert!(!validator.is_valid(&json!({"host_id":"saved-host","path":""})));
+}
+
+#[tokio::test]
+async fn platform_mcp_tool_is_hidden_and_not_callable_after_root_switches_workspace() {
+    use axum::response::IntoResponse;
+
+    let (state, dependencies) = resource_dispatch_fixture().await;
+    let dependencies = dependencies.with_console_workspace_gate(
+        state.bootstrap_workspace_id,
+        state.console_operation_registry.inventory(),
+        &state.api_docs,
+    );
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].execution_target = domain::McpToolExecutionTarget::InterfaceWrapper {
+        interface_id: "auth_center.overview.view".into(),
+    };
+    let interfaces = media_fixture_interfaces();
+    let dispatch_port = MediaFixtureDispatch {
+        value: json!({}),
+        calls: Default::default(),
+    };
+    let headers = HeaderMap::new();
+    let scope = VirtualMcpScope::single("selected".into());
+    let root =
+        domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
+    let invoke = |actor, name| {
+        dispatch(
+            &dependencies,
+            &interfaces,
+            &dispatch_port,
+            &headers,
+            actor,
+            &catalog,
+            &scope,
+            name,
+            json!({"tool_id":"lookup","arguments":{"query":"fixture"}}),
+            None,
+        )
+    };
+    assert!(matches!(
+        invoke(&root, "mcp_get").await.unwrap(),
+        VirtualToolOutcome::Success(_)
+    ));
+    let mut switched = root.clone();
+    switched.current_workspace_id = catalog.instances[0].workspace_id;
+    assert_ne!(switched.current_workspace_id, state.bootstrap_workspace_id);
+    assert!(!matches!(
+        invoke(&switched, "mcp_get").await.unwrap(),
+        VirtualToolOutcome::Success(_)
+    ));
+    let Err(error) = invoke(&switched, MCP_CALL).await else {
+        panic!("known platform tool must be rejected before dispatch");
+    };
+    assert_eq!(error.into_response().status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        dispatch_port
+            .calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
 }

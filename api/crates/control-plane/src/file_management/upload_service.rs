@@ -58,11 +58,18 @@ where
                 .into_iter()
                 .find(|table| table.is_default && table.status == "active")
                 .ok_or(ControlPlaneError::NotFound("default_file_table"))?,
-            FileUploadTarget::Table(file_table_id) => self
-                .repository
-                .get_file_table(file_table_id)
-                .await?
-                .ok_or(ControlPlaneError::NotFound("file_table"))?,
+            FileUploadTarget::Table(file_table_id) => {
+                let table = super::visible_file_table(
+                    &self.repository,
+                    file_table_id,
+                    command.actor.current_workspace_id,
+                )
+                .await?;
+                if table.status != "active" {
+                    return Err(ControlPlaneError::NotFound("file_table").into());
+                }
+                table
+            }
         };
         let storage = match file_table.bound_storage_id {
             Some(storage_id) => self.repository.get_file_storage(storage_id).await?,

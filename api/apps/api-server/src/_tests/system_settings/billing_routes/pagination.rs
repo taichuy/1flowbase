@@ -102,7 +102,7 @@ async fn pricing_pagination_reads_only_intersecting_pages_and_handles_overflow()
     let f = fixture().await;
     // An unrelated remote page is unavailable: browsing page one must still work.
     f.documents.lock().unwrap().remove("/pages/3.json");
-    let reader = RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+    let reader = RemotePricingCatalogReader::open(&fixture_http_client(), &f.url)
         .await
         .unwrap();
     let (first, total) = reader.query(None, None, 1, 1).await.unwrap();
@@ -130,7 +130,7 @@ async fn pricing_pagination_reads_only_intersecting_pages_and_handles_overflow()
 async fn pricing_search_counts_matches_before_paging_and_only_reads_matching_pages() {
     let f = fixture().await;
     f.documents.lock().unwrap().remove("/pages/2.json");
-    let reader = RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+    let reader = RemotePricingCatalogReader::open(&fixture_http_client(), &f.url)
         .await
         .unwrap();
     let (rules, total) = reader
@@ -159,7 +159,7 @@ async fn pricing_search_counts_matches_before_paging_and_only_reads_matching_pag
 #[tokio::test]
 async fn pricing_import_deduplicates_pages_and_rejects_missing_or_duplicate_ids() {
     let f = fixture().await;
-    let reader = RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+    let reader = RemotePricingCatalogReader::open(&fixture_http_client(), &f.url)
         .await
         .unwrap();
     let selected = reader
@@ -222,7 +222,7 @@ async fn pricing_search_rejects_inconsistent_snapshot_and_page_references() {
                     hash
                 });
         }
-        let reader = RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+        let reader = RemotePricingCatalogReader::open(&fixture_http_client(), &f.url)
             .await
             .unwrap();
         assert!(
@@ -292,7 +292,7 @@ async fn pricing_search_rejects_identities_swapped_between_two_selected_pages() 
         let hash = checksum(search);
         docs.get_mut("/index.json").unwrap()["search_index"]["checksum"] = json!(hash);
     }
-    let reader = RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+    let reader = RemotePricingCatalogReader::open(&fixture_http_client(), &f.url)
         .await
         .unwrap();
     assert!(reader.query(Some("provider-a"), None, 1, 4).await.is_err());
@@ -360,7 +360,7 @@ async fn pricing_reader_retries_a_transient_unavailable_index_once() {
         }
     });
     let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    let result = RemotePricingCatalogReader::open(&reqwest::Client::new(), &url).await;
+    let result = RemotePricingCatalogReader::open(&fixture_http_client(), &url).await;
     task.abort();
     assert_eq!(result.unwrap().count(None, None).await.unwrap(), 0);
     assert_eq!(hits.load(Ordering::SeqCst), 2);
@@ -402,7 +402,7 @@ async fn pricing_reader_retries_an_interrupted_body_and_bounds_persistent_failur
             }
         });
         let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let result = RemotePricingCatalogReader::open(&reqwest::Client::new(), &url).await;
+        let result = RemotePricingCatalogReader::open(&fixture_http_client(), &url).await;
         task.abort();
         assert_eq!(result.is_ok(), recover);
         assert_eq!(hits.load(Ordering::SeqCst), 2);
@@ -436,7 +436,7 @@ async fn pricing_sharded_search_skips_unrelated_metadata_and_keeps_exact_counts(
         // The other provider's metadata endpoint is unavailable.
         docs.remove("/search/2.json");
     }
-    let reader = RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+    let reader = RemotePricingCatalogReader::open(&fixture_http_client(), &f.url)
         .await
         .unwrap();
     assert_eq!(
@@ -461,7 +461,7 @@ async fn pricing_sharded_search_skips_unrelated_metadata_and_keeps_exact_counts(
     f.documents.lock().unwrap().get_mut("/index.json").unwrap()["search_shards"][1]["pages"] =
         json!([2]);
     assert!(
-        RemotePricingCatalogReader::open(&reqwest::Client::new(), &f.url)
+        RemotePricingCatalogReader::open(&fixture_http_client(), &f.url)
             .await
             .is_err()
     );

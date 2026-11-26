@@ -23,12 +23,11 @@ where
             );
         }
 
-        let installations = self
-            .repository
-            .list_installations()
-            .await?
-            .into_iter()
+        let all_installations = self.repository.list_installations().await?;
+        let installations = all_installations
+            .iter()
             .filter(|installation| installation.provider_code == command.provider_code)
+            .cloned()
             .collect::<Vec<_>>();
         if installations.is_empty() {
             return Err(ControlPlaneError::NotFound("plugin_family").into());
@@ -44,6 +43,13 @@ where
                     ControlPlaneError::Conflict("plugin_runtime_uninstall_unsupported").into(),
                 );
             }
+        }
+        for installation in &installations {
+            super::super::dependencies::provider_change_preflight(
+                installation,
+                None,
+                &all_installations,
+            )?;
         }
         let managed_ids = installations
             .iter()

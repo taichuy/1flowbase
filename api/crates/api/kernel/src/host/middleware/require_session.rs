@@ -1,3 +1,4 @@
+use control_plane::ports::AuthRepository;
 use std::future::Future;
 
 use axum::http::HeaderMap;
@@ -126,6 +127,15 @@ pub async fn require_session(
     headers: &HeaderMap,
 ) -> Result<RequestContext, ApiError> {
     if let Ok(context) = SERVER_DELEGATED_REQUEST_CONTEXT.try_with(Clone::clone) {
+        state
+            .store
+            .verify_workspace_access(
+                context.actor.user_id,
+                context.actor.tenant_id,
+                context.actor.current_workspace_id,
+                context.actor.is_root,
+            )
+            .await?;
         return apply_console_policy_permissions(state, context).await;
     }
 
@@ -175,6 +185,15 @@ pub async fn require_session(
             Some(&session.active_role_code),
         )
         .await?;
+    state
+        .store
+        .verify_workspace_access(
+            actor.user_id,
+            session.tenant_id,
+            actor.current_workspace_id,
+            actor.is_root,
+        )
+        .await?;
     if actor.effective_display_role != session.active_role_code {
         state.session_store.delete(&session.session_id).await?;
         return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
@@ -205,14 +224,33 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
     state: &ApiState,
     actor: &mut ActorContext,
 ) -> Result<(), ApiError> {
+    let outside_bootstrap = actor.current_workspace_id != state.bootstrap_workspace_id;
+    let inventory = state.console_operation_registry.inventory();
+    let features = &state.settings_feature_registry.inventory().features;
     if actor.is_root {
+        if outside_bootstrap {
+            remove_platform_permissions(actor, inventory, features);
+        } else {
+            // Clients must use the explicit projection, not the root role alone,
+            // to distinguish platform operations available in this session.
+            actor.permissions.extend(
+                inventory
+                    .operations
+                    .iter()
+                    .filter(|operation| {
+                        operation.root_workspace_only
+                            && operation.lifecycle
+                                == access_control::SettingsFeatureLifecycle::Active
+                    })
+                    .map(|operation| operation.operation_id.clone()),
+            );
+        }
         return Ok(());
     }
     let policies = state
         .console_policy_reader
         .load_role_console_policies_for_user(actor)
         .await?;
-    let inventory = state.console_operation_registry.inventory();
     // Project the same effective operations consumed by the invocation boundary. Legacy
     // role grants cannot retain stale operation IDs after a group or operation is revoked.
     actor
@@ -245,7 +283,30 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
             &policies,
             &state.settings_feature_registry.inventory().features,
         ));
+    if outside_bootstrap {
+        remove_platform_permissions(actor, inventory, features);
+    }
     Ok(())
+}
+
+fn remove_platform_permissions(
+    actor: &mut ActorContext,
+    inventory: &access_control::ConsoleOperationCompiledInventory,
+    features: &[access_control::SettingsFeatureInventoryEntry],
+) {
+    for operation in inventory
+        .operations
+        .iter()
+        .filter(|op| op.root_workspace_only)
+    {
+        actor.permissions.remove(&operation.operation_id);
+    }
+    for feature in features
+        .iter()
+        .filter(|feature| feature.root_workspace_only)
+    {
+        actor.permissions.remove(&feature.permission_code);
+    }
 }
 
 /// A settings surface is discoverable if at least one active operation is granted.

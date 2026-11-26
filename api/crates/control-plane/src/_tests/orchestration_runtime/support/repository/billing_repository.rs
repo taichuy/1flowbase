@@ -12,6 +12,33 @@ impl crate::ports::BillingRepository for InMemoryOrchestrationRuntimeRepository 
         })
     }
 
+    async fn list_pricing_target_providers(
+        &self,
+        _: &crate::ports::ListPricingTargetProvidersInput,
+    ) -> Result<crate::ports::PricingTargetProvidersPage> {
+        Ok(crate::ports::PricingTargetProvidersPage {
+            items: Vec::new(),
+            total_count: 0,
+        })
+    }
+    async fn list_pricing_target_models(
+        &self,
+        _: &crate::ports::ListPricingTargetModelsInput,
+    ) -> Result<crate::ports::PricingTargetModelsPage> {
+        Ok(crate::ports::PricingTargetModelsPage {
+            model_ids: Vec::new(),
+            rules: Vec::new(),
+            total_count: 0,
+        })
+    }
+    async fn list_pricing_rules_for_targets(
+        &self,
+        _: &[(String, String)],
+        _: OffsetDateTime,
+    ) -> Result<Vec<crate::billing::PricingRule>> {
+        Ok(Vec::new())
+    }
+
     async fn get_pricing_rule(&self, _id: Uuid) -> Result<Option<crate::billing::PricingRule>> {
         Ok(None)
     }

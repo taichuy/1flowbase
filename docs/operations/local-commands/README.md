@@ -12,7 +12,9 @@
 
 使用现有 1flowbase 认证。Cookie 请求需要现有 `x-csrf-token`。在角色的「其他权限 → Local commands」中选择执行接口即可授权；取消选择或关闭权限组后拒绝执行。`full/custom` 沿用既有规则，关闭组不会清空自定义选择。root 沿用系统超级管理员规则，接口内部没有额外 root-only 判断。
 
-无需启用配置或环境变量。旧的 `API_LOCAL_COMMAND_TIMEOUT_MS`、`API_LOCAL_COMMAND_MAX_OUTPUT_BYTES` 已删除，不再影响启动或执行。接口不设置独立的命令时长上限或输出总量上限，也不截断输出。没有调用期限时等待命令结束；一次性不表示任意命令必定快速结束。
+`API_LOCAL_TERMINAL_DISABLED` 默认在开发模式为 `false`（含未设置 `API_ENV`），在生产模式为 `true`。Docker 镜像和生产 Compose 默认禁用，开发 Compose 和原生本地安装包（含旧包原地升级）默认允许。显式布尔值覆盖默认值，非法值会阻止启动；原生包以其 `.env` 为准。设为 `true` 时，本接口和全部 `terminal.*` 接口即使对 `root` 也会在执行前返回 `403`（`local_terminal_disabled`），不会启动命令或写入命令审计；MCP 工具仍可发现，但调用会返回禁用原因。
+
+旧的 `API_LOCAL_COMMAND_TIMEOUT_MS`、`API_LOCAL_COMMAND_MAX_OUTPUT_BYTES` 已删除，不再影响启动或执行。接口不设置独立的命令时长上限或输出总量上限，也不截断输出。没有调用期限时等待命令结束；一次性不表示任意命令必定快速结束。
 
 命令使用后端服务的操作系统账号、工作目录和环境变量，不自动提权，不执行在浏览器所在电脑：
 

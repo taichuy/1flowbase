@@ -31,6 +31,7 @@ pub fn applications_console_policy_catalog() -> CompiledConsolePolicyCatalog {
     CompiledConsolePolicyCatalog {
         complete: true,
         groups: vec![CompiledConsolePolicyGroup {
+            root_workspace_only: false,
             group: ConsolePolicyGroup::settings_feature(SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID)
                 .expect("compiled applications settings feature id must be valid"),
             full_operations: vec![

@@ -7,8 +7,14 @@
       "sourceSha256": "c70c41f86889e7f02206d9202f2fb0903706bee83aaf0bba12fd37ee3172b3be",
       "reason": "The status region contains the structured Ant Spin/skeleton block layout, not phrasing content or the result of a form calculation. Keep a named polite live region on the existing block element for both the server document and the interactive component.",
       "evidence": [
-        {"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"},
-        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"8e4dc1b9ad213d7605e21457e8b980e1def8c8830e3e1508c071da3b5c1479fc"}
+        {
+          "file": "web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx",
+          "sha256": "0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"
+        },
+        {
+          "file": "web/app/build/_tests/sign-in-motion-document.test.ts",
+          "sha256": "340c3142dcee54f4f51e2ad2c3702a8dfbf4de41c75bda93a24b8bc28eb397e2"
+        }
       ]
     },
     {
@@ -17,9 +23,18 @@
       "sourceSha256": "c70c41f86889e7f02206d9202f2fb0903706bee83aaf0bba12fd37ee3172b3be",
       "reason": "The indicator React element is created once per component factory call, outside the returned component. The browser owner instantiates its factory at module scope; the build owner constructs it once for its static document render. Renders of LoadingState pass the same element reference regardless of layout props; this is the public ReactNode slot, not a render-local JSX allocation.",
       "evidence": [
-        {"file":"web/app/src/shared/ui/loading-state/LoadingState.tsx","sha256":"2e6327a6d4c41a8b3c3dc2f8340a40aa31ace5e75261e217969221dae742b662"},
-        {"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"},
-        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"b601874f1dd0e31b9b4c222e93cd1b6867625f7bd5477cc79c5f6b3b902dc50b"}
+        {
+          "file": "web/app/src/shared/ui/loading-state/LoadingState.tsx",
+          "sha256": "2e6327a6d4c41a8b3c3dc2f8340a40aa31ace5e75261e217969221dae742b662"
+        },
+        {
+          "file": "web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx",
+          "sha256": "0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"
+        },
+        {
+          "file": "web/app/build/sign-in-motion-document.tsx",
+          "sha256": "d0899e37448e034bbfa79fb5886f32619be7f731074bc8bb108b92addfc88268"
+        }
       ]
     }
   ]

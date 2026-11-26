@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
-import { useTranslation } from 'react-i18next';
+import './builtin-password.css';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useAuthTranslation } from '../lib/auth-i18n';
 
 import {
   signInWithPassword,
@@ -10,34 +11,55 @@ interface BuiltinPasswordSignInProps {
   loginEntryId?: string;
   loginEntrySelector?: { request: () => void } | null;
   onAuthenticated: (session: PasswordSignInResponse) => void | Promise<void>;
+  invitationToken?: string;
 }
 
 export function BuiltinPasswordSignIn({
   loginEntryId,
   loginEntrySelector = null,
-  onAuthenticated
+  onAuthenticated,
+  invitationToken
 }: BuiltinPasswordSignInProps) {
-  const { t } = useTranslation('auth');
+  const { t } = useAuthTranslation();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
+  const submitting = useRef(false);
+  const generation = useRef(0);
+  useEffect(() => {
+    generation.current += 1;
+    submitting.current = false;
+    setPending(false);
+    setFailed(false);
+    return () => {
+      generation.current += 1;
+    };
+  }, [loginEntryId]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
+    const attempt = generation.current;
     setPending(true);
     setFailed(false);
+    const normalizedToken = invitationToken?.trim();
     try {
       const session = await signInWithPassword({
         login_entry_id: loginEntryId,
         identifier,
-        password
+        password,
+        ...(normalizedToken ? { invitation_token: normalizedToken } : {})
       });
-      await onAuthenticated(session);
+      if (attempt === generation.current) await onAuthenticated(session);
     } catch {
-      setFailed(true);
+      if (attempt === generation.current) setFailed(true);
     } finally {
-      setPending(false);
+      if (attempt === generation.current) {
+        submitting.current = false;
+        setPending(false);
+      }
     }
   };
 

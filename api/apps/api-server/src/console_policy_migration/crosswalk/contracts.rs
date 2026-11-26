@@ -77,7 +77,13 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         ],
     ),
     core_simple_other("other.data-sources", &["data_sources.secret.rotate"]),
-    core_simple_other("other.frontend-blocks", &["frontend_blocks.view"]),
+    core_simple_other(
+        "other.frontend-blocks",
+        &[
+            "frontend_blocks.type_declarations.view",
+            "frontend_blocks.view",
+        ],
+    ),
     core_authenticated_other(
         "other.frontstage",
         &[
@@ -375,6 +381,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "billing.pricing_rules.create",
             "billing.pricing_rules.delete",
             "billing.pricing_rules.list",
+            "billing.pricing_targets.list",
             "billing.pricing_rules.update",
             "model_provider_plugins.artifact.install",
             "model_provider_plugins.artifact.refresh",

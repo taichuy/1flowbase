@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@1flowbase/flow-schema": ["../flow-schema/dist/index.d.ts"]
     },
@@ -11,5 +10,6 @@
     "noEmit": false,
     "emitDeclarationOnly": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/_tests"]
 }

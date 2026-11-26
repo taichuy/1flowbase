@@ -1,9 +1,10 @@
 use anyhow::{ensure, Context, Result};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeSet,
     fs,
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 pub fn hash(path: &Path) -> Result<String> {
@@ -49,8 +50,57 @@ pub fn size(path: &Path) -> Result<u64> {
     Ok(bytes)
 }
 
-/// Caller exclusively owns destination. No following links or copying a live instance lock.
-pub fn copy(source: &Path, destination: &Path, data_root: bool) -> Result<()> {
+/// Flush staged file data to stable OS buffers; phase boundaries issue the full hardware barrier.
+fn sync_staged_file(file: &fs::File) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::fd::AsRawFd;
+
+        let fd = file.as_raw_fd();
+        loop {
+            // SAFETY: `file` keeps `fd` open and valid for the duration of `libc::fsync`.
+            if unsafe { libc::fsync(fd) } == 0 {
+                return Ok(());
+            }
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::Interrupted {
+                return Err(error.into());
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        file.sync_data()?;
+        Ok(())
+    }
+}
+
+fn copy_file_staged(source: &Path, destination: &Path) -> Result<()> {
+    let info = fs::symlink_metadata(source)?;
+    ensure!(
+        !info.file_type().is_symlink(),
+        "Refusing symlink: {}",
+        source.display()
+    );
+    ensure!(info.is_file(), "Unsupported file: {}", source.display());
+    let mut input = fs::File::open(source)?;
+    let mut output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination)?;
+    std::io::copy(&mut input, &mut output)?;
+    sync_staged_file(&output)?;
+    drop(output);
+    fs::set_permissions(destination, info.permissions())?;
+    Ok(())
+}
+
+/// Copy a file or directory tree without symlinks and record created directories for phase-end sync.
+pub fn copy_staged(
+    source: &Path,
+    destination: &Path,
+    dirty_dirs: &mut BTreeSet<PathBuf>,
+) -> Result<()> {
     let info = fs::symlink_metadata(source)?;
     ensure!(
         !info.file_type().is_symlink(),
@@ -61,26 +111,70 @@ pub fn copy(source: &Path, destination: &Path, data_root: bool) -> Result<()> {
         fs::create_dir_all(destination)?;
         for entry in fs::read_dir(source)? {
             let entry = entry?;
-            if data_root && entry.file_name() == "instance.lock" {
-                continue;
-            }
-            copy(&entry.path(), &destination.join(entry.file_name()), false)?;
+            copy_staged(
+                &entry.path(),
+                &destination.join(entry.file_name()),
+                dirty_dirs,
+            )?;
         }
         fs::set_permissions(destination, info.permissions())?;
-        sync_directory(destination)?;
+        dirty_dirs.insert(destination.to_path_buf());
     } else {
-        ensure!(info.is_file(), "Unsupported file: {}", source.display());
-        let mut input = fs::File::open(source)?;
-        let mut output = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(destination)?;
-        std::io::copy(&mut input, &mut output)?;
-        output.sync_all()?;
-        drop(output);
-        fs::set_permissions(destination, info.permissions())?;
+        copy_file_staged(source, destination)?;
     }
     Ok(())
+}
+
+/// Record `dir` and its ancestors up to `root`, stopping once an ancestor is already tracked.
+pub fn record_ancestors_within(root: &Path, dir: &Path, dirty_dirs: &mut BTreeSet<PathBuf>) {
+    let mut current = dir;
+    while current.starts_with(root) {
+        if !dirty_dirs.insert(current.to_path_buf()) || current == root {
+            break;
+        }
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        current = parent;
+    }
+}
+
+/// Return `true` only when `destination` is a regular non-symlink file matching `source`'s
+/// byte length, permissions, and verified SHA-256 content.
+pub fn matches_managed_file(
+    source: &Path,
+    destination: &Path,
+    expected_hash: &str,
+) -> Result<bool> {
+    let Ok(dest_meta) = fs::symlink_metadata(destination) else {
+        return Ok(false);
+    };
+    if dest_meta.file_type().is_symlink() || !dest_meta.is_file() {
+        return Ok(false);
+    }
+    let source_meta = fs::symlink_metadata(source)?;
+    ensure!(
+        !source_meta.file_type().is_symlink() && source_meta.is_file(),
+        "Invalid staged package file: {}",
+        source.display()
+    );
+    if dest_meta.len() != source_meta.len() {
+        return Ok(false);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        if (dest_meta.permissions().mode() & 0o7777) != (source_meta.permissions().mode() & 0o7777)
+        {
+            return Ok(false);
+        }
+    }
+    #[cfg(not(unix))]
+    if dest_meta.permissions().readonly() != source_meta.permissions().readonly() {
+        return Ok(false);
+    }
+    Ok(hash(destination)? == expected_hash)
 }
 
 pub fn remove(path: &Path) -> Result<()> {
@@ -186,14 +280,49 @@ pub fn sync_directory(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Replace a program file atomically; this is a new-file staging copy, never an old-file backup.
-pub fn replace(source: &Path, destination: &Path) -> Result<()> {
+/// Synchronize modified directories once each and issue a full hardware barrier on `barrier_root`.
+pub fn sync_directories(dirty_dirs: &BTreeSet<PathBuf>, barrier_root: &Path) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        for dir in dirty_dirs {
+            if dir != barrier_root {
+                let handle = fs::File::open(dir)?;
+                sync_staged_file(&handle)?;
+            }
+        }
+        sync_directory(barrier_root)?;
+        Ok(())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        for dir in dirty_dirs {
+            sync_directory(dir)?;
+        }
+        if !dirty_dirs.contains(barrier_root) {
+            sync_directory(barrier_root)?;
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (dirty_dirs, barrier_root);
+        Ok(())
+    }
+}
+
+/// Replace a program file atomically; callers synchronize `dirty_dirs` once at phase end.
+pub fn replace_staged(
+    source: &Path,
+    destination: &Path,
+    root: &Path,
+    dirty_dirs: &mut BTreeSet<PathBuf>,
+) -> Result<()> {
     let parent = destination.parent().context("Invalid program path")?;
     fs::create_dir_all(parent)?;
     let temporary = temporary_path(destination)?;
     remove(&temporary)?;
     let result = (|| -> Result<()> {
-        copy(source, &temporary, false)?;
+        copy_file_staged(source, &temporary)?;
         #[cfg(windows)]
         if destination.try_exists()? {
             let mut permissions = fs::metadata(destination)?.permissions();
@@ -203,7 +332,7 @@ pub fn replace(source: &Path, destination: &Path) -> Result<()> {
             }
         }
         fs::rename(&temporary, destination)?;
-        sync_directory(parent)?;
+        record_ancestors_within(root, parent, dirty_dirs);
         Ok(())
     })();
     if temporary.exists() {

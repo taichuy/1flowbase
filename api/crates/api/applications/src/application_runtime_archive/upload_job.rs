@@ -1,42 +1,17 @@
+use control_plane_contracts::ports::{
+    CreateRunArchiveImportJobRecordInput, CreateRunArchiveUploadSessionInput,
+    PersistRunArchiveUploadChunkInput, RunArchiveImportJobRecord, RunArchiveRepository,
+    RunArchiveUploadSessionRecord,
+};
+
 use super::*;
-use sqlx::Row;
 
 pub(super) const RUN_ARCHIVE_UPLOAD_MAX_BYTES: i64 = 100 * 1024 * 1024;
 pub(super) const RUN_ARCHIVE_UPLOAD_MAX_CHUNK_BYTES: i64 = 8 * 1024 * 1024;
 pub(super) const RUN_ARCHIVE_UPLOAD_MAX_CHUNKS: i64 = 4096;
 
-#[derive(Debug)]
-pub(super) struct RunArchiveUploadSessionRow {
-    pub(super) session_id: Uuid,
-    pub(super) scope_id: Uuid,
-    pub(super) application_id: Uuid,
-    pub(super) status: String,
-    pub(super) filename: Option<String>,
-    pub(super) total_size_bytes: i64,
-    pub(super) received_bytes: i64,
-    pub(super) expected_sha256: Option<String>,
-    pub(super) chunk_size_bytes: i64,
-    pub(super) created_at: OffsetDateTime,
-    pub(super) updated_at: OffsetDateTime,
-}
-
-#[derive(Debug)]
-pub(super) struct RunArchiveImportJobRow {
-    pub(super) job_id: Uuid,
-    pub(super) application_id: Uuid,
-    pub(super) upload_session_id: Uuid,
-    pub(super) status: String,
-    pub(super) archive_version: Option<i32>,
-    pub(super) archive_sha256: Option<String>,
-    pub(super) run_count: i32,
-    pub(super) imported_run_count: i32,
-    pub(super) error_payload: Option<serde_json::Value>,
-    pub(super) result_payload: serde_json::Value,
-    pub(super) created_at: OffsetDateTime,
-    pub(super) updated_at: OffsetDateTime,
-    pub(super) started_at: Option<OffsetDateTime>,
-    pub(super) finished_at: Option<OffsetDateTime>,
-}
+pub(super) type RunArchiveUploadSessionRow = RunArchiveUploadSessionRecord;
+pub(super) type RunArchiveImportJobRow = RunArchiveImportJobRecord;
 
 pub(super) struct CreateRunArchiveImportJobInput<'a> {
     pub(super) workspace_id: Uuid,
@@ -47,37 +22,25 @@ pub(super) struct CreateRunArchiveImportJobInput<'a> {
     pub(super) archive_sha256: &'a str,
     pub(super) run_count: i32,
 }
+
 pub(super) async fn create_run_archive_import_job(
     store: &storage_durable_postgres::MainDurableStore,
     input: CreateRunArchiveImportJobInput<'_>,
 ) -> Result<Uuid, ApiError> {
     let job_id = Uuid::now_v7();
-    sqlx::query(
-        r#"
-        insert into run_archive_import_jobs (
-            id,
-            scope_id,
-            application_id,
-            actor_user_id,
-            upload_session_id,
-            status,
-            archive_version,
-            archive_sha256,
-            run_count,
-            created_by,
-            updated_by
-        ) values ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $4, $4)
-        "#,
+    <_ as RunArchiveRepository>::create_run_archive_import_job(
+        store,
+        &CreateRunArchiveImportJobRecordInput {
+            job_id,
+            workspace_id: input.workspace_id,
+            application_id: input.application_id,
+            actor_user_id: input.actor_user_id,
+            session_id: input.session_id,
+            archive_version: input.archive_version,
+            archive_sha256: input.archive_sha256.to_string(),
+            run_count: input.run_count,
+        },
     )
-    .bind(job_id)
-    .bind(input.workspace_id)
-    .bind(input.application_id)
-    .bind(input.actor_user_id)
-    .bind(input.session_id)
-    .bind(input.archive_version)
-    .bind(input.archive_sha256)
-    .bind(input.run_count)
-    .execute(store.pool())
     .await?;
     Ok(job_id)
 }
@@ -86,18 +49,7 @@ pub(super) async fn mark_run_archive_import_job_processing(
     store: &storage_durable_postgres::MainDurableStore,
     job_id: Uuid,
 ) -> Result<(), ApiError> {
-    sqlx::query(
-        r#"
-        update run_archive_import_jobs
-        set status = 'processing',
-            started_at = coalesce(started_at, now()),
-            updated_at = now()
-        where id = $1
-        "#,
-    )
-    .bind(job_id)
-    .execute(store.pool())
-    .await?;
+    <_ as RunArchiveRepository>::mark_run_archive_import_job_processing(store, job_id).await?;
     Ok(())
 }
 
@@ -106,30 +58,11 @@ pub(super) async fn mark_run_archive_import_job_succeeded(
     job_id: Uuid,
     run_mappings: Vec<(String, Uuid)>,
 ) -> Result<(), ApiError> {
-    let result_payload = serde_json::json!({
-        "source_to_target_run_ids": run_mappings
-            .iter()
-            .map(|(source_run_id, target_run_id)| serde_json::json!({
-                "source_run_id": source_run_id,
-                "target_run_id": target_run_id.to_string()
-            }))
-            .collect::<Vec<_>>()
-    });
-    sqlx::query(
-        r#"
-        update run_archive_import_jobs
-        set status = 'succeeded',
-            imported_run_count = $2,
-            result_payload = $3,
-            finished_at = now(),
-            updated_at = now()
-        where id = $1
-        "#,
+    <_ as RunArchiveRepository>::mark_run_archive_import_job_succeeded(
+        store,
+        job_id,
+        &run_mappings,
     )
-    .bind(job_id)
-    .bind(i32::try_from(run_mappings.len()).unwrap_or(i32::MAX))
-    .bind(result_payload)
-    .execute(store.pool())
     .await?;
     Ok(())
 }
@@ -139,20 +72,8 @@ pub(super) async fn mark_run_archive_import_job_failed(
     job_id: Uuid,
     message: String,
 ) -> Result<(), ApiError> {
-    sqlx::query(
-        r#"
-        update run_archive_import_jobs
-        set status = 'failed',
-            error_payload = $2,
-            finished_at = now(),
-            updated_at = now()
-        where id = $1
-        "#,
-    )
-    .bind(job_id)
-    .bind(serde_json::json!({ "message": message }))
-    .execute(store.pool())
-    .await?;
+    <_ as RunArchiveRepository>::mark_run_archive_import_job_failed(store, job_id, &message)
+        .await?;
     Ok(())
 }
 
@@ -160,48 +81,9 @@ pub(super) async fn mark_upload_session_completed(
     store: &storage_durable_postgres::MainDurableStore,
     session_id: Uuid,
 ) -> Result<(), ApiError> {
-    sqlx::query(
-        r#"
-        update run_archive_upload_sessions
-        set status = 'completed',
-            completed_at = now(),
-            updated_at = now()
-        where id = $1
-        "#,
-    )
-    .bind(session_id)
-    .execute(store.pool())
-    .await?;
+    <_ as RunArchiveRepository>::mark_run_archive_upload_session_completed(store, session_id)
+        .await?;
     Ok(())
-}
-
-pub(super) async fn refresh_run_archive_upload_session_received_bytes(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    session_id: Uuid,
-) -> Result<i64, ApiError> {
-    let received_bytes = sqlx::query_scalar::<_, i64>(
-        r#"
-        select coalesce(sum(chunk_size_bytes), 0)::bigint
-        from run_archive_upload_chunks
-        where session_id = $1
-        "#,
-    )
-    .bind(session_id)
-    .fetch_one(&mut **tx)
-    .await?;
-    sqlx::query(
-        r#"
-        update run_archive_upload_sessions
-        set received_bytes = $2,
-            updated_at = now()
-        where id = $1
-        "#,
-    )
-    .bind(session_id)
-    .bind(received_bytes)
-    .execute(&mut **tx)
-    .await?;
-    Ok(received_bytes)
 }
 
 pub(super) async fn load_run_archive_upload_session(
@@ -209,59 +91,16 @@ pub(super) async fn load_run_archive_upload_session(
     application_id: Uuid,
     session_id: Uuid,
 ) -> Result<RunArchiveUploadSessionRow, ApiError> {
-    let row = sqlx::query(
-        r#"
-        select
-            id,
-            scope_id,
-            application_id,
-            status,
-            original_filename,
-            total_size_bytes,
-            received_bytes,
-            expected_sha256,
-            chunk_size_bytes,
-            created_at,
-            updated_at
-        from run_archive_upload_sessions
-        where id = $1
-          and application_id = $2
-        "#,
-    )
-    .bind(session_id)
-    .bind(application_id)
-    .fetch_optional(store.pool())
-    .await?
-    .ok_or(ControlPlaneError::NotFound("run_archive_upload_session"))?;
-
-    Ok(RunArchiveUploadSessionRow {
-        session_id: row.get("id"),
-        scope_id: row.get("scope_id"),
-        application_id: row.get("application_id"),
-        status: row.get("status"),
-        filename: row.get("original_filename"),
-        total_size_bytes: row.get("total_size_bytes"),
-        received_bytes: row.get("received_bytes"),
-        expected_sha256: row.get("expected_sha256"),
-        chunk_size_bytes: row.get("chunk_size_bytes"),
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
-    })
+    <_ as RunArchiveRepository>::get_run_archive_upload_session(store, application_id, session_id)
+        .await?
+        .ok_or_else(|| ControlPlaneError::NotFound("run_archive_upload_session").into())
 }
 
 pub(super) async fn cleanup_run_archive_upload_chunks(
     store: &storage_durable_postgres::MainDurableStore,
     session_id: Uuid,
 ) -> Result<(), ApiError> {
-    sqlx::query(
-        r#"
-        delete from run_archive_upload_chunks
-        where session_id = $1
-        "#,
-    )
-    .bind(session_id)
-    .execute(store.pool())
-    .await?;
+    <_ as RunArchiveRepository>::delete_run_archive_upload_chunks(store, session_id).await?;
     Ok(())
 }
 
@@ -269,30 +108,10 @@ pub(super) async fn load_upload_session_archive_bytes(
     store: &storage_durable_postgres::MainDurableStore,
     session_id: Uuid,
 ) -> Result<Vec<u8>, ApiError> {
-    let chunks = sqlx::query(
-        r#"
-        select chunk_index, content
-        from run_archive_upload_chunks
-        where session_id = $1
-        order by chunk_index asc
-        "#,
+    Ok(
+        <_ as RunArchiveRepository>::load_run_archive_upload_session_bytes(store, session_id)
+            .await?,
     )
-    .bind(session_id)
-    .fetch_all(store.pool())
-    .await?;
-    if chunks.is_empty() {
-        return Err(ControlPlaneError::InvalidInput("archive_chunks").into());
-    }
-    let mut bytes = Vec::new();
-    for (expected_index, chunk) in chunks.into_iter().enumerate() {
-        let chunk_index: i32 = chunk.get("chunk_index");
-        if chunk_index != i32::try_from(expected_index).unwrap_or(i32::MAX) {
-            return Err(ControlPlaneError::InvalidInput("archive_chunks").into());
-        }
-        let content: Vec<u8> = chunk.get("content");
-        bytes.extend(content);
-    }
-    Ok(bytes)
 }
 
 pub(super) async fn load_run_archive_import_job(
@@ -300,74 +119,26 @@ pub(super) async fn load_run_archive_import_job(
     application_id: Uuid,
     job_id: Uuid,
 ) -> Result<RunArchiveImportJobRow, ApiError> {
-    let row = sqlx::query(
-        r#"
-        select
-            id,
-            application_id,
-            upload_session_id,
-            status,
-            archive_version,
-            archive_sha256,
-            run_count,
-            imported_run_count,
-            error_payload,
-            result_payload,
-            created_at,
-            updated_at,
-            started_at,
-            finished_at
-        from run_archive_import_jobs
-        where id = $1
-          and application_id = $2
-        "#,
-    )
-    .bind(job_id)
-    .bind(application_id)
-    .fetch_optional(store.pool())
-    .await?
-    .ok_or(ControlPlaneError::NotFound("run_archive_import_job"))?;
-
-    Ok(RunArchiveImportJobRow {
-        job_id: row.get("id"),
-        application_id: row.get("application_id"),
-        upload_session_id: row.get("upload_session_id"),
-        status: row.get("status"),
-        archive_version: row.get("archive_version"),
-        archive_sha256: row.get("archive_sha256"),
-        run_count: row.get("run_count"),
-        imported_run_count: row.get("imported_run_count"),
-        error_payload: row.get("error_payload"),
-        result_payload: row.get("result_payload"),
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
-        started_at: row.get("started_at"),
-        finished_at: row.get("finished_at"),
-    })
+    <_ as RunArchiveRepository>::get_run_archive_import_job(store, application_id, job_id)
+        .await?
+        .ok_or_else(|| ControlPlaneError::NotFound("run_archive_import_job").into())
 }
 
 pub(super) async fn to_import_job_response(
     store: &storage_durable_postgres::MainDurableStore,
     row: RunArchiveImportJobRow,
 ) -> Result<RunArchiveImportJobResponse, ApiError> {
-    let mapping_rows = sqlx::query(
-        r#"
-        select source_id, target_id
-        from run_archive_import_mappings
-        where job_id = $1
-          and entity_kind = 'flow_run'
-        order by created_at asc, source_id asc
-        "#,
-    )
-    .bind(row.job_id)
-    .fetch_all(store.pool())
-    .await?;
+    let mapping_rows =
+        <_ as RunArchiveRepository>::list_run_archive_import_flow_run_mappings(store, row.job_id)
+            .await?;
     let source_to_target_run_ids = mapping_rows
         .into_iter()
-        .map(|row| RunArchiveImportRunMappingResponse {
-            source_run_id: row.get::<String, _>("source_id"),
-            target_run_id: row.get::<Uuid, _>("target_id").to_string(),
-        })
+        .map(
+            |(source_run_id, target_run_id)| RunArchiveImportRunMappingResponse {
+                source_run_id,
+                target_run_id: target_run_id.to_string(),
+            },
+        )
         .collect();
 
     Ok(RunArchiveImportJobResponse {
@@ -422,6 +193,7 @@ pub(super) fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .and_then(|value| value.to_str().ok())
         .map(ToString::to_string)
 }
+
 pub(super) struct PersistRunArchiveUploadSessionInput<'a> {
     pub session_id: Uuid,
     pub scope_id: Uuid,
@@ -437,24 +209,19 @@ pub(super) async fn persist_run_archive_upload_session(
     store: &storage_durable_postgres::MainDurableStore,
     input: PersistRunArchiveUploadSessionInput<'_>,
 ) -> Result<(), ApiError> {
-    sqlx::query(
-        r#"
-        insert into run_archive_upload_sessions (
-            id, scope_id, application_id, actor_user_id, original_filename,
-            total_size_bytes, expected_sha256, chunk_size_bytes, status, created_by, updated_by
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'uploading', $9, $9)
-        "#,
+    <_ as RunArchiveRepository>::create_run_archive_upload_session(
+        store,
+        &CreateRunArchiveUploadSessionInput {
+            session_id: input.session_id,
+            scope_id: input.scope_id,
+            application_id: input.application_id,
+            actor_user_id: input.actor_user_id,
+            filename: input.filename.map(ToString::to_string),
+            total_size_bytes: input.total_size_bytes,
+            expected_sha256: input.expected_sha256.to_string(),
+            chunk_size_bytes: input.chunk_size_bytes,
+        },
     )
-    .bind(input.session_id)
-    .bind(input.scope_id)
-    .bind(input.application_id)
-    .bind(input.actor_user_id)
-    .bind(input.filename)
-    .bind(input.total_size_bytes)
-    .bind(input.expected_sha256)
-    .bind(input.chunk_size_bytes)
-    .bind(input.actor_user_id)
-    .execute(store.pool())
     .await?;
     Ok(())
 }
@@ -474,36 +241,20 @@ pub(super) async fn persist_run_archive_chunk(
     store: &storage_durable_postgres::MainDurableStore,
     input: PersistRunArchiveChunkInput<'_>,
 ) -> Result<i64, ApiError> {
-    let mut tx = store.pool().begin().await?;
-    sqlx::query(
-        r#"
-        insert into run_archive_upload_chunks (
-            id, scope_id, session_id, chunk_index, chunk_size_bytes,
-            chunk_sha256, content, created_by, updated_by
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-        on conflict (session_id, chunk_index) do update
-        set chunk_size_bytes = excluded.chunk_size_bytes,
-            chunk_sha256 = excluded.chunk_sha256,
-            content = excluded.content,
-            updated_at = now(),
-            updated_by = excluded.updated_by
-        "#,
+    Ok(
+        <_ as RunArchiveRepository>::persist_run_archive_upload_chunk(
+            store,
+            &PersistRunArchiveUploadChunkInput {
+                chunk_id: input.chunk_id,
+                scope_id: input.scope_id,
+                session_id: input.session_id,
+                chunk_index: input.chunk_index,
+                content: input.content.to_vec(),
+                chunk_sha256: input.chunk_sha256.to_string(),
+                actor_user_id: input.actor_user_id,
+                total_size_bytes: input.total_size_bytes,
+            },
+        )
+        .await?,
     )
-    .bind(input.chunk_id)
-    .bind(input.scope_id)
-    .bind(input.session_id)
-    .bind(input.chunk_index)
-    .bind(i64::try_from(input.content.len()).unwrap_or(i64::MAX))
-    .bind(input.chunk_sha256)
-    .bind(input.content)
-    .bind(input.actor_user_id)
-    .execute(&mut *tx)
-    .await?;
-    let received_bytes =
-        refresh_run_archive_upload_session_received_bytes(&mut tx, input.session_id).await?;
-    if received_bytes > input.total_size_bytes {
-        return Err(ControlPlaneError::InvalidInput("archive_size").into());
-    }
-    tx.commit().await?;
-    Ok(received_bytes)
 }

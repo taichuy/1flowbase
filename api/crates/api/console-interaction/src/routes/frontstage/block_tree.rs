@@ -213,6 +213,7 @@ pub struct FrontstageBlockNodeResponse {
     #[schema(value_type = Object)]
     pub runtime_descriptor: Value,
     pub code_ref: String,
+    pub source_sha256: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -985,7 +986,9 @@ fn to_summary_response(
     }
 }
 
-fn to_node_response(node: domain::FrontstageBlockNodeRecord) -> FrontstageBlockNodeResponse {
+pub(super) fn to_node_response(
+    node: domain::FrontstageBlockNodeRecord,
+) -> FrontstageBlockNodeResponse {
     FrontstageBlockNodeResponse {
         block_id: node.block_id,
         workspace_id: node.workspace_id.to_string(),
@@ -1001,12 +1004,13 @@ fn to_node_response(node: domain::FrontstageBlockNodeRecord) -> FrontstageBlockN
         output_mapping: node.output_mapping,
         runtime_descriptor: node.runtime_descriptor,
         code_ref: node.code_ref,
+        source_sha256: node.source_sha256,
         created_at: format_time(node.created_at),
         updated_at: format_time(node.updated_at),
     }
 }
 
-fn to_code_response(
+pub(super) fn to_code_response(
     block_id: String,
     code: domain::frontstage::FrontstageBlockCodeRecord,
 ) -> FrontstageBlockNodeCodeResponse {

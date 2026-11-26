@@ -74,6 +74,42 @@ describe('Frontstage Native React preparation demand', () => {
     expect(resolveFrontstageRuntimePreparationKind(3)).toBe('dormant');
   });
 
+  test('preloads unobserved first-screen slots 1..3 in parallel while keeping slot >= 4 dormant until observed', () => {
+    const values = [0, 1, 2, 3, 4, 5].map((slotIndex) => ({
+      blockId: `slot-${slotIndex}`,
+      slotIndex
+    }));
+
+    expect(
+      createFrontstageRuntimeDemandCandidates(values, {}).map(
+        ({ blockId, priority, preparationKind }) => [
+          blockId,
+          priority,
+          preparationKind
+        ]
+      )
+    ).toEqual([
+      ['slot-0', 1, 'prepare_and_mount_intent'],
+      ['slot-1', 2, 'preload'],
+      ['slot-2', 2, 'preload'],
+      ['slot-3', 2, 'preload']
+    ]);
+
+    const starts: string[] = [];
+    const scheduler = new FrontstageNativePreparationScheduler();
+    scheduler.reconcile(
+      values.map(({ blockId, slotIndex }) =>
+        task(blockId, slotIndex, async () => {
+          starts.push(blockId);
+          return new Promise(() => undefined);
+        })
+      ),
+      {}
+    );
+    expect(starts).toEqual(['slot-0', 'slot-1', 'slot-2', 'slot-3']);
+    scheduler.dispose();
+  });
+
   test('D3-AC-002 rejects a backend digest that does not match source bytes', () => {
     expect(
       frontstageRuntimeSourceMatchesDigest(
@@ -589,6 +625,181 @@ describe('retained native preparation validation', () => {
     pending.resolve(prepared('late-v2'));
     await validation;
     expect(scheduler.getBlockSnapshot('block')).toBe(before);
+    scheduler.dispose();
+  });
+
+  test('slices simultaneous visible mounts across animation frames (<= 2 mounts/frame and <= 8ms/frame) while keeping P3 dormant and P2 unmounted', async () => {
+    const clockMs = 100;
+    const frameBarriers: Array<() => void> = [];
+    const scheduler = new FrontstageNativePreparationScheduler(6, {
+      frameBudgetMs: 8,
+      maxMountedCommitsPerFrame: 2,
+      now: () => clockMs,
+      nextFrame: () =>
+        new Promise<void>((resolve) => {
+          frameBarriers.push(resolve);
+        })
+    });
+
+    const dormantSpy = vi.fn(async () => prepared('dormant-6'));
+    const tasks = [
+      ...[0, 1, 2, 3, 4].map((slot) =>
+        task(`vis-${slot}`, slot, async () => prepared(`vis-${slot}`))
+      ),
+      task('near-5', 5, async () => prepared('near-5')),
+      task('dormant-6', 6, dormantSpy)
+    ];
+
+    scheduler.reconcile(tasks, {
+      'vis-0': 1,
+      'vis-1': 1,
+      'vis-2': 1,
+      'vis-3': 1,
+      'vis-4': 1,
+      'near-5': 2,
+      'dormant-6': 3
+    });
+
+    // Frame 1: strictly top 2 visible slots mount; remaining 3 visible + 1 preload wait for next frame; P3 dormant untouched
+    await tick();
+    expect(
+      scheduler
+        .getSnapshots()
+        .filter((s) => s.status === 'ready')
+        .map((s) => s.blockId)
+    ).toEqual(['vis-0', 'vis-1']);
+    expect(dormantSpy).not.toHaveBeenCalled();
+    expect(frameBarriers).toHaveLength(1);
+
+    // Frame 2: next 2 visible slots mount
+    frameBarriers.shift()!();
+    await tick();
+    expect(
+      scheduler
+        .getSnapshots()
+        .filter((s) => s.status === 'ready')
+        .map((s) => s.blockId)
+    ).toEqual(['vis-0', 'vis-1', 'vis-2', 'vis-3']);
+    expect(frameBarriers).toHaveLength(1);
+
+    // Frame 3: 5th visible slot mounts + P2 near-5 finishes in background with mountIntent = null
+    frameBarriers.shift()!();
+    await tick();
+    expect(
+      scheduler
+        .getSnapshots()
+        .filter((s) => s.status === 'ready')
+        .map((s) => [s.blockId, Boolean(s.mountIntent)])
+    ).toEqual([
+      ['vis-0', true],
+      ['vis-1', true],
+      ['vis-2', true],
+      ['vis-3', true],
+      ['vis-4', true],
+      ['near-5', false]
+    ]);
+    expect(scheduler.getBlockSnapshot('dormant-6')).toMatchObject({
+      status: 'idle',
+      priority: 3
+    });
+    scheduler.dispose();
+  });
+
+  test('yields immediately to next animation frame after a single commit when synchronous render exceeds 8ms frame budget', async () => {
+    let clockMs = 0;
+    const frameBarriers: Array<() => void> = [];
+    const scheduler = new FrontstageNativePreparationScheduler(4, {
+      frameBudgetMs: 8,
+      maxMountedCommitsPerFrame: 2,
+      now: () => clockMs,
+      nextFrame: () =>
+        new Promise<void>((resolve) => {
+          frameBarriers.push(resolve);
+        })
+    });
+
+    // Simulate heavy 9.5ms synchronous React/ECharts mount on heavy-0
+    scheduler.subscribeBlock('heavy-0', () => {
+      if (scheduler.getBlockSnapshot('heavy-0')?.status === 'ready') {
+        clockMs += 9.5;
+      }
+    });
+
+    scheduler.reconcile(
+      [
+        task('heavy-0', 0, async () => prepared('heavy-0')),
+        task('light-1', 1, async () => prepared('light-1'))
+      ],
+      { 'heavy-0': 1, 'light-1': 1 }
+    );
+
+    await tick();
+    expect(scheduler.getBlockSnapshot('heavy-0')?.status).toBe('ready');
+    expect(scheduler.getBlockSnapshot('light-1')?.status).not.toBe('ready');
+    expect(frameBarriers).toHaveLength(1);
+
+    frameBarriers.shift()!();
+    await tick();
+    expect(scheduler.getBlockSnapshot('light-1')?.status).toBe('ready');
+    scheduler.dispose();
+  });
+
+  test('cancelling a yielding P2 preload while a new P1 visible block arrives never drops P1 or inverts priority', async () => {
+    const scheduler = new FrontstageNativePreparationScheduler(4);
+    const committedOrder: string[] = [];
+    scheduler.subscribe(() => {
+      for (const snap of scheduler.getSnapshots()) {
+        if (snap.status === 'ready' && !committedOrder.includes(snap.blockId)) {
+          committedOrder.push(snap.blockId);
+        }
+      }
+    });
+
+    const lateVisibleFlight = deferred();
+    const tasks = [
+      task('vis-0', 0, async () => prepared('vis-0')),
+      task('near-cancel', 1, async () => prepared('near-cancel')),
+      task('near-keep', 2, async () => prepared('near-keep')),
+      task('vis-scrolled', 3, async () => lateVisibleFlight.promise)
+    ];
+
+    // Start vis-0 (P1), near-cancel (P2), near-keep (P2), while vis-scrolled starts dormant (P3)
+    scheduler.reconcile(tasks, {
+      'vis-0': 1,
+      'near-cancel': 2,
+      'near-keep': 2,
+      'vis-scrolled': 3
+    });
+
+    // The instant vis-0 commits in Frame 1 (right as near-cancel enters background yield),
+    // simulate user scroll: near-cancel falls to P3 dormant (aborted) and vis-scrolled enters P1 visible!
+    let scrolled = false;
+    scheduler.subscribeBlock('vis-0', () => {
+      if (!scrolled && scheduler.getBlockSnapshot('vis-0')?.status === 'ready') {
+        scrolled = true;
+        scheduler.reconcile(tasks, {
+          'vis-0': 1,
+          'near-cancel': 3,
+          'near-keep': 2,
+          'vis-scrolled': 1
+        });
+        lateVisibleFlight.resolve(prepared('vis-scrolled'));
+      }
+    });
+
+    await tick();
+    expect(scheduler.getBlockSnapshot('vis-0')?.status).toBe('ready');
+    expect(scheduler.getBlockSnapshot('near-cancel')?.status).toBe('idle');
+    expect(scheduler.getBlockSnapshot('vis-scrolled')).toMatchObject({
+      status: 'ready',
+      mountIntent: { blockId: 'vis-scrolled' }
+    });
+    expect(scheduler.getBlockSnapshot('near-keep')).toMatchObject({
+      status: 'ready',
+      mountIntent: null
+    });
+    // Newly scrolled P1 visible block commits strictly ahead of remaining P2 near-keep!
+    expect(committedOrder).toEqual(['vis-0', 'vis-scrolled', 'near-keep']);
     scheduler.dispose();
   });
 });

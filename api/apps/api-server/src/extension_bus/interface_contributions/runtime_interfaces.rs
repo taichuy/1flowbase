@@ -18,7 +18,8 @@ pub(super) fn contributions(
                 control_plane::local_command::LocalCommandService::new(
                     state.store.clone(),
                     crate::local_command::executor(),
-                ),
+                )
+                .with_local_terminal_disabled(state.local_terminal_disabled),
             )?,
         ),
         InterfaceRegistryContribution::new(

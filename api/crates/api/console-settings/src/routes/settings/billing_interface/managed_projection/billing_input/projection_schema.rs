@@ -38,6 +38,38 @@ impl BillingInput {
                 ),
             ]),
             mp::object_schema([
+                ("variant", mp::tag_schema("ListPricingTargets")),
+                (
+                    "0",
+                    mp::object_schema([
+                        (
+                            "provider_code",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "provider_query",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "upstream_model_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "selected_model_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "page",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                        (
+                            "page_size",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("CreatePricingRule")),
                 (
                     "0",

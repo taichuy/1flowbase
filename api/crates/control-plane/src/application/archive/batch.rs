@@ -26,9 +26,7 @@ pub struct ApplicationArchivePartialImport {
 }
 
 pub fn validate_archive_application_count(package: &ApplicationArchivePackage) -> Result<()> {
-    if package.applications.is_empty()
-        || package.applications.len() > MAX_APPLICATION_ARCHIVE_ENTRIES
-    {
+    if package.applications.is_empty() {
         return Err(
             ControlPlaneError::InvalidInput("application_archive_application_count").into(),
         );
@@ -122,5 +120,48 @@ where
             });
         }
         Ok(outcomes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn sample_entry(index: usize) -> ApplicationArchiveEntry {
+        ApplicationArchiveEntry {
+            template_id: format!("018f0000-0000-7000-8000-{index:012x}"),
+            release_version: 1,
+            exported_from_system_version: "0.2.0".into(),
+            exported_at: "2026-08-02T00:00:00Z".into(),
+            application: ApplicationArchiveApplication {
+                application_type: "agent_flow".into(),
+                workflow_trigger_type: None,
+                name: format!("Application {index}"),
+                description: String::new(),
+                icon: None,
+                icon_type: None,
+                icon_background: None,
+            },
+            flow_document: json!({"graph": {"nodes": [], "edges": []}}),
+            dependencies: Vec::new(),
+            workflow_trigger_config: None,
+        }
+    }
+
+    #[test]
+    fn validate_archive_application_count_rejects_empty_and_accepts_over_hundred_entries() {
+        let empty = ApplicationArchivePackage {
+            schema_version: APPLICATION_ARCHIVE_SCHEMA_VERSION.to_string(),
+            applications: Vec::new(),
+        };
+        assert!(validate_archive_application_count(&empty).is_err());
+
+        let large = ApplicationArchivePackage {
+            schema_version: APPLICATION_ARCHIVE_SCHEMA_VERSION.to_string(),
+            applications: (0..128).map(sample_entry).collect(),
+        };
+        assert!(validate_archive_application_count(&large).is_ok());
     }
 }

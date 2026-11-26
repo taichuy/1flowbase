@@ -9,6 +9,7 @@ const MODEL_PROVIDER_FEATURE_SIMPLE_OPERATIONS: &[&str] = &[
     "billing.pricing_rules.create",
     "billing.pricing_rules.delete",
     "billing.pricing_rules.list",
+    "billing.pricing_targets.list",
     "billing.pricing_rules.update",
     "model_provider_plugins.artifact.install",
     "model_provider_plugins.artifact.refresh",

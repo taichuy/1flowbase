@@ -275,7 +275,7 @@ where
             .await?
             .ok_or_else(|| anyhow!("compiled plan not found"))?;
         let compiled_plan: orchestration_runtime::compiled_plan::CompiledPlan =
-            serde_json::from_value(compiled_record.plan.clone())?;
+            serde::Deserialize::deserialize(&compiled_record.plan)?;
         ensure_compiled_plan_runnable(&compiled_plan)?;
         let snapshot = checkpoint_snapshot_from_record_with_context(
             &self.repository,

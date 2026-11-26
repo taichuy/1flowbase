@@ -1,9 +1,16 @@
-import { apiFetch } from './transport';
+import { apiFetch } from './transport/json';
+
+export type PublicOnboardingMode =
+  | 'personal_workspace'
+  | 'default_workspace'
+  | 'reject'
+  | 'invite_only';
 
 export interface PasswordSignInInput {
   identifier: string;
   password: string;
   login_entry_id?: string;
+  invitation_token?: string;
 }
 
 export interface PasswordSignInResponse {
@@ -27,6 +34,7 @@ export interface PublicLoginEntry {
 export interface PublicLoginEntriesResponse {
   default_login_entry_id: string;
   login_entries: PublicLoginEntry[];
+  onboarding_mode?: PublicOnboardingMode;
 }
 
 export function fetchPublicLoginEntries(

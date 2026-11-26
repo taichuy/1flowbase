@@ -254,7 +254,7 @@ async fn retained_facts(store: &PgControlPlaneStore, application: Uuid) -> serde
 
 #[tokio::test]
 async fn manual_fork_forward_migration_repairs_populated_projection_without_rewriting_facts() {
-    let database = isolated_database().await;
+    let database = unmigrated_database().await;
     let pool = database.connect().await.unwrap();
     let prior = Migrator {
         migrations: Cow::Owned(

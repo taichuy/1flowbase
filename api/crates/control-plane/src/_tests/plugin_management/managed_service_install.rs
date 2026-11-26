@@ -120,7 +120,11 @@ async fn managed_upgrade_and_enable_replace_the_active_owner_without_preactivati
 }
 
 fn package(version: &str) -> Vec<u8> {
-    let manifest = format!(
+    package_variant(version, false)
+}
+
+fn package_variant(version: &str, exported: bool) -> Vec<u8> {
+    let mut manifest = format!(
         r#"manifest_version: 2
 plugin_id: managed_fixture
 version: {version}
@@ -172,6 +176,40 @@ managed_service:
       output_schema: {{type: object}}
 "#
     );
+    if exported {
+        manifest = manifest.replace("storage: none", "storage: host_managed");
+        manifest = manifest.replace(
+            "  execution_bindings:\n",
+            r#"      - contribution_id: managed_fixture.data
+        contributor_module_id: managed_fixture
+        point_id: 1flowbase.plugin-data.owned-collection
+        contract_version: 1flowbase.plugin-data-model/v1
+        mode: append
+        required_permissions: [plugin_data.owned.write]
+  execution_bindings:
+    - contribution_id: managed_fixture.data
+      execution_mode: declarative_only
+      runtime: {protocol: stdio_json, entry: manifest.yaml}
+      handler: data
+      payload: {kind: data_models}
+"#,
+        );
+        manifest.push_str(
+            r#"
+data_models:
+  - contribution_version: 1flowbase.plugin-data-model/v1
+    storage_binding: main
+    owned_collections:
+      - collection_code: connections
+        fields: [{field_code: host_id, field_type: string, nullable: false}]
+resource_exports:
+  - resource_code: connections-v1
+    collections:
+      - collection_code: connections
+        access: read_only
+"#,
+        );
+    }
     let encoder = flate2::GzBuilder::new()
         .mtime(0)
         .write(Vec::new(), flate2::Compression::default());
@@ -697,4 +735,53 @@ async fn rejected_managed_enable_restores_only_its_own_selection() {
         }
         std::fs::remove_dir_all(install_root).unwrap();
     }
+}
+
+#[tokio::test]
+async fn provider_archive_install_persists_verified_schema_for_live_resource_resolution_without_grants(
+) {
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        Uuid::now_v7(),
+        &["plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("provider-export-install-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let receipt = service
+        .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            category: ExtensionCatalogCategory::RuntimeExtensions,
+            file_name: "provider.1flowbasepkg".into(),
+            package_bytes: package_variant("0.1.25", true),
+            source_kind: "uploaded".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        receipt.installation.desired_state,
+        PluginDesiredState::Disabled
+    );
+    assert_eq!(
+        receipt.installation.metadata_json["resource_exports"][0]["resource_code"],
+        "connections-v1"
+    );
+    assert_eq!(
+        receipt.installation.metadata_json["data_models"][0]["owned_collections"][0]
+            ["collection_code"],
+        "connections"
+    );
+    assert_eq!(
+        receipt.installation.metadata_json["plugin_dependencies"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        receipt.installation.metadata_json["resource_imports"],
+        serde_json::json!([])
+    );
+    std::fs::remove_dir_all(install_root).unwrap();
 }

@@ -62,11 +62,20 @@ export function useNotificationInbox(open: boolean) {
       change(current.scope === scope ? current : initialState(scope))
     );
   const [connection, setConnection] = useState({ scope, connected: false });
+  const [backgroundReady, setBackgroundReady] = useState(() =>
+    Boolean(import.meta.env.VITEST)
+  );
+  useEffect(() => {
+    if (backgroundReady) return undefined;
+    const timer = setTimeout(() => setBackgroundReady(true), 1_500);
+    return () => clearTimeout(timer);
+  }, [backgroundReady]);
+  const activeBackground = open || backgroundReady;
   const refresh = () =>
     client.invalidateQueries({ queryKey: notificationQueryKey(scope) });
   const unread = useQuery({
     ...notificationUnreadOptions(scope),
-    enabled: authenticated
+    enabled: authenticated && activeBackground
   });
   const channels = useQuery({
     ...notificationChannelsOptions(scope, {
@@ -131,7 +140,7 @@ export function useNotificationInbox(open: boolean) {
     setStored(initialState(scope));
     setConnection({ scope, connected: false });
     resetWrite();
-    if (!authenticated) return;
+    if (!authenticated || !activeBackground) return;
     return subscribeNotificationChanges(
       () =>
         void client.invalidateQueries({
@@ -139,7 +148,7 @@ export function useNotificationInbox(open: boolean) {
         }),
       (connected) => setConnection({ scope, connected })
     );
-  }, [authenticated, client, resetWrite, scope]);
+  }, [activeBackground, authenticated, client, resetWrite, scope]);
   const paginate = (
     section: 'channels' | 'messages',
     direction: 'next' | 'previous'

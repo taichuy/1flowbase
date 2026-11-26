@@ -4,8 +4,8 @@ use anyhow::Result;
 use control_plane_contracts::ports::{RecordPermissionRepository, RoleConsolePolicyReader};
 use domain::{
     ActorContext, ConsoleOperationId, ConsolePolicyGroup, RecordPermissionCapabilities,
-    RecordPermissionKey, RecordPermissionMode, RecordPermissionPolicy, RecordPermissionRole,
-    ReplaceRecordPermissions,
+    RecordPermissionKey, RecordPermissionMode, RecordPermissionPolicy, RecordPermissionResourceKey,
+    RecordPermissionRole, ReplaceRecordPermissions,
 };
 use std::collections::BTreeSet;
 
@@ -56,14 +56,16 @@ impl<R: RecordPermissionRepository + RoleConsolePolicyReader> RecordPermissionSe
             .repository
             .load_role_console_policies_for_user(actor)
             .await?;
+        Ok(Self::allows_operation(&policies, operation))
+    }
+
+    fn allows_operation(policies: &[domain::RoleConsolePolicy], operation: &str) -> bool {
         let group =
             ConsolePolicyGroup::settings_feature(access_control::SYSTEM_ROLES_SETTINGS_FEATURE_ID)
                 .expect("compiled roles group");
         let operation =
             ConsoleOperationId::try_from(operation).expect("compiled record permissions operation");
-        Ok(domain::effective_console_simple_operation(
-            &policies, &group, &operation,
-        ))
+        domain::effective_console_simple_operation(policies, &group, &operation)
     }
 
     async fn require_operation(&self, actor: &ActorContext, operation: &str) -> Result<()> {
@@ -75,12 +77,17 @@ impl<R: RecordPermissionRepository + RoleConsolePolicyReader> RecordPermissionSe
     }
 
     pub async fn can_manage_permissions(&self, actor: &ActorContext) -> Result<bool> {
-        Ok(self
-            .has_operation(actor, RECORD_PERMISSIONS_VIEW_OPERATION_ID)
-            .await?
-            && self
-                .has_operation(actor, RECORD_PERMISSIONS_REPLACE_OPERATION_ID)
-                .await?)
+        if actor.is_root {
+            return Ok(true);
+        }
+        let policies = self
+            .repository
+            .load_role_console_policies_for_user(actor)
+            .await?;
+        Ok(
+            Self::allows_operation(&policies, RECORD_PERMISSIONS_VIEW_OPERATION_ID)
+                && Self::allows_operation(&policies, RECORD_PERMISSIONS_REPLACE_OPERATION_ID),
+        )
     }
 
     pub async fn get(
@@ -216,6 +223,57 @@ impl<R: RecordPermissionRepository + RoleConsolePolicyReader> RecordPermissionSe
             allowed_actions,
             can_manage_permissions: self.can_manage_permissions(actor).await?,
         })
+    }
+
+    pub async fn capabilities_batch(
+        &self,
+        actor: &ActorContext,
+        resource: &RecordPermissionResourceKey,
+        record_ids: &[String],
+        eligible_actions: &[String],
+    ) -> Result<Vec<RecordPermissionCapabilities>> {
+        if record_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut key = RecordPermissionKey {
+            resource: resource.clone(),
+            workspace_id: actor.current_workspace_id,
+            record_id: String::new(),
+        };
+        for id in record_ids {
+            key.record_id.clone_from(id);
+            Self::validate_key(actor, &key)?;
+        }
+        let (policies, roles) = if actor.is_root {
+            (Default::default(), Vec::new())
+        } else {
+            let policies = self
+                .repository
+                .get_record_permissions_batch(actor.current_workspace_id, resource, record_ids)
+                .await?;
+            let roles = self
+                .repository
+                .record_permission_effective_role_ids(actor)
+                .await?;
+            (policies, roles)
+        };
+        let can_manage_permissions = self.can_manage_permissions(actor).await?;
+        Ok(record_ids
+            .iter()
+            .map(|id| RecordPermissionCapabilities {
+                record_id: id.clone(),
+                allowed_actions: eligible_actions
+                    .iter()
+                    .filter(|action| {
+                        policies
+                            .get(id)
+                            .is_none_or(|policy| policy.allows(action, &roles))
+                    })
+                    .cloned()
+                    .collect(),
+                can_manage_permissions,
+            })
+            .collect())
     }
 }
 

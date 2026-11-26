@@ -169,6 +169,7 @@ fn distribution_host_calls(
         file_import: None,
         plugin_credentials: None,
         execution_gate: None,
+        workspace_governance: None,
         plugin_ephemeral: None,
     }))
 }

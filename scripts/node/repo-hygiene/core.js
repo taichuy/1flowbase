@@ -65,6 +65,7 @@ const LOCAL_ENV_ARTIFACT_PATTERN =
 const BUILD_ARTIFACT_PATTERN = /(?:^|\/)[^/]+\.tsbuildinfo$/u;
 const ROOT_SCRATCH_ARTIFACT_PATTERN = /^[^/]*(?:test|tmp|scratch)[^/]*\.txt$/iu;
 const INSTALLED_PLUGIN_COPY_PATTERN = /^api\/plugins\/installed\//u;
+const VENDORED_RUST_SOURCE_PATTERN = /^api\/vendor\//u;
 const JSX_KEY_TEMPLATE_PATTERN = /\bkey\s*=\s*\{\s*`[^`]*`\s*\}/u;
 const JSX_KEY_MUTABLE_MEMBER_PATTERN =
   /\$\{\s*(?:entry|field|item|output|row|variable)\s*\.\s*(?:key|label|name|title|value)\b/u;
@@ -85,6 +86,14 @@ const OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST = new Map([
     "api/crates/api/mcp/src/routes/settings/mcp_management/upstream_client.rs",
     "Third-party MCP endpoints require DNS pinning and SSRF enforcement before connection",
   ],
+  [
+    "api/crates/storage/object/src/drivers/rustfs.rs",
+    "Object-storage S3 driver boundary owns dedicated endpoint/TLS HTTP transport client",
+  ],
+  [
+    "api/crates/orchestration-runtime/src/execution_engine/http_request.rs",
+    "Workflow HTTP request node owns shared direct-egress fallback clients and opt-in TLS verification override when Network Egress resolves to direct",
+  ],
 ]);
 
 function getRepoRoot() {
@@ -104,7 +113,7 @@ function isPermissionDeniedError(error) {
 }
 
 function shouldScanFile(relativePath) {
-  if (SKIPPED_FILES.has(relativePath)) {
+  if (SKIPPED_FILES.has(relativePath) || VENDORED_RUST_SOURCE_PATTERN.test(relativePath)) {
     return false;
   }
 
@@ -127,6 +136,25 @@ function isTestPath(relativePath) {
   return (
     TEST_PATH_PATTERN.test(relativePath) ||
     /(?:^|[./-])(?:test|spec)\.[jt]sx?$/u.test(relativePath)
+  );
+}
+
+function isRustTestSourcePath(relativePath) {
+  return (
+    isTestPath(relativePath) ||
+    /(?:^|\/|)(?:benches\/|_?tests\.rs$)/u.test(relativePath) ||
+    /^api\/crates\/(?:api-test-selection|control-plane-postgres-tests|control-plane-test-support|postgres-test-support)\//u.test(
+      relativePath,
+    )
+  );
+}
+
+function isProductionApiRustSource(relativePath) {
+  return (
+    path.extname(relativePath) === ".rs" &&
+    (relativePath.startsWith("api/apps/") ||
+      relativePath.startsWith("api/crates/")) &&
+    !isRustTestSourcePath(relativePath)
   );
 }
 
@@ -490,6 +518,9 @@ function hasMutableJsxListKey(line) {
 }
 
 function scanSourceFile({ relativePath, content, today = new Date().toISOString().slice(0, 10) }) {
+  if (VENDORED_RUST_SOURCE_PATTERN.test(relativePath)) {
+    return [];
+  }
   const lines = content.split(/\r?\n/u);
   const findings = [];
   const testPath = isTestPath(relativePath);
@@ -570,8 +601,7 @@ function scanSourceFile({ relativePath, content, today = new Date().toISOString(
     }
 
     if (
-      !testPath &&
-      (relativePath.startsWith("api/apps/api-server/src/") || /^api\/crates\/api\/[^/]+\/src\//u.test(relativePath)) &&
+      isProductionApiRustSource(relativePath) &&
       REQWEST_CLIENT_CONSTRUCTOR_PATTERN.test(strippedLine) &&
       !OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.has(relativePath)
     ) {
@@ -652,10 +682,12 @@ function countLines(content) {
 }
 
 function isFileSizePressureExempt(relativePath) {
-  // File-size pressure measures hand-maintained code. Installed plugin copies have separate
-  // provenance evidence; ordinary plugin source stays covered.
-  // Do not add an exemption when an exact generated or installation-copy boundary cannot be proven.
-  return INSTALLED_PLUGIN_COPY_PATTERN.test(relativePath);
+  // File-size pressure measures hand-maintained code. Installed plugin copies and vendored
+  // upstream crates have separate provenance evidence; ordinary first-party source stays covered.
+  return (
+    INSTALLED_PLUGIN_COPY_PATTERN.test(relativePath) ||
+    VENDORED_RUST_SOURCE_PATTERN.test(relativePath)
+  );
 }
 
 function collectLinePressureFindings({ relativePath, content }) {

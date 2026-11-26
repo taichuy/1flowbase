@@ -45,19 +45,26 @@ const preReactImports = new Map([
   ]],
   [recoveryFile, []],
   [`${auth}/components/hero/document-motion.ts`, []],
-  [`${auth}/api/login-entry-discovery.ts`, ["./session"]],
-  [`${auth}/api/auth-session-discovery.ts`, ["./session"]],
+  [`${auth}/api/login-entry-discovery.ts`, ["./session", "./document-start-discovery"]],
+  [`${auth}/api/auth-session-discovery.ts`, ["./session", "./document-start-discovery", "./early-console-startup-flight"]],
+  [`${auth}/api/document-start-discovery.ts`, ["./session"]],
+  [`${auth}/api/early-console-startup-flight.ts`, ["./session"]],
   [`${auth}/api/session.ts`, [authSubpath]],
   [`${api}/auth/index.ts`, [
-    "../public/system-metadata", "../errors", "../transport",
+    "../public/system-metadata", "../errors", "../transport/json",
     "../console/session", "../console/identity/me", "../public-auth",
   ]],
-  [`${api}/public/system-metadata.ts`, ["../transport"]],
+  [`${api}/public/system-metadata.ts`, ["../transport/json"]],
   [`${api}/errors.ts`, []],
-  [`${api}/transport.ts`, ["./errors"]],
-  [`${api}/console/session.ts`, ["../transport"]],
-  [`${api}/console/identity/me.ts`, ["../../transport"]],
-  [`${api}/public-auth.ts`, ["./transport"]],
+  [`${api}/transport/json.ts`, ["../errors"]],
+  [`${api}/console/session.ts`, ["../transport/json"]],
+  [`${api}/console/identity/me.ts`, ["../../transport/json"]],
+  [`${api}/public-auth.ts`, ["./transport/json"]],
+]);
+
+const preReactDeferred = new Map([
+  [bootstrapFile, ["./app/AnonymousAppRuntime", "./main"]],
+  [`${auth}/api/auth-session-discovery.ts`, ["../../../app/bootstrap/AuthenticatedStartup", "../../../app/bootstrap/frontstage-startup-prefetch"]],
 ]);
 
 function readWebSource(file) {
@@ -66,7 +73,7 @@ function readWebSource(file) {
 
 function assertPreReactModuleBoundary(readSource = readWebSource) {
   const webRequire = createRequire(path.join(webRoot, "package.json"));
-  const ts = webRequire("typescript");
+  const { parseSync } = webRequire("vite");
   const authEntry = JSON.parse(readSource("packages/api-client/package.json"))
     .exports["./auth"].default;
   assert.equal(authEntry, "./src/auth/index.ts");
@@ -77,37 +84,62 @@ function assertPreReactModuleBoundary(readSource = readWebSource) {
   assert.deepEqual(aliases, [path.posix.join("packages/api-client", authEntry)], "Vite auth alias");
 
   for (const [file, expected] of preReactImports) {
-    const source = ts.createSourceFile(file, readSource(file), ts.ScriptTarget.Latest);
+    const parsed = parseSync(file, readSource(file));
+    assert.equal(parsed.errors.length, 0, `${file}: syntax error`);
     const eager = [];
     const deferred = [];
     function visit(node) {
       if (
-        (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) ||
-        (ts.isExportDeclaration(node) && node.moduleSpecifier && !node.isTypeOnly)
+        (node.type === "ImportDeclaration" && node.importKind !== "type") ||
+        ((node.type === "ExportNamedDeclaration" ||
+          node.type === "ExportAllDeclaration") &&
+          node.source &&
+          node.exportKind !== "type")
       ) {
-        eager.push(node.moduleSpecifier.text);
+        eager.push(node.source.value);
       }
-      if (ts.isExternalModuleReference(node)) {
+      if (node.type === "TSExternalModuleReference") {
         assert.fail(`${file}: unexpected import-equals dependency`);
       }
-      if (ts.isCallExpression(node)) {
-        if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-          const target = node.arguments[0];
-          assert.ok(target && ts.isStringLiteral(target), `${file}: nonliteral import()`);
-          deferred.push(target.text);
-        }
+      if (node.type === "ImportExpression") {
+        const target = node.source;
         assert.ok(
-          !ts.isIdentifier(node.expression) || node.expression.text !== "require",
+          target?.type === "Literal" && typeof target.value === "string",
+          `${file}: nonliteral import()`,
+        );
+        deferred.push(target.value);
+      }
+      if (node.type === "CallExpression") {
+        assert.ok(
+          node.callee.type !== "Identifier" || node.callee.name !== "require",
           `${file}: unexpected require() dependency`,
         );
       }
-      ts.forEachChild(node, visit);
+      for (const value of Object.values(node)) {
+        if (Array.isArray(value)) {
+          for (const child of value) {
+            if (
+              child &&
+              typeof child === "object" &&
+              typeof child.type === "string"
+            ) {
+              visit(child);
+            }
+          }
+        } else if (
+          value &&
+          typeof value === "object" &&
+          typeof value.type === "string"
+        ) {
+          visit(value);
+        }
+      }
     }
-    visit(source);
+    visit(parsed.program);
     assert.deepEqual(eager.sort(), [...expected].sort(), `${file}: eager dependencies`);
     assert.deepEqual(
-      deferred.sort(),
-      file === bootstrapFile ? ["./app/AnonymousAppRuntime", "./main"] : [],
+      [...new Set(deferred)].sort(),
+      preReactDeferred.get(file) ?? [],
       `${file}: deferred dependencies`,
     );
     for (const specifier of eager) {
@@ -258,14 +290,14 @@ test("DRS-003 pre-React bootstrap never leaves an empty root after module failur
   assert.match(bootstrapSource, /root\.replaceChildren\(alert\)/u);
   assert.doesNotMatch(bootstrapSource, /renderBootStage/u);
   assert.match(bootstrapSource, /renderBootFailure/u);
-  assert.match(bootstrapSource, /void startAuthSessionDiscovery\(\)\.catch/u);
+  assert.match(bootstrapSource, /const sessionFlight = startAuthSessionDiscovery\(\)/u);
   assert.match(bootstrapSource, /import\(['"]\.\/main['"]\)\.catch/u);
-  assert.match(appSource, /import \{ LoadingState \}/u);
-  assert.match(appSource, /fallback=\{<LoadingState fullscreen \/>\}/u);
-  assert.match(runtimeBootstrapSource, /import \{ LoadingState \}/u);
+  assert.match(appSource, /import \{ AnonymousLoadingState \}/u);
+  assert.match(appSource, /fallback=\{<AnonymousLoadingState fullscreen \/>\}/u);
+  assert.match(runtimeBootstrapSource, /import \{ AnonymousLoadingState \}/u);
   assert.match(
     runtimeBootstrapSource,
-    /fallback=\{<LoadingState fullscreen \/>\}/u,
+    /fallback=\{<AnonymousLoadingState fullscreen \/>\}/u,
   );
   assert.match(appSource, /ApplicationBootBoundary/u);
   assert.doesNotMatch(appSource, /ApplicationBootStage/u);
@@ -285,8 +317,10 @@ test("DRS-003 rejects new dependencies anywhere in the pre-React graph", () => {
     [recoveryFile, "export { App } from './App';"],
     [recoveryFile, "void import('./App');"],
     [recoveryFile, "const React = require('react');"],
+    [`${auth}/api/document-start-discovery.ts`, "import 'react';"],
+    [`${api}/transport/json.ts`, "import 'react-dom';"],
     [`${auth}/api/session.ts`, "import '@1flowbase/api-client';"],
-    [`${api}/transport.ts`, "export { render } from 'react-dom';"],
+    [`${api}/transport/json.ts`, "export { render } from 'react-dom';"],
   ]) {
     assert.throws(
       () => assertPreReactModuleBoundary((sourceFile) => {
@@ -355,6 +389,8 @@ test("DV-F08 root router keeps page implementations behind lazy boundaries", () 
       '../features/me/pages/MePage',
       '../features/settings/pages/SettingsPage',
       '../features/applications/pages/ApplicationDetailPage',
+      '../features/auth/pages/AuthenticatedSignInRedirect',
+      '../features/auth/pages/mcp-authorization/McpAuthorizePage',
     ].sort(),
   );
   assert.ok(routerLazyImports.every((entry) => entry.resolvedPath));
@@ -376,9 +412,12 @@ test("DV-F08 root router keeps page implementations behind lazy boundaries", () 
   );
   assert.match(
     runtimeBootstrapSource,
-    /import\(['"]\.\/AuthenticatedAppRuntime['"]\)/u,
+    /import\(['"]\.\/bootstrap\/AuthenticatedStartup['"]\)/u,
   );
-  assert.doesNotMatch(runtimeBootstrapSource, /^import .*\.\/router/mu);
+  assert.doesNotMatch(runtimeBootstrapSource, /^import .*\.\/(?:router|AuthenticatedAppRuntime)/mu);
+  const preloadSource = readWebSource('app/src/app/bootstrap/authenticated-shell-preload.ts');
+  assert.match(preloadSource, /import\(['"]\.\.\/AuthenticatedAppRuntime['"]\)/u);
+  assert.doesNotMatch(preloadSource, /from ['"]\.\.\/AuthenticatedAppRuntime['"]/u);
 
   const publicRouterSource = fs.readFileSync(
     path.resolve(webSourceRoot, "app", "public-router.tsx"),
@@ -416,8 +455,8 @@ test("DV-F08 anonymous bootstrap avoids full API and dynamic auth barrels", () =
   assert.match(bootstrapSource, /import\(['"]\.\/main['"]\)/u);
   assert.match(authStoreSource, /@1flowbase\/api-client\/auth/u);
   assert.doesNotMatch(authApiSource, /from ['"]@1flowbase\/api-client['"]/u);
-  assert.match(signInSource, /const PublicAuthBlock = lazy/u);
-  assert.match(signInSource, /diagnoseLegacyBlockModuleSource/u);
+  assert.match(signInSource, /const CustomAuthRuntime = lazy/u);
+  assert.match(signInSource, /import\(['"]\.\.\/components\/public-runtime\/CustomAuthRuntime['"]\)/u);
   assert.doesNotMatch(
     signInSource,
     /import\s*\{\s*PublicAuthBlock\s*\}\s*from/u,

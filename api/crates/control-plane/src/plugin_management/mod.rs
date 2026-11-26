@@ -1,3 +1,4 @@
+mod dependencies;
 mod shared_resources;
 pub use shared_resources::*;
 mod authentication_egress;
@@ -36,6 +37,10 @@ pub(crate) use filesystem::fail_staged_artifact_removal_for;
 
 #[cfg(test)]
 mod _tests;
+
+#[cfg(test)]
+#[path = "_tests/managed_ephemeral_tests.rs"]
+mod managed_ephemeral_tests;
 
 use std::{
     cmp::Ordering,
@@ -95,6 +100,130 @@ pub use extension_installation::*;
 pub use family::*;
 pub use install::*;
 pub use package_router::{catalog_plugin_type, route_plugin_package, RoutedPluginPackageKind};
+
+#[cfg(test)]
+tokio::task_local! {
+    static TEST_SYSTEM_SERVICE_NOW_MS: std::cell::Cell<i64>;
+}
+
+fn system_service_now_ms() -> i128 {
+    #[cfg(test)]
+    if let Ok(now) = TEST_SYSTEM_SERVICE_NOW_MS.try_with(std::cell::Cell::get) {
+        return i128::from(now);
+    }
+    OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000
+}
+
+struct SystemServiceCallback<'a> {
+    installation_id: &'a str,
+    scope_id: &'a str,
+    contribution_id: &'a str,
+    publisher_namespace: &'a str,
+    plugin_code: &'a str,
+    plugin_version: &'a str,
+    deadline_unix_ms: i64,
+    permission: &'a str,
+}
+
+/// Prepare the storage call from live authority facts, then keep the lease through its await.
+/// Preparation failures drop the lease; once storage has run, release failure takes precedence.
+async fn execute_with_leased_system_service_authority<T, E, F>(
+    authority: &dyn control_plane_contracts::ports::PluginContributionAuthorityRepository,
+    binding: SystemServiceCallback<'_>,
+    denied: fn() -> E,
+    deadline_exceeded: fn() -> E,
+    prepare: impl FnOnce(
+        Uuid,
+        &domain::PluginInstallationRecord,
+        &BTreeMap<Uuid, domain::PluginInstallationRecord>,
+    ) -> Result<F, E>,
+) -> Result<T, E>
+where
+    F: std::future::Future<Output = Result<T, E>>,
+{
+    use plugin_framework::extension_bus::{
+        ContributionId, ManagedContributionSubject, ManagedInstallationId, ManagedWorkspaceId,
+    };
+
+    let installation_id = Uuid::parse_str(binding.installation_id).map_err(|_| denied())?;
+    let scope_id = Uuid::parse_str(binding.scope_id).map_err(|_| denied())?;
+    if scope_id != domain::SYSTEM_SCOPE_ID {
+        return Err(denied());
+    }
+    let remaining_ms = i128::from(binding.deadline_unix_ms) - system_service_now_ms();
+    if remaining_ms <= 0 {
+        return Err(denied());
+    }
+    let subject = ManagedContributionSubject::new(
+        ManagedInstallationId::new(binding.installation_id).map_err(|_| denied())?,
+        ManagedWorkspaceId::new(binding.scope_id).map_err(|_| denied())?,
+        ContributionId::new(binding.contribution_id).map_err(|_| denied())?,
+    );
+    let mut expired_lease = None;
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(remaining_ms as u64),
+        async {
+            let lease = authority
+                .lock_managed_callback_authority(&subject)
+                .await
+                .map_err(|_| denied())?;
+            let installation = lease.installation(installation_id).ok_or_else(denied)?;
+            if installation.desired_state != domain::PluginDesiredState::ActiveRequested
+                || installation.organization != binding.publisher_namespace
+                || installation.provider_code != binding.plugin_code
+                || installation.plugin_version != binding.plugin_version
+                || domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                    != scope_id
+                || installation
+                    .metadata_json
+                    .pointer("/managed_service_permissions/secrets")
+                    .and_then(serde_json::Value::as_str)
+                    != Some("host_managed")
+            {
+                return Err(denied());
+            }
+            let managed: plugin_framework::ManagedManifest =
+                serde_json::from_value(installation.metadata_json["managed"].clone())
+                    .map_err(|_| denied())?;
+            let contribution = managed
+                .module
+                .contributions
+                .iter()
+                .find(|c| c.contribution_id.as_str() == binding.contribution_id)
+                .ok_or_else(denied)?;
+            if contribution.point_id.as_str() != plugin_framework::MANAGED_SERVICE_POINT
+                || !contribution
+                    .required_permissions
+                    .iter()
+                    .any(|p| p.as_str() == binding.permission)
+            {
+                return Err(denied());
+            }
+            HostContributionGrantPolicy::root_composition()
+                .effective_permissions(installation, scope_id, contribution, lease.snapshot())
+                .map_err(|_| denied())?;
+            // The timeout can poll a ready lease before noticing its timer expired.
+            // Recheck the wall clock immediately before preparing any storage call.
+            if i128::from(binding.deadline_unix_ms) <= system_service_now_ms() {
+                expired_lease = Some(lease);
+                return Err(deadline_exceeded());
+            }
+            let result = prepare(installation_id, installation, lease.installations())?.await;
+            lease.release().await.map_err(|_| denied())?;
+            result
+        },
+    )
+    .await
+    .map_err(|_| deadline_exceeded())?;
+    // A rejected callback has no storage work left to time out. Finish transferring
+    // the late lease back to its owner even if the callback timer has already elapsed.
+    if let Some(lease) = expired_lease {
+        if lease.release().await.is_err() {
+            tracing::warn!("failed to release expired managed service callback authority lease");
+        }
+    }
+    result
+}
 
 pub struct PluginManagementService<R, H> {
     repository: R,
@@ -589,3 +718,7 @@ pub use client_collector::*;
 
 #[cfg(test)]
 pub(crate) use client_collector::_tests::collector_fixture_archive;
+
+#[path = "managed_execution/workspace_governance.rs"]
+mod managed_workspace_governance;
+pub use managed_workspace_governance::ManagedWorkspaceGovernanceService;

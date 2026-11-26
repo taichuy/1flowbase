@@ -89,7 +89,7 @@ function mapFrontstagePageContentTab(
   };
 }
 
-function mapFrontstagePageContent(
+export function mapFrontstagePageContent(
   detail: FrontstagePageDetailDto
 ): FrontstagePageContent {
   return {

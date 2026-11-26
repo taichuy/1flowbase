@@ -1,3 +1,4 @@
+import * as styleRuntime from '../../lib/native-modules/antd-style-runtime';
 import { fireEvent, render, waitFor, within } from '@testing-library/react';
 import { createStyles } from 'antd-style';
 import { Popover, theme } from 'antd';
@@ -595,6 +596,37 @@ describe('frontstage native trusted block declarative portal host', () => {
     ).toBe(true);
     expect(shadowRoot).toHaveTextContent('.native-same');
     expect(document.head).not.toHaveTextContent(/\.native-same/);
+  });
+
+  test('known plain host modules commit without waiting for antd-style', async () => {
+    const root = createBlockRoot();
+    const styleLoad = vi
+      .spyOn(styleRuntime, 'loadAntdStyleModule')
+      .mockImplementation(() => new Promise(() => {}));
+    try {
+      const Block = () => <output>plain host content</output>;
+      render(
+        <FrontstageNativeTrustedBlockPortalHost
+          root={root}
+          renderEpoch="plain-host:1"
+          plan={createPlan()}
+          component={Block}
+          ctx={createContext()}
+          moduleSources={[
+            'react',
+            'react/jsx-runtime',
+            'antd',
+            '@ant-design/icons'
+          ]}
+        />
+      );
+      expect(
+        await shadowQueries(root).findByText('plain host content')
+      ).toBeVisible();
+      expect(styleLoad).not.toHaveBeenCalled();
+    } finally {
+      styleLoad.mockRestore();
+    }
   });
 
   test.each([

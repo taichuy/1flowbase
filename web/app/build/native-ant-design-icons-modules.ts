@@ -46,11 +46,17 @@ export function nativeAntDesignIconsModulesPlugin({
   inventory: AntDesignIconModuleInventory;
 }): Plugin {
   let command: 'build' | 'serve' = 'build';
+  let isDevServer = false;
   const leafModuleSources = new Map(
     inventory.modules.map(({ moduleSource }) => [
       toLeafVirtualId(moduleSource),
       moduleSource
     ])
+  );
+  const installedIconNames = new Set(
+    inventory.modules.map(({ moduleSource }) =>
+      moduleSource.slice(`${PACKAGE_NAME}/`.length)
+    )
   );
 
   return {
@@ -58,13 +64,17 @@ export function nativeAntDesignIconsModulesPlugin({
     enforce: 'pre',
     configResolved(config) {
       command = config.command;
+      isDevServer =
+        config.command === 'serve' &&
+        config.mode !== 'test' &&
+        config.mode !== 'vitest';
     },
     resolveId: {
       filter: {
         id: [
           /^virtual:1flowbase-native-ant-design-icons-(?:modules|loaders)$/u,
           /^virtual:1flowbase-native-ant-design-icon-leaf\//u,
-          /^@ant-design\/icons\/es\/icons\/[A-Za-z][A-Za-z0-9]*$/u
+          /^@ant-design\/icons\/(?:es\/icons\/)?[A-Za-z][A-Za-z0-9]*$/u
         ]
       },
       async handler(id, importer) {
@@ -82,6 +92,12 @@ export function nativeAntDesignIconsModulesPlugin({
           }
           return `\0${id}`;
         }
+        if (isDevServer) {
+          const devIconName = devAntDesignIconLeafName(id, installedIconNames);
+          if (devIconName) {
+            return `\0${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}${devIconName}`;
+          }
+        }
         const productIconName = productAntDesignIconName(id);
         if (
           productIconName &&
@@ -98,8 +114,8 @@ export function nativeAntDesignIconsModulesPlugin({
     load: {
       filter: {
         id: [
-          /^\x00virtual:1flowbase-native-ant-design-icons-(?:modules|loaders)$/u,
-          /^\x00virtual:1flowbase-native-ant-design-icon-leaf\//u
+          /virtual:1flowbase-native-ant-design-icons-(?:modules|loaders)$/u,
+          /virtual:1flowbase-native-ant-design-icon-leaf\//u
         ]
       },
       handler(id) {
@@ -118,12 +134,42 @@ export function nativeAntDesignIconsModulesPlugin({
               '@ant-design/icons module is not installed or public: ' + id + '.'
             );
           }
+          if (isDevServer) {
+            return generateDevAntDesignIconLeafModule(
+              moduleSource.slice(`${PACKAGE_NAME}/`.length)
+            );
+          }
           return `export { default } from ${JSON.stringify(moduleSource)};`;
         }
         return undefined;
       }
     }
   };
+}
+
+function devAntDesignIconLeafName(
+  id: string,
+  installedIconNames: ReadonlySet<string>
+): string | null {
+  const match = /^@ant-design\/icons\/(?:es\/icons\/)?([A-Za-z][A-Za-z0-9]*)$/u.exec(
+    id
+  );
+  const candidate = match?.[1];
+  return candidate && installedIconNames.has(candidate) ? candidate : null;
+}
+
+function generateDevAntDesignIconLeafModule(iconName: string): string {
+  const wrapperModule = iconName.endsWith('TwoTone')
+    ? '@ant-design/icons/es/components/AntdIcon'
+    : '@ant-design/icons/es/components/AntdIconLight';
+  return [
+    "import * as React from 'react';",
+    `import iconDefinition from ${JSON.stringify(`@ant-design/icons-svg/es/asn/${iconName}`)};`,
+    `import AntdIcon from ${JSON.stringify(wrapperModule)};`,
+    'const RefIcon = React.forwardRef((props, ref) => React.createElement(AntdIcon, { ...props, ref, icon: iconDefinition }));',
+    `RefIcon.displayName = ${JSON.stringify(iconName)};`,
+    'export default RefIcon;'
+  ].join('\n');
 }
 
 function productAntDesignIconName(id: string): string | null {
@@ -251,6 +297,10 @@ export const ANT_DESIGN_ICONS_PACKAGE = Object.freeze(${JSON.stringify({
     package_version: inventory.packageVersion,
     module_count: inventory.modules.length
   })});
+
+export function prewarmAntDesignIconsDomain() {
+  return loadLoaderDomain();
+}
 
 export async function loadAntDesignIconsModule(moduleSource) {
   const loaderDomain = await loadLoaderDomain();

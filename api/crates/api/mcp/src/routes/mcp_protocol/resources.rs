@@ -379,7 +379,8 @@ async fn replay_for_actor(
         state.infrastructure.cache_store(),
         state.provider_secret_master_key.clone(),
     )
-    .with_managed_services(state.console_surface_registry.managed_services().to_vec());
+    .with_console_workspace_gate(state.bootstrap_workspace_id, state.console_operation_registry.inventory(), &state.api_docs)
+        .with_managed_services(state.console_surface_registry.managed_services().to_vec());
     let arguments = replay_arguments(&reference, tool)
         .map_err(|_| FileImportError::new("file_import_resource_invalid"))?;
     let headers = axum::http::HeaderMap::new();

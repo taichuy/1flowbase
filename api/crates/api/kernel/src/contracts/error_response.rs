@@ -14,6 +14,10 @@ use crate::official_extension_catalog::{
 };
 use crate::system_backup::SystemBackupRuntimeError;
 
+pub const LOCAL_TERMINAL_DISABLED_CODE: &str = "local_terminal_disabled";
+pub const LOCAL_TERMINAL_DISABLED_MESSAGE: &str =
+    "Local command and terminal interfaces are disabled because API_LOCAL_TERMINAL_DISABLED=true.";
+
 #[derive(Debug)]
 pub struct ApiError(pub anyhow::Error);
 
@@ -52,6 +56,49 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         if let Some(error) = self
             .0
+            .downcast_ref::<control_plane::auth::WorkspacePolicyRejection>()
+        {
+            let status = if error.conflict {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::FORBIDDEN
+            };
+            return (
+                status,
+                Json(ErrorBody {
+                    status: status.as_u16(),
+                    code: error.code.clone(),
+                    message: error.to_string(),
+                    inventory: None,
+                    details: None,
+                }),
+            )
+                .into_response();
+        }
+        if let Some(
+            error @ ControlPlaneError::PluginDependency {
+                code,
+                provider_publisher_namespace,
+                provider_plugin_code,
+                resource_code,
+                dependents,
+            },
+        ) = self.0.downcast_ref::<ControlPlaneError>()
+        {
+            return (StatusCode::CONFLICT, Json(ErrorBody {
+                status: StatusCode::CONFLICT.as_u16(),
+                code: code.clone(),
+                message: error.to_string(),
+                inventory: None,
+                details: Some(serde_json::json!({
+                    "provider": {"publisher_namespace": provider_publisher_namespace, "plugin_code": provider_plugin_code},
+                    "resource_code": resource_code,
+                    "dependents": dependents,
+                })),
+            })).into_response();
+        }
+        if let Some(error) = self
+            .0
             .downcast_ref::<control_plane::agent_logs::AgentLogsPartialImportError>()
         {
             return (StatusCode::CONFLICT, Json(ErrorBody {
@@ -66,10 +113,14 @@ impl IntoResponse for ApiError {
             .0
             .downcast_ref::<crate::managed_services::ManagedServiceFailure>()
         {
+            let status = match error.0.as_str() {
+                "permission_denied" => StatusCode::FORBIDDEN,
+                _ => StatusCode::UNPROCESSABLE_ENTITY,
+            };
             return (
-                StatusCode::UNPROCESSABLE_ENTITY,
+                status,
                 Json(ErrorBody {
-                    status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
+                    status: status.as_u16(),
                     code: error.0.clone(),
                     message: error.0.clone(),
                     inventory: None,
@@ -184,6 +235,9 @@ impl IntoResponse for ApiError {
             Some(ControlPlaneError::PermissionDenied(reason)) => (StatusCode::FORBIDDEN, *reason),
             Some(ControlPlaneError::NotFound(name)) => (StatusCode::NOT_FOUND, *name),
             Some(ControlPlaneError::Conflict(name)) => (StatusCode::CONFLICT, *name),
+            Some(ControlPlaneError::PluginDependency { .. }) => {
+                (StatusCode::CONFLICT, "plugin_dependency")
+            }
             Some(ControlPlaneError::PluginUnavailable) => {
                 (StatusCode::CONFLICT, "plugin_unavailable")
             }
@@ -246,6 +300,7 @@ impl IntoResponse for ApiError {
         // Provider runtime errors are upstream passthrough. Surface the message so
         // callers can debug provider and protocol failures without host rewriting.
         let message = match code {
+            LOCAL_TERMINAL_DISABLED_CODE => LOCAL_TERMINAL_DISABLED_MESSAGE.to_owned(),
             "subscription_required" => "No verifiable user message has been received. Send a message to the bound notification account, then refresh and retry.".to_owned(),
             "subscription_expired" => "The notification delivery window has expired. Send a new message to the bound notification account, then refresh and retry.".to_owned(),
             "subscription_unavailable" => "The notification delivery window could not be verified. Refresh the authorization status and retry when the provider is available.".to_owned(),
@@ -289,3 +344,7 @@ fn sanitize_error_message(message: &str) -> String {
 #[cfg(test)]
 #[path = "error_response/_tests/node_diagnostics.rs"]
 mod node_diagnostics_tests;
+
+#[cfg(test)]
+#[path = "error_response/_tests/plugin_dependencies.rs"]
+mod plugin_dependency_tests;

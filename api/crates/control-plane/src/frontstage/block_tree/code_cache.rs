@@ -52,7 +52,11 @@ impl BlockCodeCache {
         Ok(digest)
     }
 
-    pub(super) async fn store(&self, node: &domain::FrontstageBlockNodeRecord, digest: &str) {
+    pub(in crate::frontstage) async fn store(
+        &self,
+        node: &domain::FrontstageBlockNodeRecord,
+        digest: &str,
+    ) {
         if !valid_digest(digest) {
             return;
         }
@@ -72,7 +76,7 @@ fn valid_digest(digest: &str) -> bool {
     digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-pub(super) fn etag_matches(condition: &str, digest: &str) -> bool {
+pub fn etag_matches(condition: &str, digest: &str) -> bool {
     let etag = format!("\"{digest}\"");
     condition.split(',').any(|candidate| {
         let candidate = candidate.trim();

@@ -35,3 +35,8 @@ mod notifications;
 
 #[path = "events/communication_command_tests.rs"]
 mod communication_command_tests;
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
+#[path = "managed/plugin_resource_archive_lifecycle.rs"]
+mod plugin_resource_archive_lifecycle;

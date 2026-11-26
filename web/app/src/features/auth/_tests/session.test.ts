@@ -1,20 +1,31 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const apiClient = vi.hoisted(() => ({
-  fetchPublicLoginEntries: vi.fn()
+  fetchPublicLoginEntries: vi.fn(),
+  fetchConsoleWorkspaces: vi.fn(),
+  switchConsoleSessionWorkspace: vi.fn(),
+  redeemConsoleWorkspaceInvitation: vi.fn()
 }));
 
 vi.mock('@1flowbase/api-client/auth', () => ({
   deleteConsoleSession: vi.fn(),
   fetchConsoleMe: vi.fn(),
   fetchConsoleSession: vi.fn(),
+  fetchConsoleWorkspaces: apiClient.fetchConsoleWorkspaces,
   fetchPublicLoginEntries: apiClient.fetchPublicLoginEntries,
   getDefaultApiBaseUrl: vi.fn(() => 'http://127.0.0.1:7800'),
+  redeemConsoleWorkspaceInvitation: apiClient.redeemConsoleWorkspaceInvitation,
   signInWithPassword: vi.fn(),
-  switchConsoleSessionRole: vi.fn()
+  switchConsoleSessionRole: vi.fn(),
+  switchConsoleSessionWorkspace: apiClient.switchConsoleSessionWorkspace
 }));
 
 import { fetchLoginEntries } from '../api/session';
+import {
+  fetchAccessibleWorkspaces,
+  redeemWorkspaceInvitation,
+  switchWorkspace
+} from '../api/session-actions';
 
 describe('public login instance discovery', () => {
   beforeEach(() => {
@@ -49,5 +60,44 @@ describe('public login instance discovery', () => {
     await fetchLoginEntries('http://example.test');
 
     expect(apiClient.fetchPublicLoginEntries).toHaveBeenCalledTimes(2);
+  });
+
+  test('forwards workspace list, switch, and invitation redemption to api-client', async () => {
+    apiClient.fetchConsoleWorkspaces.mockResolvedValueOnce([
+      {
+        id: 'ws-1',
+        name: 'Alpha',
+        logo_url: null,
+        introduction: '',
+        is_current: true
+      }
+    ]);
+    apiClient.switchConsoleSessionWorkspace.mockResolvedValueOnce({
+      csrf_token: 'csrf-ws-2'
+    });
+    apiClient.redeemConsoleWorkspaceInvitation.mockResolvedValueOnce({
+      csrf_token: 'csrf-inv'
+    });
+
+    await expect(
+      fetchAccessibleWorkspaces('http://example.test')
+    ).resolves.toHaveLength(1);
+    expect(apiClient.fetchConsoleWorkspaces).toHaveBeenCalledWith(
+      'http://example.test'
+    );
+
+    await switchWorkspace('ws-2', 'csrf-1', 'http://example.test');
+    expect(apiClient.switchConsoleSessionWorkspace).toHaveBeenCalledWith(
+      'ws-2',
+      'csrf-1',
+      'http://example.test'
+    );
+
+    await redeemWorkspaceInvitation('inv_123', 'csrf-1', 'http://example.test');
+    expect(apiClient.redeemConsoleWorkspaceInvitation).toHaveBeenCalledWith(
+      'inv_123',
+      'csrf-1',
+      'http://example.test'
+    );
   });
 });

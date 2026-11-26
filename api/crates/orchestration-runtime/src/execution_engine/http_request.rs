@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, sync::OnceLock, time::Duration};
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
@@ -255,13 +255,12 @@ async fn execute_http_request_node_inner(
     routed_client: Option<&Client>,
     direct: bool,
 ) -> Result<HttpRequestNodeExecution> {
-    let timeout_ms = config_u64(&node.config, "timeout_ms", DEFAULT_TIMEOUT_MS);
+    let timeout = Duration::from_millis(config_u64(&node.config, "timeout_ms", DEFAULT_TIMEOUT_MS));
     let max_response_bytes = config_u64(
         &node.config,
         "max_response_bytes",
         DEFAULT_MAX_RESPONSE_BYTES,
-    )
-    .min(MAX_RESPONSE_BYTES_LIMIT);
+    );
     let verify_ssl = node
         .config
         .get("verify_ssl")
@@ -269,13 +268,7 @@ async fn execute_http_request_node_inner(
         .unwrap_or(true);
     let client = match routed_client {
         Some(client) => client.clone(),
-        None => {
-            let builder = Client::builder()
-                .timeout(Duration::from_millis(timeout_ms))
-                .danger_accept_invalid_certs(!verify_ssl);
-            let builder = if direct { builder.no_proxy() } else { builder };
-            builder.build().context("failed to build HTTP client")?
-        }
+        None => fallback_http_client(verify_ssl, direct)?,
     };
     let method_text = node
         .config
@@ -294,7 +287,7 @@ async fn execute_http_request_node_inner(
         bail!("HTTP URL is required");
     }
 
-    let mut request = client.request(method.clone(), url.clone());
+    let mut request = client.request(method.clone(), url.clone()).timeout(timeout);
     let headers = resolved_object(resolved_inputs.get("headers"));
     if !headers.is_empty() {
         request = request.headers(build_header_map(&headers)?);
@@ -316,6 +309,7 @@ async fn execute_http_request_node_inner(
         resolved_inputs,
         body_type,
         max_response_bytes,
+        timeout,
     )
     .await?;
 
@@ -340,7 +334,7 @@ async fn execute_http_request_node_inner(
         response,
         content_length,
         max_response_bytes,
-        capture_response_file_bytes.then_some(MAX_RESPONSE_BYTES_LIMIT),
+        capture_response_file_bytes.then_some(max_response_bytes.max(MAX_RESPONSE_BYTES_LIMIT)),
     )
     .await?;
     let body = String::from_utf8_lossy(&body_bytes.stored_bytes).to_string();
@@ -484,6 +478,36 @@ async fn read_response_body(
     })
 }
 
+fn fallback_http_client(verify_ssl: bool, direct: bool) -> Result<Client> {
+    crate::ensure_rustls_ring_provider();
+    if verify_ssl {
+        return shared_verified_http_client(direct);
+    }
+    let builder = Client::builder().danger_accept_invalid_certs(true);
+    let builder = if direct { builder.no_proxy() } else { builder };
+    builder.build().context("failed to build HTTP client")
+}
+
+fn shared_verified_http_client(direct: bool) -> Result<Client> {
+    static DIRECT_CLIENT: OnceLock<Client> = OnceLock::new();
+    static SYSTEM_PROXY_CLIENT: OnceLock<Client> = OnceLock::new();
+
+    let slot = if direct {
+        &DIRECT_CLIENT
+    } else {
+        &SYSTEM_PROXY_CLIENT
+    };
+    if let Some(client) = slot.get() {
+        return Ok(client.clone());
+    }
+    crate::ensure_rustls_ring_provider();
+    let builder = Client::builder();
+    let builder = if direct { builder.no_proxy() } else { builder };
+    let client = builder.build().context("failed to build HTTP client")?;
+    let _ = slot.set(client.clone());
+    Ok(slot.get().cloned().unwrap_or(client))
+}
+
 async fn apply_request_body(
     request: reqwest::RequestBuilder,
     client: &Client,
@@ -491,6 +515,7 @@ async fn apply_request_body(
     resolved_inputs: &Map<String, Value>,
     body_type: &str,
     max_response_bytes: u64,
+    timeout: Duration,
 ) -> Result<reqwest::RequestBuilder> {
     match body_type {
         "none" => Ok(request),
@@ -504,14 +529,15 @@ async fn apply_request_body(
         }
         "form-data" => {
             let form =
-                build_multipart_form(client, node, resolved_inputs, max_response_bytes).await?;
+                build_multipart_form(client, node, resolved_inputs, max_response_bytes, timeout)
+                    .await?;
             Ok(request.multipart(form))
         }
         "binary" => {
             let file_value = resolved_inputs
                 .get("binary")
                 .ok_or_else(|| anyhow!("binary body requires a file selector"))?;
-            let file = first_file_bytes(client, file_value, max_response_bytes).await?;
+            let file = first_file_bytes(client, file_value, max_response_bytes, timeout).await?;
             Ok(request
                 .header(CONTENT_TYPE, file.descriptor.mimetype)
                 .body(file.bytes))
@@ -525,6 +551,7 @@ async fn build_multipart_form(
     node: &CompiledNode,
     resolved_inputs: &Map<String, Value>,
     max_response_bytes: u64,
+    timeout: Duration,
 ) -> Result<Form> {
     let mut form = Form::new();
     let resolved_form_data = resolved_object(resolved_inputs.get("form_data"));
@@ -541,7 +568,7 @@ async fn build_multipart_form(
         };
         let value = resolved_form_data.get(name).cloned().unwrap_or(Value::Null);
         if entry.get("valueType").and_then(Value::as_str) == Some("file") {
-            for file in file_bytes_from_value(client, &value, max_response_bytes).await? {
+            for file in file_bytes_from_value(client, &value, max_response_bytes, timeout).await? {
                 let part = Part::bytes(file.bytes)
                     .file_name(file.descriptor.filename)
                     .mime_str(&file.descriptor.mimetype)
@@ -560,8 +587,9 @@ async fn first_file_bytes(
     client: &Client,
     value: &Value,
     max_response_bytes: u64,
+    timeout: Duration,
 ) -> Result<HttpFileBytes> {
-    file_bytes_from_value(client, value, max_response_bytes)
+    file_bytes_from_value(client, value, max_response_bytes, timeout)
         .await?
         .into_iter()
         .next()
@@ -572,6 +600,7 @@ async fn file_bytes_from_value(
     client: &Client,
     value: &Value,
     max_response_bytes: u64,
+    timeout: Duration,
 ) -> Result<Vec<HttpFileBytes>> {
     let descriptors = if let Some(items) = value.as_array() {
         items
@@ -590,6 +619,7 @@ async fn file_bytes_from_value(
             .ok_or_else(|| anyhow!("file descriptor {} has no url", descriptor.filename))?;
         let response = client
             .get(url)
+            .timeout(timeout)
             .send()
             .await
             .with_context(|| format!("failed to fetch file {}", descriptor.filename))?;

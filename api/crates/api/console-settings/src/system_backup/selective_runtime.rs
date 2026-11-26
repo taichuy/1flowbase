@@ -65,7 +65,9 @@ impl RootSystemBackupRuntime {
                 let command = CreateSystemBackupCommand {
                     actor_user_id,
                     application_build: runtime.application_build.clone(),
-                    migration_head: storage_durable_postgres::migration_head(runtime.store.pool())
+                    migration_head: runtime
+                        .store
+                        .migration_head()
                         .await
                         .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?,
                     master_key_fingerprint: runtime.master_key_fingerprint.clone(),

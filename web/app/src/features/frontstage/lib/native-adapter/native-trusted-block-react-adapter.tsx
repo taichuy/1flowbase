@@ -1,3 +1,4 @@
+import { needsAntdStyleSurface } from './native-style-demand';
 import { EChartResourceBoundary } from '@1flowbase/charts/lifecycle';
 import { StyleProvider, createCache } from '@ant-design/cssinjs';
 import {
@@ -153,6 +154,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
   component: BlockComponent,
   ctx,
   moduleAssets = EMPTY_MODULE_ASSETS,
+  moduleSources,
   providerScope,
   providerWrapper,
   onRuntimeError,
@@ -362,6 +364,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
             styleCache,
             antdStylePrefix,
             surfaceRuntime,
+            needsAntdStyleSurface(moduleSources, moduleAssets),
             { ...providerScope, theme: runtimeMotionTheme },
             providerWrapper
           )}
@@ -517,6 +520,7 @@ function wrapWithHostProviders(
   styleCache: ReturnType<typeof createCache>,
   antdStylePrefix: string,
   surfaceRuntime: NativeBlockSurfaceRuntime,
+  needsStyleProvider: boolean,
   providerScope?: FrontstageNativeTrustedBlockProviderScope,
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper
 ): ReactNode {
@@ -541,15 +545,17 @@ function wrapWithHostProviders(
       </ConfigProvider>
     </StyleProvider>
   );
-  // Direct source imports do not describe a fetched factory's dependencies.
-  // Every native surface owns its style cache, including transitive style hooks.
-  const scopedChildren = (
+  // Known plain host primitives can commit without an extra dynamic import.
+  // Unknown/fetched/indirect modules still own an isolated antd-style provider.
+  const scopedChildren = needsStyleProvider ? (
     <AntdStyleSurfaceProvider
       container={context.shadowRoot}
       prefix={antdStylePrefix}
     >
       {hostChildren}
     </AntdStyleSurfaceProvider>
+  ) : (
+    hostChildren
   );
 
   return providerWrapper

@@ -20,7 +20,7 @@ test('only the login document gets a self-starting animation before deferred run
   expect(opening).toContain('data-hero-artwork');
   expect(opening).toMatch(/data-opening-brand="" hidden/);
   expect(opening).toContain('<canvas');
-  expect(opening).toContain('class="auth-sign-in-footer"');
+  expect(opening).toMatch(/class="auth-sign-in-footer" hidden/);
   expect(opening).toContain('Powered by 1flowbase');
   expect(opening).toContain('loading-state--compact');
   expect(opening).toContain('role="status"');
@@ -29,7 +29,15 @@ test('only the login document gets a self-starting animation before deferred run
   expect(motion).toContain('requestAnimationFrame');
   expect(motion).toContain('mousemove');
   expect(motion).toContain('/api/public/system-metadata');
-  expect(motion).not.toMatch(/\bimport\s*\(|\/api\/console/);
+  expect(motion).not.toMatch(/\bimport\s*\(/);
+  expect(motion).toContain('/api/console/session');
+  expect(motion).toContain('/api/public/auth/login-entries');
+  expect(page).not.toContain('data-css-hash');
+  expect(page).not.toContain('application-bootstrap-shell');
+  expect(page).not.toContain('data-document-skeleton');
+  expect(page).toContain('application-bootstrap-failure');
+  expect(original).toContain('application-bootstrap-shell');
+  expect(Buffer.byteLength(page)).toBeLessThanOrEqual(20000);
   expect(opening).toMatch(
     /<template id="sign-in-next-resources">[\s\S]*?href="\/deferred.js"[\s\S]*?<\/template>/
   );

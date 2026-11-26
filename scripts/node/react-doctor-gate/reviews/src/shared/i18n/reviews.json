@@ -1,0 +1,20 @@
+{
+  "toolPackage": "react-doctor@0.2.16",
+  "reviews": [
+    {
+      "file": "web/app/src/shared/i18n/application-resource-loader.ts",
+      "rule": "react-doctor/async-await-in-loop",
+      "sourceSha256": "a6441f309b63abbc800e95f74c1e13354cedd04cdaeb6db38d105003732955fa",
+      "reason": "Subsequent iteration inputs are not known up front: new route namespace requests can arrive during the current activation await. Rechecking the live demand set and activation token prevents partial or superseded locale publication.",
+      "evidenceSet": 0
+    }
+  ],
+  "evidenceSets": [
+    [
+      {
+        "file": "web/app/src/shared/i18n/_tests/application-resource-loader.test.ts",
+        "sha256": "dd984ae1d16bbcd171e3e381d34ecf7d541545fd478d9ec1cabfd8770fd5d21a"
+      }
+    ]
+  ]
+}

@@ -1,15 +1,20 @@
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import { frontstageNativeInstanceRenderKey } from '../../hooks/use-frontstage-native-block-instance';
-import { NativeRuntimeSlotSurface } from '../page-canvas/NativeRuntimeSlotSurface';
+import {
+  NativeRuntimeSlotSurface,
+  type FrontstageNativeSlotLayoutPhase
+} from '../page-canvas/NativeRuntimeSlotSurface';
 import { DataBlockSlotProvider } from '../data-blocks/DataBlockPageProvider';
 
 import { Alert } from 'antd';
-import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
+import { BlockUiLoadingShell } from '@1flowbase/block-renderer/loading-shell';
 
 import type { IsolatedFrontendBlockCapabilityHandlers } from '@1flowbase/page-runtime';
 import type { CSSProperties } from 'react';
 import {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -18,8 +23,13 @@ import {
 } from 'react';
 
 import type { FrontstagePageContent } from '../../api/page-content';
-import { BlockHoverToolbar } from '../BlockHoverToolbar';
 import { BlockSettingsProvider } from '../../lib/block-settings/registry';
+
+const BlockHoverToolbar = lazy(() =>
+  import('../BlockHoverToolbar').then((module) => ({
+    default: module.BlockHoverToolbar
+  }))
+);
 
 import { type FrontstageBlockRenderPlanItem } from '../../lib/page-canvas/render-plan';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -246,8 +256,38 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
     };
   }
   const measurementEpoch = measurementEpochRef.current.value;
+  const [nativeLayoutPhaseState, setNativeLayoutPhaseState] = useState<{
+    epoch: number;
+    phase: FrontstageNativeSlotLayoutPhase;
+  }>({ epoch: 0, phase: 'loading' });
+  const nativeLayoutPhase: FrontstageNativeSlotLayoutPhase =
+    nativeLayoutPhaseState.epoch === measurementEpoch
+      ? nativeLayoutPhaseState.phase
+      : 'loading';
+  const handleNativeLayoutPhaseChange = useCallback(
+    (phase: FrontstageNativeSlotLayoutPhase) => {
+      setNativeLayoutPhaseState((current) =>
+        current.epoch === measurementEpoch && current.phase === phase
+          ? current
+          : { epoch: measurementEpoch, phase }
+      );
+    },
+    [measurementEpoch]
+  );
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
+  const effectiveLayoutPhase: FrontstageNativeSlotLayoutPhase =
+    rendererVersionError ||
+    isolatedPreparationError ||
+    runtimePreparation?.status === 'failed'
+      ? 'settled'
+      : item.renderMode === 'isolated_iframe'
+        ? isolatedPreparation
+          ? 'settled'
+          : 'loading'
+        : runtimePreparation?.status === 'ready'
+          ? nativeLayoutPhase
+          : 'loading';
   const fillsAvailableHeight =
     fillsPageViewport ||
     isFixedHeight ||
@@ -316,6 +356,7 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
     const node = intrinsicContentRef.current;
     if (
       !node ||
+      effectiveLayoutPhase === 'loading' ||
       isFixedHeight ||
       typeof ResizeObserver === 'undefined' ||
       fillsAvailableHeight
@@ -325,7 +366,14 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
 
     const observer = new ResizeObserver(([entry]) => {
       if (entry) {
-        onAutoHeightChange?.(item.blockId, entry.contentRect.height, {
+        const clampedHeight =
+          effectiveLayoutPhase === 'initial_api_pending'
+            ? Math.max(
+                entry.contentRect.height,
+                FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
+              )
+            : entry.contentRect.height;
+        onAutoHeightChange?.(item.blockId, clampedHeight, {
           epoch: measurementEpoch,
           source: 'dom-intrinsic'
         });
@@ -334,6 +382,7 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
     observer.observe(node);
     return () => observer.disconnect();
   }, [
+    effectiveLayoutPhase,
     isFixedHeight,
     fillsAvailableHeight,
     item.blockId,
@@ -467,6 +516,7 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
             surfaceLayoutEpoch={isDesignMode ? 'design' : 'preview'}
             fillsAvailableHeight={fillsAvailableHeight}
             onIntrinsicSizeReport={handleIntrinsicSizeReport}
+            onLayoutPhaseChange={handleNativeLayoutPhaseChange}
             onRetry={
               onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
             }
@@ -591,18 +641,20 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
         )}
 
         {isDesignMode && designActions && isToolbarVisible && (
-          <BlockHoverToolbar
-            blockId={item.blockId}
-            onEditCode={() => designActions.onEditCode(item.blockId)}
-            onDelete={() => designActions.onDelete(item.blockId)}
-            onRefresh={
-              item.renderMode === 'native_react' && onRuntimeRefresh
-                ? () => onRuntimeRefresh(item.blockId)
-                : undefined
-            }
-            isVisible={isToolbarVisible}
-            disabled={toolbarDisabled}
-          />
+          <Suspense fallback={null}>
+            <BlockHoverToolbar
+              blockId={item.blockId}
+              onEditCode={() => designActions.onEditCode(item.blockId)}
+              onDelete={() => designActions.onDelete(item.blockId)}
+              onRefresh={
+                item.renderMode === 'native_react' && onRuntimeRefresh
+                  ? () => onRuntimeRefresh(item.blockId)
+                  : undefined
+              }
+              isVisible={isToolbarVisible}
+              disabled={toolbarDisabled}
+            />
+          </Suspense>
         )}
       </div>
     </BlockSettingsProvider>

@@ -20,6 +20,41 @@ impl InterfaceContract for BillingOutput {
                 ),
             ]),
             mp::object_schema([
+                ("variant", mp::tag_schema("PricingTargets")),
+                (
+                    "0",
+                    mp::object_schema([
+                        (
+                            "providers",
+                            mp::object_schema([("item_count", mp::count_schema())]),
+                        ),
+                        (
+                            "providers_total_count",
+                            serde_json::json!({"type":"integer"}),
+                        ),
+                        (
+                            "items",
+                            mp::object_schema([("item_count", mp::count_schema())]),
+                        ),
+                        ("total_count", serde_json::json!({"type":"integer"})),
+                        ("page", serde_json::json!({"type":"integer"})),
+                        ("page_size", serde_json::json!({"type":"integer"})),
+                        (
+                            "selected_target",
+                            serde_json::json!({
+                                "anyOf": [
+                                    mp::object_schema([
+                                        ("provider_code", mp::text_schema()),
+                                        ("upstream_model_id", mp::text_schema()),
+                                    ]),
+                                    {"type":"null"}
+                                ]
+                            }),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema([
                 ("variant", mp::tag_schema("PricingRule")),
                 (
                     "0",
@@ -321,6 +356,48 @@ impl InterfaceContract for BillingOutput {
                         ("total_count", serde_json::json!((_field_0).total_count)),
                         ("page", serde_json::json!((_field_0).page)),
                         ("page_size", serde_json::json!((_field_0).page_size)),
+                    ]),
+                ),
+            ]),
+            Self::PricingTargets(_field_0) => mp::object_value([
+                (
+                    "variant",
+                    serde_json::Value::String("PricingTargets".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value([
+                        (
+                            "providers",
+                            mp::object_value([(
+                                "item_count",
+                                serde_json::json!((_field_0).providers.len()),
+                            )]),
+                        ),
+                        (
+                            "providers_total_count",
+                            serde_json::json!((_field_0).providers_total_count),
+                        ),
+                        (
+                            "items",
+                            mp::object_value([(
+                                "item_count",
+                                serde_json::json!((_field_0).items.len()),
+                            )]),
+                        ),
+                        ("total_count", serde_json::json!((_field_0).total_count)),
+                        ("page", serde_json::json!((_field_0).page)),
+                        ("page_size", serde_json::json!((_field_0).page_size)),
+                        (
+                            "selected_target",
+                            match (_field_0).selected_target.as_ref() {
+                                Some(item) => mp::object_value([
+                                    ("provider_code", mp::text(&item.provider_code)?),
+                                    ("upstream_model_id", mp::text(&item.upstream_model_id)?),
+                                ]),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
                     ]),
                 ),
             ]),

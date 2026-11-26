@@ -36,12 +36,17 @@ export function resolveFrontstageViewportDemandPriority({
   return withinEnterMargin ? 2 : 3;
 }
 
-function resolveFrontstageRuntimeDemand(
+const DEFAULT_EAGER_PRELOAD_SLOT_LIMIT = 4;
+
+export function resolveFrontstageRuntimeDemand(
   demands: FrontstageRuntimeDemandByBlockId | undefined,
   blockId: string,
   slotIndex: number
 ): FrontstageRuntimeDemandPriority {
-  return demands?.[blockId] ?? (slotIndex === 0 ? 1 : 3);
+  return (
+    demands?.[blockId] ??
+    (slotIndex === 0 ? 1 : slotIndex < DEFAULT_EAGER_PRELOAD_SLOT_LIMIT ? 2 : 3)
+  );
 }
 
 export function resolveFrontstageRuntimePreparationKind(

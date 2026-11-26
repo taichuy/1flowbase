@@ -69,6 +69,7 @@ pub enum MultiplexHostService {
     PluginCredentialV1,
     PluginEphemeralV1,
     PluginExecutionGateV1,
+    WorkspaceGovernanceV1,
     FileImportV1,
     FileReadV1,
     ApplicationLogsV1,

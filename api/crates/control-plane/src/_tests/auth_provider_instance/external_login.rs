@@ -36,10 +36,11 @@ async fn bound_external_identity_needs_neither_email_registration_nor_eligibilit
         .with_bound_external_identity(entry.connection_id, "42");
     let kernel = AuthKernel::new(
         repository.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
     let result = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity(entry.connection_id),
             registration_eligible: false,
@@ -64,10 +65,11 @@ async fn external_completion_rejects_unknown_closed_registration_and_ineligible_
         let repository = InstanceAwareAuthRepository::new(vec![entry.clone()], test_user());
         let kernel = AuthKernel::new(
             repository,
-            SessionIssuer::new(MemorySessionStore::default(), 7),
+            SessionIssuer::new(MokaSessionStore::default(), 7),
         );
         let error = kernel
             .complete_external_login(CompleteExternalLoginCommand {
+                invitation_token: None,
                 login_entry_id: entry.id,
                 identity: identity(entry.connection_id),
                 registration_eligible: eligible,
@@ -84,10 +86,11 @@ async fn external_completion_rejects_connection_mismatch_and_disabled_entry_or_u
     let mut entry = authenticator(PARTNER_EXTERNAL_AUTHENTICATOR_ID, "GitHub", "github");
     let kernel = AuthKernel::new(
         InstanceAwareAuthRepository::new(vec![entry.clone()], test_user()),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity(OTHER_EXTERNAL_AUTHENTICATOR_ID),
             registration_eligible: true,
@@ -104,10 +107,11 @@ async fn external_completion_rejects_connection_mismatch_and_disabled_entry_or_u
     let kernel = AuthKernel::new(
         InstanceAwareAuthRepository::new(vec![entry.clone()], user.clone())
             .with_bound_external_identity(entry.connection_id, "42"),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity(entry.connection_id),
             registration_eligible: true,
@@ -122,10 +126,11 @@ async fn external_completion_rejects_connection_mismatch_and_disabled_entry_or_u
     let kernel = AuthKernel::new(
         InstanceAwareAuthRepository::new(vec![entry.clone()], user)
             .with_bound_external_identity(entry.connection_id, "42"),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity(entry.connection_id),
             registration_eligible: true,

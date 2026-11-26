@@ -6,6 +6,8 @@
 
 全部新增操作属于已有 `other.local-commands` 授权组，每个接口独立授权。接口 ID 保留下划线，例如 `terminal.files.read_text`；HTTP 为 `POST /api/console/terminal/files/read-text`。`terminal.info` 对应 `POST /api/console/terminal/info`，请求 `{}`。MCP 工具目录由独立配置投影这些接口。
 
+`API_LOCAL_TERMINAL_DISABLED` 未设置时，开发模式（含未设置 `API_ENV`）默认允许，生产模式默认禁用。Docker 镜像和生产 Compose 默认禁用，开发 Compose 与原生本地安装包（含旧包升级）默认允许。显式布尔值覆盖默认值，非法值会阻止启动；原生包以其 `.env` 为准。设为 `true` 时，全部 15 个 `terminal.*` 操作和 `local_commands.execute` 在执行前拒绝，即使是 `root` 也会收到 `403`（`local_terminal_disabled`）。MCP 目录和工具可见性不变，调用会返回英文禁用提示。
+
 文件操作要求系统原生绝对路径和正数 `timeout_ms`。`list` 使用显式 `cursor`、`limit`，目录顺序不保证跨请求稳定；`stat` 返回元数据。`read_text` 要求 `offset`、`max_bytes`，只返回完整 UTF-8 字符；`read_range` 要求 `offset`、`length`，返回 base64。两者可传 `expected_version`；版本只检测弱元数据变化，不保证文件快照。偏移等于文件大小返回空 EOF，大于文件大小报错；新读取拒绝符号链接、管道和设备等特殊文件。
 
 `search` 接受单行字面串 `pattern`，必须显式指定 `max_scan_bytes`、`max_matches`、`max_depth`、`max_line_bytes`。目录按惰性深度优先遍历；超长行、二进制与特殊文件分别计数，深度和预算截断可见。匹配项的 `byte_offset` 是该行起点，行号从 1 开始。

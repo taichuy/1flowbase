@@ -18,3 +18,29 @@ for (const prefix of ['/api/', '/v1/']) {
     assert.match(location, /proxy_set_header\s+Connection\s+\$connection_upgrade;/);
   });
 }
+
+
+test('hashed declaration JSON is cached as an immutable file, never SPA fallback or a cached miss', () => {
+  const start = config.indexOf('location ~ "^/assets/native-declarations/');
+  assert.notEqual(start, -1);
+  // The regex contains {64}; find the block delimiter rather than that brace.
+  const end = config.indexOf('\n  }', start);
+  const location = config.slice(start, end);
+  assert.match(location, /try_files \$uri =404;/);
+  assert.match(location, /gzip_static on;/);
+  assert.match(location, /gzip on;/);
+  assert.match(location, /gzip_types application\/json;/);
+  assert.match(location, /gzip_vary on;/);
+  assert.match(location, /add_header Cache-Control "public, max-age=31536000, immutable";/);
+  assert.doesNotMatch(location, /index\.html|immutable" always/);
+});
+
+
+test('ordinary Vite hash assets negotiate precompressed representations without changing URLs', () => {
+  const start = config.indexOf('location ~ "^/assets/[^/]+-');
+  assert.notEqual(start, -1);
+  const location = config.slice(start, config.indexOf('\n  }', start));
+  assert.match(location, /gzip_static on;/);
+  assert.match(location, /gzip_vary on;/);
+  assert.doesNotMatch(location, /gzip_static always|rewrite/);
+});

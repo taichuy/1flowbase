@@ -2,8 +2,10 @@ import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../../../transport';
 
 import {
+  listConsoleFrontendBlockTypeDeclarations,
   listConsoleFrontendBlocks,
-  type ConsoleFrontendBlockCatalogEntry
+  type ConsoleFrontendBlockCatalogEntry,
+  type ConsoleFrontendBlockTypeDeclaration
 } from '../../../console/frontend-blocks';
 
 describe('console-frontend-blocks client', () => {
@@ -70,5 +72,26 @@ describe('console-frontend-blocks client', () => {
 
     expect(entry.code_modules).toEqual([]);
     expect(entry.isolated_entry_asset).toBeNull();
+  });
+
+  test('lists deduplicated frontend block module type declarations on demand', async () => {
+    await expect(
+      listConsoleFrontendBlockTypeDeclarations('https://example.com/api')
+    ).resolves.toMatchObject({
+      path: '/api/console/frontend-blocks/type-declarations',
+      method: 'GET',
+      baseUrl: 'https://example.com/api'
+    });
+
+    const declaration = {
+      installation_id: 'installation-id',
+      plugin_id: 'plugin-id@0.1.0',
+      plugin_version: '0.1.0',
+      source: '@acme/calendar',
+      version: '1.0.0',
+      binding: 'fetched',
+      type_declarations: "declare module '@acme/calendar' {}"
+    } satisfies ConsoleFrontendBlockTypeDeclaration;
+    expect(declaration.source).toBe('@acme/calendar');
   });
 });

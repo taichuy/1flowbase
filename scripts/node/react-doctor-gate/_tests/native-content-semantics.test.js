@@ -355,7 +355,7 @@ for (const [name, mutate] of [
     (f) => {
       const p = "web/app/node_modules/antd/package.json";
       const pkg = JSON.parse(f.sources.get(p));
-      pkg.version = "6.6.3";
+      pkg.version = "6.7.2";
       f.write(p, JSON.stringify(pkg));
     },
   ],
@@ -368,7 +368,7 @@ for (const [name, mutate] of [
         f.sources
           .get(p)
           .replace(
-            "sha512-aTOPWXsqfWrlSiI0a1qR9UWR4jBCTJ8FNZfZmYQP9/aGGLJSrw9/c5uE+4vSVSt3riQlIPAwR3BcAgEHmE7GMg==",
+            "sha512-InlwUhDGkxOhlUYJAnzWHNLJrjQAuT2cVWIOFzaYAUW9Phr8qU5a0fknPWvAbQtrHCIWGF9LxZ9zO5OMwKoGOg==",
             "sha512-unknown",
           ),
       );

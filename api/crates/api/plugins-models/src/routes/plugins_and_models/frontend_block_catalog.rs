@@ -2,23 +2,37 @@ use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
+    body::Body,
     extract::{Query, State},
-    http::HeaderMap,
-    Json, Router,
+    http::{header, HeaderMap, HeaderValue, Response, StatusCode},
+    Router,
 };
-use control_plane::frontend_block_catalog::{
-    FrontendBlockCatalogService, FrontendContributionBinding, ListFrontendBlockCatalogQuery,
+use control_plane::{
+    errors::ControlPlaneError,
+    frontend_block_catalog::{
+        custom_blocks::{resolve_custom_blocks, CustomFrontendBlockService},
+        FrontendBlockCatalogService, FrontendBlockTypeDeclarationEntry,
+        FrontendContributionBinding, ListFrontendBlockCatalogQuery,
+    },
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::{
+        console_interface::{
+            self, ConsoleInterfaceFuture, ConsoleInterfacePort, ConsoleInterfaceTargetError,
+        },
+        console_route_assembly::{console_get, ConsoleRouteAssembly},
+    },
 };
+
+const FRONTEND_BLOCKS_CACHE_CONTROL: &str = "private, no-cache";
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FrontendBlockPermissionsResponse {
@@ -42,6 +56,29 @@ pub struct IsolatedFrontendBlockEntryAssetResponse {
     pub integrity: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct FrontendBlockRuntimeCodeModuleResponse {
+    pub source: String,
+    pub version: String,
+    pub exports: Vec<String>,
+    #[schema(value_type = String)]
+    pub binding: domain::FrontendModuleBinding,
+    #[schema(value_type = Vec<Object>)]
+    pub assets: Vec<domain::FrontendModuleAsset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct FrontendBlockTypeDeclarationResponse {
+    pub installation_id: String,
+    pub plugin_id: String,
+    pub plugin_version: String,
+    pub source: String,
+    pub version: String,
+    #[schema(value_type = String)]
+    pub binding: domain::FrontendModuleBinding,
+    pub type_declarations: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FrontendBlockCatalogResponse {
     pub custom_block_id: Option<String>,
@@ -55,8 +92,7 @@ pub struct FrontendBlockCatalogResponse {
     pub runtime: String,
     pub entry: String,
     pub code_template: Option<String>,
-    #[schema(value_type = Vec<Object>)]
-    pub code_modules: Vec<domain::FrontendBlockCodeModule>,
+    pub code_modules: Vec<FrontendBlockRuntimeCodeModuleResponse>,
     pub code_template_version: Option<String>,
     pub code_template_language: Option<String>,
     pub isolated_entry_asset: Option<IsolatedFrontendBlockEntryAssetResponse>,
@@ -92,13 +128,21 @@ pub fn router() -> Router<Arc<ApiState>> {
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
-    ConsoleRouteAssembly::new().route(
-        "/frontend-blocks",
-        console_get(
-            list_frontend_blocks,
-            ConsoleOperation("frontend_blocks.view".to_string()),
-        ),
-    )
+    ConsoleRouteAssembly::new()
+        .route(
+            "/frontend-blocks",
+            console_get(
+                list_frontend_blocks,
+                ConsoleOperation("frontend_blocks.view".to_string()),
+            ),
+        )
+        .route(
+            "/frontend-blocks/type-declarations",
+            console_get(
+                list_frontend_block_type_declarations,
+                ConsoleOperation("frontend_blocks.type_declarations.view".to_string()),
+            ),
+        )
 }
 
 test_support_item! { pub(crate), []
@@ -131,6 +175,17 @@ fn to_response(
         None
     };
     let registration_targets = entry.registration_targets();
+    let code_modules = entry
+        .code_modules
+        .into_iter()
+        .map(|module| FrontendBlockRuntimeCodeModuleResponse {
+            source: module.source,
+            version: module.version,
+            exports: module.exports,
+            binding: module.binding,
+            assets: module.assets,
+        })
+        .collect();
     Ok(FrontendBlockCatalogResponse {
         custom_block_id: None,
         registration_targets,
@@ -143,7 +198,7 @@ fn to_response(
         runtime: entry.runtime,
         entry: entry.entry,
         code_template: entry.code_template,
-        code_modules: entry.code_modules,
+        code_modules,
         code_template_version: entry.code_template_version,
         code_template_language: entry.code_template_language,
         isolated_entry_asset,
@@ -180,12 +235,82 @@ fn to_response(
 }
 }
 
+fn to_type_declaration_response(
+    entry: FrontendBlockTypeDeclarationEntry,
+) -> FrontendBlockTypeDeclarationResponse {
+    FrontendBlockTypeDeclarationResponse {
+        installation_id: entry.installation_id.to_string(),
+        plugin_id: entry.plugin_id,
+        plugin_version: entry.plugin_version,
+        source: entry.source,
+        version: entry.version,
+        binding: entry.binding,
+        type_declarations: entry.type_declarations,
+    }
+}
+
+fn extract_if_none_match(headers: &[HeaderValue]) -> Option<String> {
+    let values = headers
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .collect::<Vec<_>>();
+    (!values.is_empty()).then(|| values.join(","))
+}
+
+fn if_none_match_matches(if_none_match: Option<&str>, etag: &str) -> bool {
+    let Some(header_value) = if_none_match else {
+        return false;
+    };
+    header_value.split(',').any(|candidate| {
+        let trimmed = candidate.trim();
+        if trimmed == "*" {
+            return true;
+        }
+        let normalized = trimmed.strip_prefix("W/").unwrap_or(trimmed).trim();
+        normalized == etag
+    })
+}
+
+fn conditional_json_response<T: Serialize>(
+    if_none_match: Option<&str>,
+    data: T,
+) -> Result<Response<Body>, ApiError> {
+    let body_bytes = serde_json::to_vec(&ApiSuccess::new(data))?;
+    let etag = format!(
+        "\"{:x}\"",
+        base16ct::HexDisplay(&Sha256::digest(&body_bytes))
+    );
+    let not_modified = if_none_match_matches(if_none_match, &etag);
+    let mut response = if not_modified {
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        response
+    } else {
+        let mut response = Response::new(Body::from(body_bytes));
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        response
+    };
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(FRONTEND_BLOCKS_CACHE_CONTROL),
+    );
+    headers.insert(header::ETAG, HeaderValue::from_str(&etag)?);
+    Ok(response)
+}
+
 #[utoipa::path(
     get,
     path = "/api/console/frontend-blocks",
+    summary = "List runtime frontend block contributions",
+    description = "Returns verified, workspace-authorized frontend block contributions and runtime module metadata without inline TypeScript declaration sources.",
     params(FrontendBlocksInput),
     responses(
         (status = 200, body = [FrontendBlockCatalogResponse]),
+        (status = 304, description = "Frontend block catalog not modified"),
         (status = 401, body = crate::error_response::ErrorBody),
         (status = 403, body = crate::error_response::ErrorBody)
     )
@@ -194,16 +319,70 @@ pub async fn list_frontend_blocks(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Query(query): Query<FrontendBlocksInput>,
-) -> Result<Json<ApiSuccess<Vec<FrontendBlockCatalogResponse>>>, ApiError> {
-    let snapshot_state = Arc::clone(&state);
-    let output: FrontendBlocksOutput = crate::routes::console_interface::invoke(
-        snapshot_state,
-        "http.console.frontend-blocks.get.v1",
+) -> Result<Response<Body>, ApiError> {
+    invoke_frontend_blocks(state, headers, FrontendBlocksRequest::Catalog(query)).await
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/frontend-blocks/type-declarations",
+    summary = "List frontend block module type declarations",
+    description = "Returns deduplicated TypeScript declaration sources for active, workspace-authorized frontend block modules on demand for code editors.",
+    responses(
+        (status = 200, body = [FrontendBlockTypeDeclarationResponse]),
+        (status = 304, description = "Frontend block type declarations not modified"),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn list_frontend_block_type_declarations(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, ApiError> {
+    invoke_frontend_blocks(state, headers, FrontendBlocksRequest::TypeDeclarations).await
+}
+
+async fn invoke_frontend_blocks(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    request: FrontendBlocksRequest,
+) -> Result<Response<Body>, ApiError> {
+    let catalog = matches!(request, FrontendBlocksRequest::Catalog(_));
+    let binding_id = if catalog {
+        "http.console.frontend-blocks.get.v1"
+    } else {
+        "http.console.frontend-blocks.type-declarations.get.v1"
+    };
+    // Retain only the conditional headers when transferring the request headers to authentication.
+    let conditional_headers: Vec<_> = headers
+        .get_all(header::IF_NONE_MATCH)
+        .iter()
+        .cloned()
+        .collect();
+    // Authentication and the per-operation ACL must run even for a matching ETag.
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        binding_id,
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        query,
+        request,
     )
     .await?;
-    Ok(Json(ApiSuccess::new(output.0)))
+    let if_none_match = extract_if_none_match(&conditional_headers);
+    match (catalog, output) {
+        (true, FrontendBlocksOutput::Catalog(items)) => {
+            conditional_json_response(if_none_match.as_deref(), items)
+        }
+        (false, FrontendBlocksOutput::TypeDeclarations(items)) => {
+            conditional_json_response(if_none_match.as_deref(), items)
+        }
+        (true, _) => {
+            Err(anyhow::anyhow!("unexpected frontend blocks catalog output variant").into())
+        }
+        (false, _) => Err(anyhow::anyhow!(
+            "unexpected frontend block type declarations output variant"
+        )
+        .into()),
+    }
 }
 
 pub use api_host_kernel::frontend_block_dependencies::FrontendBlockDependencies;
@@ -215,366 +394,433 @@ pub struct FrontendBlocksInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub registration_target: Option<String>,
 }
-impl JsonApiInput for FrontendBlocksInput {
-    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
-        crate::openapi_interface::json_contract::JsonInputLocation::Query;
-}
 
-impl InterfaceContract for FrontendBlocksInput {
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub(crate) enum FrontendBlocksRequest {
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::query")]
+    Catalog(FrontendBlocksInput),
+    TypeDeclarations,
+}
+impl JsonApiInput for FrontendBlocksRequest {}
+
+impl InterfaceContract for FrontendBlocksRequest {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema([(
-            "registration_target",
-            serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]}),
-        )]))
+        Some(mp::union_schema(vec![
+            mp::object_schema([
+                ("variant", mp::tag_schema("Catalog")),
+                (
+                    "registration_target",
+                    serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]}),
+                ),
+            ]),
+            mp::object_schema([("variant", mp::tag_schema("TypeDeclarations"))]),
+        ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value([(
-            "registration_target",
-            match &self.registration_target {
-                Some(value) => mp::text(value)?,
-                None => serde_json::Value::Null,
-            },
-        )]))
+        Some(match self {
+            Self::Catalog(query) => mp::object_value([
+                ("variant", serde_json::json!("Catalog")),
+                (
+                    "registration_target",
+                    match &query.registration_target {
+                        Some(value) => mp::text(value)?,
+                        None => serde_json::Value::Null,
+                    },
+                ),
+            ]),
+            Self::TypeDeclarations => {
+                mp::object_value([("variant", serde_json::json!("TypeDeclarations"))])
+            }
+        })
     }
     const CONTRACT_ID: &'static str = "console-frontend-blocks-input";
-    const CONTRACT_VERSION: &'static str = "2";
+    const CONTRACT_VERSION: &'static str = "3";
 }
 
 #[derive(serde::Serialize)]
-#[serde(transparent)]
-pub(crate) struct FrontendBlocksOutput(Vec<FrontendBlockCatalogResponse>);
+#[serde(untagged)]
+pub(crate) enum FrontendBlocksOutput {
+    Catalog(Vec<FrontendBlockCatalogResponse>),
+    TypeDeclarations(Vec<FrontendBlockTypeDeclarationResponse>),
+}
 impl JsonApiOutput for FrontendBlocksOutput {}
 
 impl InterfaceContract for FrontendBlocksOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_schema([(
-            "0",
-            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("registration_targets",mp::object_schema([("item_count",mp::count_schema())])), ("installation_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("plugin_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("runtime",mp::object_schema([("byte_count",mp::count_schema())])), ("entry",mp::object_schema([("byte_count",mp::count_schema())])), ("code_template",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("code_template_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("code_template_language",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("isolated_entry_asset",serde_json::json!({"anyOf": [mp::object_schema([("media_type",mp::text_schema()), ("sha256",mp::object_schema([("byte_count",mp::count_schema())])), ("integrity",mp::object_schema([("byte_count",mp::count_schema())]))]), {"type":"null"}]})), ("context_contract",mp::object_schema([("primitives",mp::object_schema([("item_count",mp::count_schema())])), ("input_schema",mp::json_summary_schema())])), ("permissions",mp::object_schema([("network",mp::object_schema([("byte_count",mp::count_schema())])), ("storage",mp::object_schema([("byte_count",mp::count_schema())]))])), ("ui_capabilities",mp::object_schema([("item_count",mp::count_schema())])), ("frontend_contribution_id",mp::text_schema()), ("frontend_block_id",mp::text_schema()), ("frontend_block_version",mp::text_schema()), ("runtime_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("execution_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("isolation_requirement",mp::object_schema([("byte_count",mp::count_schema())])), ("requested_permissions",mp::object_schema([("item_count",mp::count_schema())])), ("granted_permissions",mp::object_schema([("item_count",mp::count_schema())])), ("workspace_id",mp::text_schema()), ("lifecycle_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("graph_fingerprint",mp::object_schema([("byte_count",mp::count_schema())])), ("provenance",mp::object_schema([("module_id",mp::text_schema()), ("module_version",mp::text_schema()), ("module_kind",mp::object_schema([("byte_count",mp::count_schema())]))])), ("disable_reason",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
-        )]))
+        Some(mp::union_schema(vec![
+            mp::object_schema([
+                ("variant", mp::tag_schema("Catalog")),
+                (
+                    "items",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("registration_targets",mp::object_schema([("item_count",mp::count_schema())])), ("installation_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("plugin_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("runtime",mp::object_schema([("byte_count",mp::count_schema())])), ("entry",mp::object_schema([("byte_count",mp::count_schema())])), ("code_template",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("code_template_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("code_template_language",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("isolated_entry_asset",serde_json::json!({"anyOf": [mp::object_schema([("media_type",mp::text_schema()), ("sha256",mp::object_schema([("byte_count",mp::count_schema())])), ("integrity",mp::object_schema([("byte_count",mp::count_schema())]))]), {"type":"null"}]})), ("context_contract",mp::object_schema([("primitives",mp::object_schema([("item_count",mp::count_schema())])), ("input_schema",mp::json_summary_schema())])), ("permissions",mp::object_schema([("network",mp::object_schema([("byte_count",mp::count_schema())])), ("storage",mp::object_schema([("byte_count",mp::count_schema())]))])), ("ui_capabilities",mp::object_schema([("item_count",mp::count_schema())])), ("frontend_contribution_id",mp::text_schema()), ("frontend_block_id",mp::text_schema()), ("frontend_block_version",mp::text_schema()), ("runtime_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("execution_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("isolation_requirement",mp::object_schema([("byte_count",mp::count_schema())])), ("requested_permissions",mp::object_schema([("item_count",mp::count_schema())])), ("granted_permissions",mp::object_schema([("item_count",mp::count_schema())])), ("workspace_id",mp::text_schema()), ("lifecycle_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("graph_fingerprint",mp::object_schema([("byte_count",mp::count_schema())])), ("provenance",mp::object_schema([("module_id",mp::text_schema()), ("module_version",mp::text_schema()), ("module_kind",mp::object_schema([("byte_count",mp::count_schema())]))])), ("disable_reason",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+                ),
+            ]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("TypeDeclarations")),
+                ("item_count", mp::count_schema()),
+            ]),
+        ]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(mp::object_value([("0", {
-            if (self).0.len() > 32 {
-                return None;
+        Some(match self {
+            Self::Catalog(items) => {
+                if items.len() > 32 {
+                    return None;
+                }
+                mp::object_value([
+                    ("variant", serde_json::json!("Catalog")),
+                    (
+                        "items",
+                        serde_json::Value::Array(
+                            items
+                                .iter()
+                                .map(|item| {
+                                    Some(mp::object_value([
+                                        (
+                                            "registration_targets",
+                                            mp::object_value([(
+                                                "item_count",
+                                                serde_json::json!((item)
+                                                    .registration_targets
+                                                    .len()),
+                                            )]),
+                                        ),
+                                        ("installation_id", mp::text(&(item).installation_id)?),
+                                        ("provider_code", mp::text(&(item).provider_code)?),
+                                        ("plugin_id", mp::text(&(item).plugin_id)?),
+                                        ("plugin_version", mp::text(&(item).plugin_version)?),
+                                        ("contribution_code", mp::text(&(item).contribution_code)?),
+                                        (
+                                            "title",
+                                            mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item).title.len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "runtime",
+                                            mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item).runtime.len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "entry",
+                                            mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item).entry.len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "code_template",
+                                            match (item).code_template.as_ref() {
+                                                Some(item) => mp::object_value([(
+                                                    "byte_count",
+                                                    serde_json::json!((item).len()),
+                                                )]),
+                                                None => serde_json::Value::Null,
+                                            },
+                                        ),
+                                        (
+                                            "code_template_version",
+                                            match (item).code_template_version.as_ref() {
+                                                Some(item) => mp::text(item)?,
+                                                None => serde_json::Value::Null,
+                                            },
+                                        ),
+                                        (
+                                            "code_template_language",
+                                            match (item).code_template_language.as_ref() {
+                                                Some(item) => mp::object_value([(
+                                                    "byte_count",
+                                                    serde_json::json!((item).len()),
+                                                )]),
+                                                None => serde_json::Value::Null,
+                                            },
+                                        ),
+                                        (
+                                            "isolated_entry_asset",
+                                            match (item).isolated_entry_asset.as_ref() {
+                                                Some(item) => mp::object_value([
+                                                    ("media_type", mp::text(&(item).media_type)?),
+                                                    (
+                                                        "sha256",
+                                                        mp::object_value([(
+                                                            "byte_count",
+                                                            serde_json::json!((item).sha256.len()),
+                                                        )]),
+                                                    ),
+                                                    (
+                                                        "integrity",
+                                                        mp::object_value([(
+                                                            "byte_count",
+                                                            serde_json::json!((item)
+                                                                .integrity
+                                                                .len()),
+                                                        )]),
+                                                    ),
+                                                ]),
+                                                None => serde_json::Value::Null,
+                                            },
+                                        ),
+                                        (
+                                            "context_contract",
+                                            mp::object_value([
+                                                (
+                                                    "primitives",
+                                                    mp::object_value([(
+                                                        "item_count",
+                                                        serde_json::json!((item)
+                                                            .context_contract
+                                                            .primitives
+                                                            .len()),
+                                                    )]),
+                                                ),
+                                                (
+                                                    "input_schema",
+                                                    mp::json_summary(
+                                                        &(item).context_contract.input_schema,
+                                                    ),
+                                                ),
+                                            ]),
+                                        ),
+                                        (
+                                            "permissions",
+                                            mp::object_value([
+                                                (
+                                                    "network",
+                                                    mp::object_value([(
+                                                        "byte_count",
+                                                        serde_json::json!((item)
+                                                            .permissions
+                                                            .network
+                                                            .len()),
+                                                    )]),
+                                                ),
+                                                (
+                                                    "storage",
+                                                    mp::object_value([(
+                                                        "byte_count",
+                                                        serde_json::json!((item)
+                                                            .permissions
+                                                            .storage
+                                                            .len()),
+                                                    )]),
+                                                ),
+                                            ]),
+                                        ),
+                                        (
+                                            "ui_capabilities",
+                                            mp::object_value([(
+                                                "item_count",
+                                                serde_json::json!((item).ui_capabilities.len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "frontend_contribution_id",
+                                            mp::text(&(item).frontend_contribution_id)?,
+                                        ),
+                                        ("frontend_block_id", mp::text(&(item).frontend_block_id)?),
+                                        (
+                                            "frontend_block_version",
+                                            mp::text(&(item).frontend_block_version)?,
+                                        ),
+                                        (
+                                            "runtime_kind",
+                                            mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item).runtime_kind.len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "execution_kind",
+                                            mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item).execution_kind.len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "isolation_requirement",
+                                            mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item)
+                                                    .isolation_requirement
+                                                    .len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "requested_permissions",
+                                            mp::object_value([(
+                                                "item_count",
+                                                serde_json::json!((item)
+                                                    .requested_permissions
+                                                    .len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "granted_permissions",
+                                            mp::object_value([(
+                                                "item_count",
+                                                serde_json::json!((item).granted_permissions.len()),
+                                            )]),
+                                        ),
+                                        ("workspace_id", mp::text(&(item).workspace_id)?),
+                                        (
+                                            "lifecycle_kind",
+                                            mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item).lifecycle_kind.len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "graph_fingerprint",
+                                            mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item).graph_fingerprint.len()),
+                                            )]),
+                                        ),
+                                        (
+                                            "provenance",
+                                            mp::object_value([
+                                                (
+                                                    "module_id",
+                                                    mp::text(&(item).provenance.module_id)?,
+                                                ),
+                                                (
+                                                    "module_version",
+                                                    mp::text(&(item).provenance.module_version)?,
+                                                ),
+                                                (
+                                                    "module_kind",
+                                                    mp::object_value([(
+                                                        "byte_count",
+                                                        serde_json::json!((item)
+                                                            .provenance
+                                                            .module_kind
+                                                            .len()),
+                                                    )]),
+                                                ),
+                                            ]),
+                                        ),
+                                        (
+                                            "disable_reason",
+                                            match (item).disable_reason.as_ref() {
+                                                Some(item) => mp::object_value([(
+                                                    "byte_count",
+                                                    serde_json::json!((item).len()),
+                                                )]),
+                                                None => serde_json::Value::Null,
+                                            },
+                                        ),
+                                    ]))
+                                })
+                                .collect::<Option<Vec<_>>>()?,
+                        ),
+                    ),
+                ])
             }
-            serde_json::Value::Array(
-                (self)
-                    .0
-                    .iter()
-                    .map(|item| {
-                        Some(mp::object_value([
-                            (
-                                "registration_targets",
-                                mp::object_value([(
-                                    "item_count",
-                                    serde_json::json!((item).registration_targets.len()),
-                                )]),
-                            ),
-                            ("installation_id", mp::text(&(item).installation_id)?),
-                            ("provider_code", mp::text(&(item).provider_code)?),
-                            ("plugin_id", mp::text(&(item).plugin_id)?),
-                            ("plugin_version", mp::text(&(item).plugin_version)?),
-                            ("contribution_code", mp::text(&(item).contribution_code)?),
-                            (
-                                "title",
-                                mp::object_value([(
-                                    "byte_count",
-                                    serde_json::json!((item).title.len()),
-                                )]),
-                            ),
-                            (
-                                "runtime",
-                                mp::object_value([(
-                                    "byte_count",
-                                    serde_json::json!((item).runtime.len()),
-                                )]),
-                            ),
-                            (
-                                "entry",
-                                mp::object_value([(
-                                    "byte_count",
-                                    serde_json::json!((item).entry.len()),
-                                )]),
-                            ),
-                            (
-                                "code_template",
-                                match (item).code_template.as_ref() {
-                                    Some(item) => mp::object_value([(
-                                        "byte_count",
-                                        serde_json::json!((item).len()),
-                                    )]),
-                                    None => serde_json::Value::Null,
-                                },
-                            ),
-                            (
-                                "code_template_version",
-                                match (item).code_template_version.as_ref() {
-                                    Some(item) => mp::text(item)?,
-                                    None => serde_json::Value::Null,
-                                },
-                            ),
-                            (
-                                "code_template_language",
-                                match (item).code_template_language.as_ref() {
-                                    Some(item) => mp::object_value([(
-                                        "byte_count",
-                                        serde_json::json!((item).len()),
-                                    )]),
-                                    None => serde_json::Value::Null,
-                                },
-                            ),
-                            (
-                                "isolated_entry_asset",
-                                match (item).isolated_entry_asset.as_ref() {
-                                    Some(item) => mp::object_value([
-                                        ("media_type", mp::text(&(item).media_type)?),
-                                        (
-                                            "sha256",
-                                            mp::object_value([(
-                                                "byte_count",
-                                                serde_json::json!((item).sha256.len()),
-                                            )]),
-                                        ),
-                                        (
-                                            "integrity",
-                                            mp::object_value([(
-                                                "byte_count",
-                                                serde_json::json!((item).integrity.len()),
-                                            )]),
-                                        ),
-                                    ]),
-                                    None => serde_json::Value::Null,
-                                },
-                            ),
-                            (
-                                "context_contract",
-                                mp::object_value([
-                                    (
-                                        "primitives",
-                                        mp::object_value([(
-                                            "item_count",
-                                            serde_json::json!((item)
-                                                .context_contract
-                                                .primitives
-                                                .len()),
-                                        )]),
-                                    ),
-                                    (
-                                        "input_schema",
-                                        mp::json_summary(&(item).context_contract.input_schema),
-                                    ),
-                                ]),
-                            ),
-                            (
-                                "permissions",
-                                mp::object_value([
-                                    (
-                                        "network",
-                                        mp::object_value([(
-                                            "byte_count",
-                                            serde_json::json!((item).permissions.network.len()),
-                                        )]),
-                                    ),
-                                    (
-                                        "storage",
-                                        mp::object_value([(
-                                            "byte_count",
-                                            serde_json::json!((item).permissions.storage.len()),
-                                        )]),
-                                    ),
-                                ]),
-                            ),
-                            (
-                                "ui_capabilities",
-                                mp::object_value([(
-                                    "item_count",
-                                    serde_json::json!((item).ui_capabilities.len()),
-                                )]),
-                            ),
-                            (
-                                "frontend_contribution_id",
-                                mp::text(&(item).frontend_contribution_id)?,
-                            ),
-                            ("frontend_block_id", mp::text(&(item).frontend_block_id)?),
-                            (
-                                "frontend_block_version",
-                                mp::text(&(item).frontend_block_version)?,
-                            ),
-                            (
-                                "runtime_kind",
-                                mp::object_value([(
-                                    "byte_count",
-                                    serde_json::json!((item).runtime_kind.len()),
-                                )]),
-                            ),
-                            (
-                                "execution_kind",
-                                mp::object_value([(
-                                    "byte_count",
-                                    serde_json::json!((item).execution_kind.len()),
-                                )]),
-                            ),
-                            (
-                                "isolation_requirement",
-                                mp::object_value([(
-                                    "byte_count",
-                                    serde_json::json!((item).isolation_requirement.len()),
-                                )]),
-                            ),
-                            (
-                                "requested_permissions",
-                                mp::object_value([(
-                                    "item_count",
-                                    serde_json::json!((item).requested_permissions.len()),
-                                )]),
-                            ),
-                            (
-                                "granted_permissions",
-                                mp::object_value([(
-                                    "item_count",
-                                    serde_json::json!((item).granted_permissions.len()),
-                                )]),
-                            ),
-                            ("workspace_id", mp::text(&(item).workspace_id)?),
-                            (
-                                "lifecycle_kind",
-                                mp::object_value([(
-                                    "byte_count",
-                                    serde_json::json!((item).lifecycle_kind.len()),
-                                )]),
-                            ),
-                            (
-                                "graph_fingerprint",
-                                mp::object_value([(
-                                    "byte_count",
-                                    serde_json::json!((item).graph_fingerprint.len()),
-                                )]),
-                            ),
-                            (
-                                "provenance",
-                                mp::object_value([
-                                    ("module_id", mp::text(&(item).provenance.module_id)?),
-                                    (
-                                        "module_version",
-                                        mp::text(&(item).provenance.module_version)?,
-                                    ),
-                                    (
-                                        "module_kind",
-                                        mp::object_value([(
-                                            "byte_count",
-                                            serde_json::json!((item).provenance.module_kind.len()),
-                                        )]),
-                                    ),
-                                ]),
-                            ),
-                            (
-                                "disable_reason",
-                                match (item).disable_reason.as_ref() {
-                                    Some(item) => mp::object_value([(
-                                        "byte_count",
-                                        serde_json::json!((item).len()),
-                                    )]),
-                                    None => serde_json::Value::Null,
-                                },
-                            ),
-                        ]))
-                    })
-                    .collect::<Option<Vec<_>>>()?,
-            )
-        })]))
+            Self::TypeDeclarations(items) => mp::object_value([
+                ("variant", serde_json::json!("TypeDeclarations")),
+                ("item_count", serde_json::json!(items.len())),
+            ]),
+        })
     }
 
     const CONTRACT_ID: &'static str = "console-frontend-blocks-output";
-    const CONTRACT_VERSION: &'static str = "1";
+    const CONTRACT_VERSION: &'static str = "2";
 }
 
 struct FrontendBlocksAdapter(FrontendBlockDependencies);
 
-impl
-    crate::routes::console_interface::ConsoleInterfacePort<
-        FrontendBlocksInput,
-        FrontendBlocksOutput,
-    > for FrontendBlocksAdapter
-{
+impl FrontendBlocksAdapter {
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: FrontendBlocksRequest,
+    ) -> Result<FrontendBlocksOutput, ApiError> {
+        if matches!(&input, FrontendBlocksRequest::Catalog(query)
+            if query.registration_target.as_deref().is_some_and(|target| {
+                !matches!(target, "block" | "component" | "code_template")
+            })
+        ) {
+            return Err(
+                ControlPlaneError::InvalidInput("invalid_frontend_registration_target").into(),
+            );
+        }
+
+        let actor = principal.actor();
+        let store = self.0.store.for_actor(actor.clone());
+        let service = FrontendBlockCatalogService::new(
+            store.clone(),
+            self.0.api_node_id.clone(),
+            Arc::clone(&self.0.graph),
+        )?;
+        let query = ListFrontendBlockCatalogQuery {
+            actor_user_id: actor.user_id,
+        };
+        match input {
+            FrontendBlocksRequest::Catalog(input) => {
+                let entries = service.list_frontend_blocks(query).await?;
+                let definitions = CustomFrontendBlockService(store)
+                    .list(actor.current_workspace_id)
+                    .await?;
+                let custom = resolve_custom_blocks(&entries.entries, definitions);
+                let mut output = entries
+                    .entries
+                    .into_iter()
+                    .filter(|binding| {
+                        input.registration_target.as_ref().is_none_or(|target| {
+                            binding
+                                .catalog_entry
+                                .registration_targets()
+                                .contains(target)
+                        })
+                    })
+                    .map(to_response)
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (definition, binding) in custom {
+                    if input
+                        .registration_target
+                        .as_deref()
+                        .is_some_and(|target| target != "block")
+                    {
+                        continue;
+                    }
+                    let mut response = to_response(binding)?;
+                    response.custom_block_id = Some(definition.id.to_string());
+                    response.registration_targets = vec!["block".to_owned()];
+                    output.push(response);
+                }
+                Ok(FrontendBlocksOutput::Catalog(output))
+            }
+            FrontendBlocksRequest::TypeDeclarations => Ok(FrontendBlocksOutput::TypeDeclarations(
+                service
+                    .list_frontend_block_type_declarations(query)
+                    .await?
+                    .entries
+                    .into_iter()
+                    .map(to_type_declaration_response)
+                    .collect(),
+            )),
+        }
+    }
+}
+
+impl ConsoleInterfacePort<FrontendBlocksRequest, FrontendBlocksOutput> for FrontendBlocksAdapter {
     fn execute<'a>(
         &'a self,
         principal: &'a UserPrincipal,
-        input: FrontendBlocksInput,
-    ) -> crate::routes::console_interface::ConsoleInterfaceFuture<'a, FrontendBlocksOutput> {
+        input: FrontendBlocksRequest,
+    ) -> ConsoleInterfaceFuture<'a, FrontendBlocksOutput> {
         Box::pin(async move {
-            if input
-                .registration_target
-                .as_deref()
-                .is_some_and(|target| !matches!(target, "block" | "component" | "code_template"))
-            {
-                return Err(
-                    crate::routes::console_interface::ConsoleInterfaceTargetError(ApiError(
-                        control_plane::errors::ControlPlaneError::InvalidInput(
-                            "invalid_frontend_registration_target",
-                        )
-                        .into(),
-                    )),
-                );
-            }
-            let entries = FrontendBlockCatalogService::new(
-                self.0.store.for_actor(principal.actor().clone()),
-                self.0.api_node_id.clone(),
-                Arc::clone(&self.0.graph),
-            )
-            .map_err(ApiError)
-            .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?
-            .list_frontend_blocks(ListFrontendBlockCatalogQuery {
-                actor_user_id: principal.actor().user_id,
-            })
-            .await
-            .map_err(ApiError)
-            .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-            let definitions =
-                control_plane::frontend_block_catalog::custom_blocks::CustomFrontendBlockService(
-                    self.0.store.for_actor(principal.actor().clone()),
-                )
-                .list(principal.actor().current_workspace_id)
+            self.execute_inner(principal, input)
                 .await
-                .map_err(ApiError)
-                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-            let custom =
-                control_plane::frontend_block_catalog::custom_blocks::resolve_custom_blocks(
-                    &entries.entries,
-                    definitions,
-                );
-            let mut output = entries
-                .entries
-                .into_iter()
-                .filter(|binding| {
-                    input.registration_target.as_ref().is_none_or(|target| {
-                        binding
-                            .catalog_entry
-                            .registration_targets()
-                            .contains(target)
-                    })
-                })
-                .map(to_response)
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-            for (definition, binding) in custom {
-                if input
-                    .registration_target
-                    .as_deref()
-                    .is_some_and(|target| target != "block")
-                {
-                    continue;
-                }
-                let mut response = to_response(binding)
-                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-                response.custom_block_id = Some(definition.id.to_string());
-                response.registration_targets = vec!["block".to_owned()];
-                output.push(response);
-            }
-            Ok(FrontendBlocksOutput(output))
+                .map_err(ConsoleInterfaceTargetError)
         })
     }
 }
@@ -594,6 +840,13 @@ pub fn compile_registry(
                 binding_id: "http.console.frontend-blocks.get.v1",
                 method: "GET",
                 path: "/api/console/frontend-blocks",
+                mutating: false,
+            },
+            crate::routes::console_interface::ConsoleInterfaceDeclaration {
+                interface_id: "frontend_blocks.type_declarations.view",
+                binding_id: "http.console.frontend-blocks.type-declarations.get.v1",
+                method: "GET",
+                path: "/api/console/frontend-blocks/type-declarations",
                 mutating: false,
             },
         ],

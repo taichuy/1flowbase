@@ -105,6 +105,7 @@ const operations = [
 const projection: FrontstageJsxEditorProjection = {
   contextComment: '',
   allowedImportSources: new Set<string>(),
+  declarationLoader: { loadForSource: async () => [], loadAll: async () => [] },
   monacoExtraLibs: []
 };
 
@@ -583,7 +584,7 @@ describe('TSX Studio insertion descriptors', () => {
     expect(searchRequest).not.toHaveProperty('installation_id');
     expect(searchRequest).not.toHaveProperty('contribution_code');
 
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
     await waitFor(() =>
       expect(
         componentCapabilitiesHook.useFrontstageComponents

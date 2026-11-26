@@ -142,8 +142,11 @@ pub fn port(
 }
 
 impl McpUpstreamAdapter {
-    fn service(&self) -> McpManagementService<storage_durable_postgres::MainDurableStore> {
-        McpManagementService::new(self.0.store.clone())
+    fn service(
+        &self,
+        principal: &UserPrincipal,
+    ) -> McpManagementService<storage_durable_postgres::MainDurableStore> {
+        McpManagementService::new(self.0.store.for_actor(principal.actor().clone()))
     }
 
     async fn test_draft(
@@ -153,7 +156,7 @@ impl McpUpstreamAdapter {
     ) -> Result<McpUpstreamDraftTestResponse, ApiError> {
         parse_upstream_transport(&body.transport)?;
         let auth_type = parse_upstream_auth_type(&body.auth_type)?;
-        let service = self.service();
+        let service = self.service(principal);
         let stored_secret = if let Some(connection_id) = body.connection_id.as_deref() {
             let (_, secret) = service
                 .prepare_upstream_management_action(
@@ -228,7 +231,7 @@ impl McpUpstreamAdapter {
         principal: &UserPrincipal,
         connection_id: Uuid,
     ) -> Result<McpUpstreamTestResponse, ApiError> {
-        let service = self.service();
+        let service = self.service(principal);
         let (connection, secret) = service
             .prepare_upstream_management_action(
                 principal.actor().user_id,
@@ -289,7 +292,7 @@ impl McpUpstreamAdapter {
         principal: &UserPrincipal,
         connection_id: Uuid,
     ) -> Result<McpUpstreamDiscoverResponse, ApiError> {
-        let service = self.service();
+        let service = self.service(principal);
         let (connection, secret) = service
             .prepare_upstream_management_action(
                 principal.actor().user_id,
@@ -338,7 +341,7 @@ impl McpUpstreamAdapter {
         tool_id: String,
         body: DebugMcpProxyToolBody,
     ) -> Result<DebugMcpProxyToolResponse, ApiError> {
-        let service = self.service();
+        let service = self.service(principal);
         let tool = service
             .get_tool(principal.actor().user_id, &tool_id)
             .await?;
@@ -404,7 +407,7 @@ impl McpUpstreamAdapter {
         let actor_user_id = principal.actor().user_id;
         match input {
             McpUpstreamInput::List => Ok(McpUpstreamOutput::Connections(
-                self.service()
+                self.service(principal)
                     .list_upstream_connections(actor_user_id)
                     .await?
                     .into_iter()
@@ -413,7 +416,7 @@ impl McpUpstreamAdapter {
             )),
             McpUpstreamInput::Create(body) => {
                 Ok(McpUpstreamOutput::Created(to_connection_response(
-                    self.service()
+                    self.service(principal)
                         .save_upstream_connection(connection_command(actor_user_id, None, body)?)
                         .await?,
                 )?))
@@ -422,7 +425,7 @@ impl McpUpstreamAdapter {
                 connection_id,
                 body,
             } => Ok(McpUpstreamOutput::Connection(to_connection_response(
-                self.service()
+                self.service(principal)
                     .save_upstream_connection(connection_command(
                         actor_user_id,
                         Some(parse_connection_id(&connection_id)?),
@@ -431,7 +434,7 @@ impl McpUpstreamAdapter {
                     .await?,
             )?)),
             McpUpstreamInput::Delete(connection_id) => {
-                self.service()
+                self.service(principal)
                     .delete_upstream_connection(actor_user_id, parse_connection_id(&connection_id)?)
                     .await?;
                 Ok(McpUpstreamOutput::NoContent)
@@ -452,7 +455,7 @@ impl McpUpstreamAdapter {
                         header_value,
                     },
                 };
-                self.service()
+                self.service(principal)
                     .save_upstream_credential(SaveMcpUpstreamCredentialCommand {
                         actor_user_id,
                         connection_id: parse_connection_id(&connection_id)?,
@@ -463,7 +466,7 @@ impl McpUpstreamAdapter {
                 Ok(McpUpstreamOutput::NoContent)
             }
             McpUpstreamInput::DeleteCredentials(connection_id) => {
-                self.service()
+                self.service(principal)
                     .delete_upstream_credential(actor_user_id, parse_connection_id(&connection_id)?)
                     .await?;
                 Ok(McpUpstreamOutput::NoContent)
@@ -484,7 +487,7 @@ impl McpUpstreamAdapter {
                 body,
             } => {
                 let records = self
-                    .service()
+                    .service(principal)
                     .import_upstream_tools(
                         actor_user_id,
                         parse_connection_id(&connection_id)?,
@@ -504,7 +507,7 @@ impl McpUpstreamAdapter {
                     let upstream_connection_id = *upstream_connection_id;
                     let remote_tool_name = remote_tool_name.clone();
                     let availability = self
-                        .service()
+                        .service(principal)
                         .upstream_proxy_availability(
                             actor_user_id,
                             upstream_connection_id,

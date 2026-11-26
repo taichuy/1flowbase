@@ -56,6 +56,7 @@ fn catalog(
     CompiledConsolePolicyCatalog {
         complete,
         groups: vec![CompiledConsolePolicyGroup {
+            root_workspace_only: false,
             group: applications_group(),
             full_operations,
         }],
@@ -87,6 +88,7 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
     };
     let mut operations = vec![
         ConsoleOperationInventoryEntry {
+            root_workspace_only: false,
             operation_id: "console.simple".into(),
             authorization_profile_id: "console.simple".into(),
             owner: owner.clone(),
@@ -97,6 +99,7 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
             authorization: ConsoleAuthorization::Simple,
         },
         ConsoleOperationInventoryEntry {
+            root_workspace_only: false,
             operation_id: "console.create".into(),
             authorization_profile_id: "console.create".into(),
             owner: owner.clone(),
@@ -107,6 +110,7 @@ fn synthetic_compiled_inventory(reverse: bool) -> ConsoleOperationCompiledInvent
             authorization: ConsoleAuthorization::Simple,
         },
         ConsoleOperationInventoryEntry {
+            root_workspace_only: false,
             operation_id: "console.records.view".into(),
             authorization_profile_id: "console.records.view".into(),
             owner: owner.clone(),

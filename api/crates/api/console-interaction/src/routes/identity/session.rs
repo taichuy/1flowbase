@@ -114,6 +114,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_post(revoke_all_sessions, Authenticated),
         )
         .route(
+            "/workspaces/invitations/redeem",
+            console_post(redeem_invitation, Authenticated),
+        )
+        .route(
             "/session/actions/switch-workspace",
             console_post(switch_workspace, Authenticated),
         )
@@ -204,6 +208,41 @@ pub async fn revoke_all_sessions(
         )),
         StatusCode::NO_CONTENT,
     ))
+}
+
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RedeemWorkspaceInvitationBody {
+    pub invitation_token: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/workspaces/invitations/redeem",
+    summary = "Redeem a workspace invitation",
+    description = "Join the workspace named by the invitation and switch the current session to it.",
+    request_body = RedeemWorkspaceInvitationBody,
+    responses((status = 200, body = SessionResponse), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn redeem_invitation(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<RedeemWorkspaceInvitationBody>,
+) -> Result<Json<ApiSuccess<SessionResponse>>, ApiError> {
+    use super::console_identity_interface::{invoke, ConsoleIdentityInput, ConsoleIdentityOutput};
+    let output = invoke(
+        Arc::clone(&state),
+        "http.console.workspaces.invitations.redeem.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        ConsoleIdentityInput::RedeemWorkspaceInvitation {
+            invitation_token: body.invitation_token,
+        },
+    )
+    .await?;
+    let ConsoleIdentityOutput::Session(response) = output else {
+        return Err(anyhow::anyhow!("workspace invitation output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(

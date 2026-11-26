@@ -29,6 +29,7 @@ vi.mock('../api/session', async () => {
 import * as styleRuntime from '../../frontstage/lib/native-modules/antd-style-runtime';
 import { PublicAuthBlock } from '../components/PublicAuthBlock';
 import { createPublicAuthCompilation } from '../lib/public-auth-compilation';
+import { writeLocalePreferenceToStorage } from '../../../shared/user-preferences/locale-preference';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../frontstage/lib/native-adapter/native-trusted-block-runtime-factory';
 
@@ -37,6 +38,7 @@ describe('PublicAuthBlock Native Host composition', () => {
     apiFetch.mockReset();
     passwordSignIn.mockReset();
     await appI18n.changeLanguage('en_US');
+    writeLocalePreferenceToStorage('en_US');
   });
 
   afterEach(() => {
@@ -51,7 +53,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       .mockImplementationOnce(() => gate.promise.then(loadStyles));
     try {
       const source =
-        'export default function Auth() { return <input aria-label="Configured password" type="password" />; }';
+        'import { useTheme } from "antd-style"; export default function Auth() { useTheme(); return <input aria-label="Configured password" type="password" />; }';
       render(
         <PublicAuthBlock
           instance={instance(source)}
@@ -77,7 +79,9 @@ describe('PublicAuthBlock Native Host composition', () => {
       expect(
         root.shadowRoot?.querySelector('input[type=password]')
       ).not.toBeNull();
-      expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('status', { name: 'thinking' })
+      ).not.toBeInTheDocument();
     } finally {
       gate.resolve();
       held.mockRestore();
@@ -91,7 +95,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       .mockRejectedValueOnce(new Error('style retry unavailable'));
     try {
       const source =
-        'export default function Auth() { return <button>Configured login</button>; }';
+        'import { useTheme } from "antd-style"; export default function Auth() { useTheme(); return <button>Configured login</button>; }';
       render(
         <PublicAuthBlock
           instance={instance(source)}
@@ -105,7 +109,9 @@ describe('PublicAuthBlock Native Host composition', () => {
       expect(
         screen.getByTestId('native-react-public-auth-root')
       ).toHaveAttribute('data-public-auth-diagnostic', 'mount_failed');
-      expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('status', { name: 'thinking' })
+      ).not.toBeInTheDocument();
       expect(failed).toHaveBeenCalledTimes(2);
     } finally {
       failed.mockRestore();

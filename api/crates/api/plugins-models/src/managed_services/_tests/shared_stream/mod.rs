@@ -11,6 +11,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{mpsc, oneshot, watch};
+mod admission;
 mod lifecycle;
 mod snapshot_cache;
 
@@ -23,6 +24,9 @@ struct Started {
 }
 struct Fake {
     denied: Mutex<BTreeSet<uuid::Uuid>>,
+    snapshot: Mutex<Option<(String, Value)>>,
+    startup_event: Mutex<Option<Value>>,
+    reads: AtomicUsize,
     starts: Mutex<Vec<Started>>,
     active: AtomicUsize,
     max_active: AtomicUsize,
@@ -34,6 +38,9 @@ impl Fake {
     fn new() -> Arc<Self> {
         Arc::new(Self {
             denied: Mutex::default(),
+            snapshot: Mutex::default(),
+            startup_event: Mutex::default(),
+            reads: AtomicUsize::new(0),
             starts: Mutex::default(),
             active: AtomicUsize::new(0),
             max_active: AtomicUsize::new(0),
@@ -84,7 +91,7 @@ impl Fake {
 }
 #[async_trait::async_trait]
 impl SourceBackend for Arc<Fake> {
-    fn ready(&self, event: &Value) -> bool {
+    fn is_ready(&self, event: &Value) -> bool {
         event.get("type").and_then(Value::as_str) == Some("sample")
     }
     async fn authorize(
@@ -113,6 +120,14 @@ impl SourceBackend for Arc<Fake> {
         mut cancel: watch::Receiver<bool>,
     ) -> Result<Producer, ApiError> {
         let (events, receiver) = mpsc::channel(16);
+        if let Some(event) = self.startup_event.lock().unwrap().clone() {
+            let (consumed, _) = oneshot::channel();
+            events
+                .try_send(StreamEvent(
+                    runtime_core::runtime_backend::RuntimeManagedDuplexEvent { event, consumed },
+                ))
+                .unwrap_or_else(|_| panic!("fresh producer channel accepts its first event"));
+        }
         let (finish, finished) = oneshot::channel();
         let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
         self.max_active.fetch_max(active, Ordering::SeqCst);
@@ -156,6 +171,16 @@ impl SourceBackend for Arc<Fake> {
     async fn cache(&self, _: &str, _: u64, _: &Value) -> Result<(), ApiError> {
         Ok(())
     }
+    async fn cached(&self, revision: &str) -> Result<Option<Value>, ApiError> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .snapshot
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|(key, _)| key == revision)
+            .map(|(_, event)| event.clone()))
+    }
     async fn invalidate(&self, _: &str) -> Result<(), ApiError> {
         Ok(())
     }
@@ -181,8 +206,15 @@ fn member(interval: u64) -> Member {
         interval,
     }
 }
-async fn add(key: SourceKey, fake: &Arc<Fake>, member: Member, revision: &str) -> Lease {
-    join(key, Arc::new(fake.clone()), member, revision.to_owned())
+async fn add(
+    broker: &Arc<Broker>,
+    key: SourceKey,
+    fake: &Arc<Fake>,
+    member: Member,
+    revision: &str,
+) -> Lease {
+    broker
+        .join(key, Arc::new(fake.clone()), member, revision.to_owned())
         .await
         .unwrap()
 }

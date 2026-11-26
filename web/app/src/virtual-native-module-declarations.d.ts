@@ -1,11 +1,12 @@
 declare module 'virtual:1flowbase-native-module-declarations' {
-  import type { BlockSourceExtraLib } from './shared/code-block/extra-lib';
+  import type { NativeDeclarationIndex } from './features/frontstage/lib/native-modules/editor-declarations/loader';
 
-  const declarations: readonly BlockSourceExtraLib[];
-  export default declarations;
+  const index: NativeDeclarationIndex;
+  export default index;
 }
 
 declare module 'virtual:1flowbase-native-antd-es-modules' {
+  export const ANTD_PRODUCT_EXPORT_PATHS: Readonly<Record<string, string>>;
   export const ANTD_ROOT_EXPORTS: readonly string[];
   export const ANTD_ES_MODULE_DEFINITIONS: readonly {
     module_source: string;
@@ -15,6 +16,7 @@ declare module 'virtual:1flowbase-native-antd-es-modules' {
     moduleSource: string
   ): Promise<Record<string, unknown>>;
   export function loadAntDesignRootModule(): Promise<Record<string, unknown>>;
+  export function prewarmAntDesignProductDomain(): Promise<unknown>;
 }
 
 declare module 'virtual:1flowbase-native-ant-design-icons-modules' {
@@ -30,6 +32,7 @@ declare module 'virtual:1flowbase-native-ant-design-icons-modules' {
   export function loadAntDesignIconsModule(
     moduleSource: string
   ): Promise<Record<string, unknown>>;
+  export function prewarmAntDesignIconsDomain(): Promise<unknown>;
 }
 
 declare module 'virtual:1flowbase-native-dnd-kit-modules' {

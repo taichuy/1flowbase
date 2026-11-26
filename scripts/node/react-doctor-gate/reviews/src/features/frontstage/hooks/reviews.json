@@ -1,56 +1,227 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/_tests/page-canvas/use-frontstage-page-canvas-native-preparations.test.tsx","sha256":"f1ec1faab83f3018812b31bc2537e3e12b30e5b16ff6fd15b828e92981a13653"},{"file":"web/app/src/features/frontstage/lib/page-canvas/native-runtime-preparation.ts","sha256":"35ec027130386929d0fb8c2c621af2e6fea95a467f2bf1208a1d25a955a1f728"},{"file":"web/app/src/features/frontstage/lib/page-canvas/runtime-demand.ts","sha256":"82b69a2560e395e1d0538e743cde1542b1355aaf5ab4fa3ca4abcc29ac622182"},{"file":"web/app/src/features/frontstage/lib/runtime-cache/source-changes.ts","sha256":"e3b2f36fb8b2e582c68d01cb92e3c38907a2b0a8753d940d783d6cf024cf91e0"}]
+    [{"file":"web/app/src/features/frontstage/_tests/page-canvas/use-frontstage-page-canvas-native-preparations.test.tsx","sha256":"2bd42e7bdfb50f5da0d3d38ca0d04ce2f7fb6c1e80d38db0e62e27cdf689393c"},{"file":"web/app/src/features/frontstage/lib/page-canvas/native-runtime-preparation.ts","sha256":"61b0445294298c127f9c390a74c4318688ef01595a51ef6b495cee51bef1c66c"},{"file":"web/app/src/features/frontstage/lib/page-canvas/runtime-demand.ts","sha256":"14b65f74bb974c8e2f4d803f550784bb5d7536218ad393cb24622c6eae569325"},{"file":"web/app/src/features/frontstage/lib/runtime-cache/source-changes.ts","sha256":"e3b2f36fb8b2e582c68d01cb92e3c38907a2b0a8753d940d783d6cf024cf91e0"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-block-catalog.ts",
       "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "882856a3bcfa54c521f7c7c0584d2ed056628a5bc841d29528600157ff4f955d",
+      "sourceSha256": "c5bdb0312fcd12e8e229a7be939ce613d82641869287ffc33b3d667edf9c174a",
       "reason": "web/app/src/features/frontstage/hooks/use-frontstage-block-catalog.ts:42（react-doctor/js-tosorted-immutable）：[...array].sort() 对原始输入先复制，保证不原地改变调用方数据/权限集合/排序编辑计划；toSorted() 也必须分配一个结果数组，并不消除排序的复制成本。当前写法已满足不变性，改 ES2023 方法不是修复源码中可见的重复副作用。 P21b reassessed 2026-11-17: Catalog hook adds optional registrationTarget to both query key and backend fetch. Permission fingerprint still sorts a copied permission array; actor/workspace/permission scope and anonymous-query cleanup are unchanged. Creation persistence forwards selected catalog/data props through the same awaited transaction. Tree mutations still reach query invalidation helpers; isolated/native preparation owners retain abort/generation fencing, source-change subscriptions and external visibility scheduler synchronization. Registry additions do not turn scheduler callbacks into parent React-state lifting.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/frontstage-page/BlockArrange.test.tsx","sha256":"a48d30faf2ab753b5470b46747a8fca3c52f81c718d5bf7294319c6ccedabb63"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/TrialPanelLink.test.tsx","sha256":"3533ed7a99fc1739aa38bb0abf8944eaa95e961716e32988b06fce4ec543a04a"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/page-tree-crud.test.tsx","sha256":"fc27f1e41169a50e9901697775de92a3a2f8c07e297fab95935cef32547e762d"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/page-tree-move.test.tsx","sha256":"4f36ef1f23afaa83b9a27790222a397cf3e7ce377e140507c43da9b316150da0"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/runtime-canvas-state.test.tsx","sha256":"1cc3d33ed600f09d11f0a0ac2b78f0d9572265922d81ad775b7c8bf5d053968b"},{"file":"web/app/src/features/frontstage/_tests/use-frontstage-block-catalog.test.tsx","sha256":"0ef19ebc2571f52d6f874e01405301f7150aefb171d8bfe5146dce5b461922f3"},{"file":"web/app/src/features/frontstage/hooks/use-frontstage-block-catalog.ts","sha256":"882856a3bcfa54c521f7c7c0584d2ed056628a5bc841d29528600157ff4f955d"},{"file":"web/app/src/features/frontstage/pages/FrontStagePage.tsx","sha256":"cca190944629006d7efee99ac19ff2ee9d0629a0faa870813685f862de059bac"},{"file":"web/app/src/features/frontstage/pages/frontstage-page/controllers/use-frontstage-design-persistence.ts","sha256":"76645c37179031610e691cd5e1de38ca73f7a7b4e5a9ff8d8caef3081dd52fa0"},{"file":"web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx","sha256":"d309c60af028b647d7f678a26e1ac56582f79aba1960761e18565e1d2efb9c38"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/BlockArrange.test.tsx",
+          "sha256": "660fea1479b54d2526d04757c5beec170ca9584a0daa0f9a75a3208b68c921d3"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/TrialPanelLink.test.tsx",
+          "sha256": "93e3ecac61fd11802614fcd033f7358c83906e68cacb02e339ec0a3c78c9ca5e"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/page-tree-crud.test.tsx",
+          "sha256": "fc27f1e41169a50e9901697775de92a3a2f8c07e297fab95935cef32547e762d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/page-tree-move.test.tsx",
+          "sha256": "012d446a493ca1719f989ea8dd3585a7a44840e1519e111c7f6cf9c18d559663"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/runtime-canvas-state.test.tsx",
+          "sha256": "3d035d2c484f8b8dff9b935052901f985d7b3d166ec41c3b9017265101e9bfac"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/use-frontstage-block-catalog.test.tsx",
+          "sha256": "c2bb5403a5753f9847e758a1ec79feb5e9a4486879c52798af808f8c9acb5ae4"
+        },
+        {
+          "file": "web/app/src/features/frontstage/hooks/use-frontstage-block-catalog.ts",
+          "sha256": "c5bdb0312fcd12e8e229a7be939ce613d82641869287ffc33b3d667edf9c174a"
+        },
+        {
+          "file": "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
+          "sha256": "7b5711e6aa885a578f8189aae9ec9e7a139815964e23a3c9eb45c90f631ab79d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/pages/frontstage-page/controllers/use-frontstage-design-persistence.ts",
+          "sha256": "76645c37179031610e691cd5e1de38ca73f7a7b4e5a9ff8d8caef3081dd52fa0"
+        },
+        {
+          "file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx",
+          "sha256": "51512dfda4ea2392e9c87db7801ed196b460c37465e3b88a3473534982b58440"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-block-tree-mutations.ts",
       "rule": "react-doctor/query-mutation-missing-invalidation",
       "sourceSha256": "9a2d4e665d14a61213cfe6df55fa214bb473069c017eb761e0903110cf5a8850",
       "reason": "每个 mutation.onSuccess 均显式调用 invalidateOwner/invalidateDetail/invalidateSearches，move 也处理旧 owner；helper 内部真正调用 invalidateQueries。 核查 mutationFn/onSuccess/helper/父回调：读取预览和授权 reveal 无实体列表更新；写操作通过 helper/父回调失效，不能只找对象内 invalidate 字面量。 P21b reassessed 2026-11-17: Catalog hook adds optional registrationTarget to both query key and backend fetch. Permission fingerprint still sorts a copied permission array; actor/workspace/permission scope and anonymous-query cleanup are unchanged. Creation persistence forwards selected catalog/data props through the same awaited transaction. Tree mutations still reach query invalidation helpers; isolated/native preparation owners retain abort/generation fencing, source-change subscriptions and external visibility scheduler synchronization. Registry additions do not turn scheduler callbacks into parent React-state lifting.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/block-tree-mutations.test.tsx","sha256":"c8b35303e7bc7f0d0e749239c899c3a924221831c13d84ae5174f5896900adf7"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/BlockArrange.test.tsx","sha256":"a48d30faf2ab753b5470b46747a8fca3c52f81c718d5bf7294319c6ccedabb63"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/TrialPanelLink.test.tsx","sha256":"3533ed7a99fc1739aa38bb0abf8944eaa95e961716e32988b06fce4ec543a04a"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/page-tree-crud.test.tsx","sha256":"fc27f1e41169a50e9901697775de92a3a2f8c07e297fab95935cef32547e762d"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/page-tree-move.test.tsx","sha256":"4f36ef1f23afaa83b9a27790222a397cf3e7ce377e140507c43da9b316150da0"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/runtime-canvas-state.test.tsx","sha256":"1cc3d33ed600f09d11f0a0ac2b78f0d9572265922d81ad775b7c8bf5d053968b"},{"file":"web/app/src/features/frontstage/_tests/jsx-studio/JsxStudioResourcePanel.test.tsx","sha256":"f67ffd2154679202b408c770771fdfc6124a034b1b00183630bee290200346bc"},{"file":"web/app/src/features/frontstage/api/block-tree.ts","sha256":"52bdd725fdb79b14aabda26911e58e5513aba4f2a6f820f8758a6bc4e79b6d59"},{"file":"web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx","sha256":"ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"},{"file":"web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx","sha256":"273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"},{"file":"web/app/src/features/frontstage/components/jsx-studio/JsxStudioResourcePanel.tsx","sha256":"4f105fe8a3528f9d21b80c45b6345848a3d31f39c6d428915fa90e03c9b5783b"},{"file":"web/app/src/features/frontstage/hooks/use-frontstage-block-tree-mutations.ts","sha256":"9a2d4e665d14a61213cfe6df55fa214bb473069c017eb761e0903110cf5a8850"},{"file":"web/app/src/features/frontstage/lib/runtime-cache/source-changes.ts","sha256":"e3b2f36fb8b2e582c68d01cb92e3c38907a2b0a8753d940d783d6cf024cf91e0"},{"file":"web/app/src/features/frontstage/pages/FrontStagePage.tsx","sha256":"cca190944629006d7efee99ac19ff2ee9d0629a0faa870813685f862de059bac"},{"file":"web/app/src/features/frontstage/pages/frontstage-page/controllers/use-frontstage-design-persistence.ts","sha256":"76645c37179031610e691cd5e1de38ca73f7a7b4e5a9ff8d8caef3081dd52fa0"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/frontstage/_tests/block-tree-mutations.test.tsx",
+          "sha256": "c8b35303e7bc7f0d0e749239c899c3a924221831c13d84ae5174f5896900adf7"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/BlockArrange.test.tsx",
+          "sha256": "660fea1479b54d2526d04757c5beec170ca9584a0daa0f9a75a3208b68c921d3"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/TrialPanelLink.test.tsx",
+          "sha256": "93e3ecac61fd11802614fcd033f7358c83906e68cacb02e339ec0a3c78c9ca5e"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/page-tree-crud.test.tsx",
+          "sha256": "fc27f1e41169a50e9901697775de92a3a2f8c07e297fab95935cef32547e762d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/page-tree-move.test.tsx",
+          "sha256": "012d446a493ca1719f989ea8dd3585a7a44840e1519e111c7f6cf9c18d559663"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/runtime-canvas-state.test.tsx",
+          "sha256": "3d035d2c484f8b8dff9b935052901f985d7b3d166ec41c3b9017265101e9bfac"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/jsx-studio/JsxStudioResourcePanel.test.tsx",
+          "sha256": "e296c8f57dc1a50cec0c2cb073cef36410c3c816f9f9eaa70d6e58cb987ed45a"
+        },
+        {
+          "file": "web/app/src/features/frontstage/api/block-tree.ts",
+          "sha256": "52bdd725fdb79b14aabda26911e58e5513aba4f2a6f820f8758a6bc4e79b6d59"
+        },
+        {
+          "file": "web/app/src/features/frontstage/components/block-schema-tree/BlockSchemaTreePanel.tsx",
+          "sha256": "ebb51b29d97bbc13bb694e74f04f9d508e1e01d21ab5dd59613fa21a95a96bcb"
+        },
+        {
+          "file": "web/app/src/features/frontstage/components/block-schema-tree/_tests/BlockSchemaTreePanel.test.tsx",
+          "sha256": "273557be03afbfbab45b9094f4064c37f6054202b290848156cdfafcecc2aee6"
+        },
+        {
+          "file": "web/app/src/features/frontstage/components/jsx-studio/JsxStudioResourcePanel.tsx",
+          "sha256": "4f105fe8a3528f9d21b80c45b6345848a3d31f39c6d428915fa90e03c9b5783b"
+        },
+        {
+          "file": "web/app/src/features/frontstage/hooks/use-frontstage-block-tree-mutations.ts",
+          "sha256": "9a2d4e665d14a61213cfe6df55fa214bb473069c017eb761e0903110cf5a8850"
+        },
+        {
+          "file": "web/app/src/features/frontstage/lib/runtime-cache/source-changes.ts",
+          "sha256": "e3b2f36fb8b2e582c68d01cb92e3c38907a2b0a8753d940d783d6cf024cf91e0"
+        },
+        {
+          "file": "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
+          "sha256": "7b5711e6aa885a578f8189aae9ec9e7a139815964e23a3c9eb45c90f631ab79d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/pages/frontstage-page/controllers/use-frontstage-design-persistence.ts",
+          "sha256": "76645c37179031610e691cd5e1de38ca73f7a7b4e5a9ff8d8caef3081dd52fa0"
+        },
+        {
+          "file": "web/app/src/state/auth-store.ts",
+          "sha256": "007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-isolated-preparations.ts",
       "rule": "react-doctor/no-cascading-set-state",
       "sourceSha256": "c8d12ee0023f1b30791ae5b51839262737833dd83690cea47a29b3059c442083",
       "reason": "isolated preparations 对 actor/workspace/catalog/requests 用 AbortController 管理异步准备，owner 标记阻止旧结果向新请求投影。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 P21b reassessed 2026-11-17: Catalog hook adds optional registrationTarget to both query key and backend fetch. Permission fingerprint still sorts a copied permission array; actor/workspace/permission scope and anonymous-query cleanup are unchanged. Creation persistence forwards selected catalog/data props through the same awaited transaction. Tree mutations still reach query invalidation helpers; isolated/native preparation owners retain abort/generation fencing, source-change subscriptions and external visibility scheduler synchronization. Registry additions do not turn scheduler callbacks into parent React-state lifting.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/frontstage-page/BlockArrange.test.tsx","sha256":"a48d30faf2ab753b5470b46747a8fca3c52f81c718d5bf7294319c6ccedabb63"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/TrialPanelLink.test.tsx","sha256":"3533ed7a99fc1739aa38bb0abf8944eaa95e961716e32988b06fce4ec543a04a"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls-catalog-creation.test.tsx","sha256":"bf907278d21ba61ef562be33eb839e50868dd736f20a9c4097aa2a9ba25b48df"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx","sha256":"ffbe86d3faa1db668453d63ed54b614c5ccd4af027e6d8b199e41d73f533ca41"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/design-controls.test.tsx","sha256":"6e347717fc50e4fd0480a5c01bafce5004eb789731afd2e32da129c0d59f9a78"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/page-tree-crud.test.tsx","sha256":"fc27f1e41169a50e9901697775de92a3a2f8c07e297fab95935cef32547e762d"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/page-tree-move.test.tsx","sha256":"4f36ef1f23afaa83b9a27790222a397cf3e7ce377e140507c43da9b316150da0"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/routing-fallback.test.tsx","sha256":"ed51b77b0163630c52f2a1a587445408d33dcb1ef31181f7814f5f61cfc1789d"},{"file":"web/app/src/features/frontstage/_tests/frontstage-page/runtime-canvas-state.test.tsx","sha256":"1cc3d33ed600f09d11f0a0ac2b78f0d9572265922d81ad775b7c8bf5d053968b"},{"file":"web/app/src/features/frontstage/_tests/isolated-frontend-block/use-frontstage-page-canvas-isolated-preparations.test.tsx","sha256":"b48e9a2e7184c4439c90881b78b1aebab816495f4cda86505c3d9473212fcf0b"},{"file":"web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-isolated-preparations.ts","sha256":"c8d12ee0023f1b30791ae5b51839262737833dd83690cea47a29b3059c442083"},{"file":"web/app/src/features/frontstage/lib/block-catalog.ts","sha256":"4bd682afab528e3f2673f43bc1413ca7335027b31dffb1db07d09be2b2817edb"},{"file":"web/app/src/features/frontstage/lib/isolated-frontend-block-contribution.ts","sha256":"9d5cfae25886a695087eba403a1cbb085422bf1755e92fc584945f96247c36d7"},{"file":"web/app/src/features/frontstage/lib/page-canvas/render-plan.ts","sha256":"8e7ca3164d3760e28892efeddd7c801f987a8d37707958c6d4a7692fef790aee"},{"file":"web/app/src/features/frontstage/pages/FrontStagePage.tsx","sha256":"cca190944629006d7efee99ac19ff2ee9d0629a0faa870813685f862de059bac"},{"file":"web/app/src/shared/i18n/text.ts","sha256":"dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/BlockArrange.test.tsx",
+          "sha256": "660fea1479b54d2526d04757c5beec170ca9584a0daa0f9a75a3208b68c921d3"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/TrialPanelLink.test.tsx",
+          "sha256": "93e3ecac61fd11802614fcd033f7358c83906e68cacb02e339ec0a3c78c9ca5e"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls-catalog-creation.test.tsx",
+          "sha256": "f9f3d4f8042af492759f24f8cab63a68cd3df81decdb42bd49ce8c005746a14d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls.fixtures.tsx",
+          "sha256": "ffbe86d3faa1db668453d63ed54b614c5ccd4af027e6d8b199e41d73f533ca41"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/design-controls.test.tsx",
+          "sha256": "3efda40dd6f6fdeb9d6828591d2427970c8c6368924cb37b31b27c4d2ef46747"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/page-tree-crud.test.tsx",
+          "sha256": "fc27f1e41169a50e9901697775de92a3a2f8c07e297fab95935cef32547e762d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/page-tree-move.test.tsx",
+          "sha256": "012d446a493ca1719f989ea8dd3585a7a44840e1519e111c7f6cf9c18d559663"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/routing-fallback.test.tsx",
+          "sha256": "ed51b77b0163630c52f2a1a587445408d33dcb1ef31181f7814f5f61cfc1789d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/frontstage-page/runtime-canvas-state.test.tsx",
+          "sha256": "3d035d2c484f8b8dff9b935052901f985d7b3d166ec41c3b9017265101e9bfac"
+        },
+        {
+          "file": "web/app/src/features/frontstage/_tests/isolated-frontend-block/use-frontstage-page-canvas-isolated-preparations.test.tsx",
+          "sha256": "b48e9a2e7184c4439c90881b78b1aebab816495f4cda86505c3d9473212fcf0b"
+        },
+        {
+          "file": "web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-isolated-preparations.ts",
+          "sha256": "c8d12ee0023f1b30791ae5b51839262737833dd83690cea47a29b3059c442083"
+        },
+        {
+          "file": "web/app/src/features/frontstage/lib/block-catalog.ts",
+          "sha256": "4bd682afab528e3f2673f43bc1413ca7335027b31dffb1db07d09be2b2817edb"
+        },
+        {
+          "file": "web/app/src/features/frontstage/lib/isolated-frontend-block-contribution.ts",
+          "sha256": "1304f783b5800f9ace84b05308a1c0f0599f0890872f8c7f94afc3cfe00a256e"
+        },
+        {
+          "file": "web/app/src/features/frontstage/lib/page-canvas/render-plan.ts",
+          "sha256": "2bab9d1d6af4838fd8e36b1684b5a5af27b09079e51956aaa66df566ea987f9e"
+        },
+        {
+          "file": "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
+          "sha256": "7b5711e6aa885a578f8189aae9ec9e7a139815964e23a3c9eb45c90f631ab79d"
+        },
+        {
+          "file": "web/app/src/shared/i18n/text.ts",
+          "sha256": "dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"
+        }
+      ]
     },
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-native-preparations.ts",
       "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "2b8a49ac70ba001f7a222d3fbf2f3c1572a528d79ebbaebe85d9f3d9c30f5a3f",
+      "sourceSha256": "bcfed9a9cbd6f473dd6a8c3822af7a20777882b885998a7e92402f0f806e8fb9",
       "reason": "The sort receiver is a new array made from spread/Map values/Set values, not an aliased input prop or shared state array. Sorting this owned temporary already preserves source immutability; the exact allocation/sort chain is captured below. Reassessed 2026-11-03: Fetched code_modules now create an owner-scoped contribution loader; policy digest includes module policy and definitions, and cleanup disposes the loader. Scheduler suspension/validation still follows external active/validation inputs and generation fencing.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-native-preparations.ts",
       "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "2b8a49ac70ba001f7a222d3fbf2f3c1572a528d79ebbaebe85d9f3d9c30f5a3f",
-      "reason": "The layout effect suspends/revalidates the external preparation scheduler on active/validationAttempt changes. Its promise is guarded by current and cleanup; validation flags represent an in-flight scheduler operation, not synchronous derived render data. Reassessed 2026-11-03: Fetched code_modules now create an owner-scoped contribution loader; policy digest includes module policy and definitions, and cleanup disposes the loader. Scheduler suspension/validation still follows external active/validation inputs and generation fencing.",
+      "sourceSha256": "bcfed9a9cbd6f473dd6a8c3822af7a20777882b885998a7e92402f0f806e8fb9",
+      "reason": "The layout effect suspends/revalidates the external preparation scheduler on active/validationAttempt changes. Its promise is guarded by current and cleanup; validation flags represent an in-flight scheduler operation, not synchronous derived render data. Reassessed 2026-11-03: Fetched code_modules now create an owner-scoped contribution loader; policy digest includes module policy and definitions, and cleanup disposes the loader. Scheduler suspension/validation still follows external active/validation inputs and generation fencing. Reassessed: The read-plan and source-cache additions feed the same current workspace/tab coordinator. Viewport demand and asynchronous completion still change preparation independently of clicks; the coordinator tests cover concurrency, stale work, and retained slots.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-native-preparations.ts",
       "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "2b8a49ac70ba001f7a222d3fbf2f3c1572a528d79ebbaebe85d9f3d9c30f5a3f",
-      "reason": "The find occurs inside subscribeFrontstageSourceChanges: a matching workspace/page/block invalidates its source copy and retries the scheduler. Source edits can originate outside this component event handlers. Reassessed 2026-11-03: Fetched code_modules now create an owner-scoped contribution loader; policy digest includes module policy and definitions, and cleanup disposes the loader. Scheduler suspension/validation still follows external active/validation inputs and generation fencing.",
+      "sourceSha256": "bcfed9a9cbd6f473dd6a8c3822af7a20777882b885998a7e92402f0f806e8fb9",
+      "reason": "The find occurs inside subscribeFrontstageSourceChanges: a matching workspace/page/block invalidates its source copy and retries the scheduler. Source edits can originate outside this component event handlers. Reassessed 2026-11-03: Fetched code_modules now create an owner-scoped contribution loader; policy digest includes module policy and definitions, and cleanup disposes the loader. Scheduler suspension/validation still follows external active/validation inputs and generation fencing. Reassessed: The read-plan and source-cache additions feed the same current workspace/tab coordinator. Viewport demand and asynchronous completion still change preparation independently of clicks; the coordinator tests cover concurrency, stale work, and retained slots.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-native-preparations.ts",
       "rule": "react-doctor/no-pass-live-state-to-parent",
-      "sourceSha256": "2b8a49ac70ba001f7a222d3fbf2f3c1572a528d79ebbaebe85d9f3d9c30f5a3f",
-      "reason": "updateVisibility calls scheduler.setPageVisible from document.visibilityState and validation state, with a visibilitychange listener and cleanup. The recipient is an external runtime scheduler, not lifted React parent state. Reassessed 2026-11-03: Fetched code_modules now create an owner-scoped contribution loader; policy digest includes module policy and definitions, and cleanup disposes the loader. Scheduler suspension/validation still follows external active/validation inputs and generation fencing.",
+      "sourceSha256": "bcfed9a9cbd6f473dd6a8c3822af7a20777882b885998a7e92402f0f806e8fb9",
+      "reason": "updateVisibility calls scheduler.setPageVisible from document.visibilityState and validation state, with a visibilitychange listener and cleanup. The recipient is an external runtime scheduler, not lifted React parent state. Reassessed 2026-11-03: Fetched code_modules now create an owner-scoped contribution loader; policy digest includes module policy and definitions, and cleanup disposes the loader. Scheduler suspension/validation still follows external active/validation inputs and generation fencing. Reassessed: The read-plan and source-cache additions feed the same current workspace/tab coordinator. Viewport demand and asynchronous completion still change preparation independently of clicks; the coordinator tests cover concurrency, stale work, and retained slots.",
       "evidenceSet": 0
     },
     {
@@ -58,7 +229,16 @@
       "rule": "react-doctor/query-mutation-missing-invalidation",
       "sourceSha256": "191d980ee8938062f62384d1130aa3832d3eb96b124226071fa6d76bbd668219",
       "reason": "The mutation onSuccess delegates to a local callback/helper: invalidatePageTree/invalidatePageTreeAndContent invalidate workspace tree/navigation and page content keys. The query client invalidation call is outside the useMutation object but the success path reaches it. Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/features/frontstage/_tests/use-frontstage-page-tree-mutations.test.tsx","sha256":"84fb25cd93de2f61ff2bf162a09e0801fed29e2cc377b612c9ead68e21bdd24d"},{"file":"web/app/src/features/frontstage/api/page-tree.ts","sha256":"c618f9198a09ab695fe014f66e9b8faa7c3553edf8778f67a22a9be20501a52c"}]
+      "evidence": [
+        {
+          "file": "web/app/src/features/frontstage/_tests/use-frontstage-page-tree-mutations.test.tsx",
+          "sha256": "84fb25cd93de2f61ff2bf162a09e0801fed29e2cc377b612c9ead68e21bdd24d"
+        },
+        {
+          "file": "web/app/src/features/frontstage/api/page-tree.ts",
+          "sha256": "8870dc1afdf78c69da987bdf6567454a1b90d0ceb474bc4da5acb1e73c0801cb"
+        }
+      ]
     }
   ]
 }

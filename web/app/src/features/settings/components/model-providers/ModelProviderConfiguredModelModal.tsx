@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
 
 import {
   AutoComplete,
@@ -12,13 +12,19 @@ import {
   Typography
 } from 'antd';
 
-import type { SettingsModelProviderPricingTarget } from '../../api/model-providers';
+import {
+  listSettingsPricingTargets,
+  type SettingsPricingTarget,
+  type SettingsPricingTargetProvider
+} from '../../api/billing';
 import { i18nText } from '../../../../shared/i18n/text';
 import { formatPricingRate } from '../../lib/pricing-format';
 import {
   MODEL_CONTEXT_WINDOW_PRESET_OPTIONS,
   parseModelContextWindowInput
 } from './model-context-window';
+
+const PRICING_TARGETS_PAGE_SIZE = 50;
 
 export type ConfiguredModelEditorValue = {
   model_id: string;
@@ -35,7 +41,6 @@ export function ModelProviderConfiguredModelModal({
   initialValue,
   modelIds,
   reservedModelIds,
-  pricingTargets,
   onCancel,
   onSave
 }: {
@@ -44,7 +49,6 @@ export function ModelProviderConfiguredModelModal({
   initialValue: ConfiguredModelEditorValue | null;
   modelIds: string[];
   reservedModelIds: string[];
-  pricingTargets: SettingsModelProviderPricingTarget[];
   onCancel: () => void;
   onSave: (value: ConfiguredModelEditorValue) => void;
 }) {
@@ -58,6 +62,25 @@ export function ModelProviderConfiguredModelModal({
   const [selectedModelId, setSelectedModelId] = useState('any');
   const [pricingError, setPricingError] = useState(false);
 
+  const [providerSearch, setProviderSearch] = useState('');
+  const [providerPage, setProviderPage] = useState(1);
+  const [providers, setProviders] = useState<SettingsPricingTargetProvider[]>(
+    []
+  );
+  const [providersTotalCount, setProvidersTotalCount] = useState(0);
+  const [providersLoading, setProvidersLoading] = useState(false);
+
+  const [modelSearch, setModelSearch] = useState('');
+  const [modelPage, setModelPage] = useState(1);
+  const [models, setModels] = useState<SettingsPricingTarget[]>([]);
+  const [modelsTotalCount, setModelsTotalCount] = useState(0);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [resolvedSelectedTarget, setResolvedSelectedTarget] =
+    useState<SettingsPricingTarget | null>(null);
+
+  const providerRequestSeq = useRef(0);
+  const modelRequestSeq = useRef(0);
+
   useEffect(() => {
     if (!open) return;
     form.setFieldsValue({
@@ -69,35 +92,210 @@ export function ModelProviderConfiguredModelModal({
     setSelectedProviderCode(initialValue?.pricing_provider_code ?? 'zero');
     setSelectedModelId(initialValue?.pricing_model_id ?? 'any');
     setPricingError(false);
+    setProviderSearch('');
+    setProviderPage(1);
+    setProviders([]);
+    setProvidersTotalCount(0);
+    setModelSearch('');
+    setModelPage(1);
+    setModels([]);
+    setModelsTotalCount(0);
+    setResolvedSelectedTarget(null);
   }, [form, initialValue, open]);
 
-  const providerOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(pricingTargets.map((target) => target.provider_code))
-      ).map((providerCode) => ({ label: providerCode, value: providerCode })),
-    [pricingTargets]
-  );
-  const modelOptions = useMemo(
-    () =>
-      pricingTargets
-        .filter((target) => target.provider_code === selectedProviderCode)
-        .map((target) => ({
-          label: target.upstream_model_id,
-          value: target.upstream_model_id
-        })),
-    [pricingTargets, selectedProviderCode]
-  );
+  useEffect(() => {
+    if (!open) return;
+    const seq = ++providerRequestSeq.current;
+    let active = true;
+    setProvidersLoading(true);
+    void listSettingsPricingTargets({
+      provider_query: providerSearch.trim() || undefined,
+      page: providerPage,
+      page_size: PRICING_TARGETS_PAGE_SIZE
+    })
+      .then((response) => {
+        if (!active || seq !== providerRequestSeq.current) return;
+        setProvidersTotalCount(response.providers_total_count);
+        setProviders((current) => {
+          if (providerPage === 1) return response.providers;
+          const seen = new Set(current.map((item) => item.provider_code));
+          return [
+            ...current,
+            ...response.providers.filter(
+              (item) => !seen.has(item.provider_code)
+            )
+          ];
+        });
+      })
+      .catch(() => {
+        if (!active || seq !== providerRequestSeq.current) return;
+        if (providerPage === 1) {
+          setProviders([]);
+          setProvidersTotalCount(0);
+        }
+      })
+      .finally(() => {
+        if (active && seq === providerRequestSeq.current) {
+          setProvidersLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, providerPage, providerSearch]);
 
-  const selectedTarget = pricingTargets.find(
-    (target) =>
-      target.provider_code === selectedProviderCode &&
-      target.upstream_model_id === selectedModelId
-  );
+  const selectedFirstPageModelId =
+    modelPage === 1 ? selectedModelId || undefined : undefined;
+
+  useEffect(() => {
+    if (!open || !selectedProviderCode) return;
+    const seq = ++modelRequestSeq.current;
+    let active = true;
+    setModelsLoading(true);
+    void listSettingsPricingTargets({
+      provider_code: selectedProviderCode,
+      upstream_model_id: modelSearch.trim() || undefined,
+      selected_model_id: selectedFirstPageModelId,
+      page: modelPage,
+      page_size: PRICING_TARGETS_PAGE_SIZE
+    })
+      .then((response) => {
+        if (!active || seq !== modelRequestSeq.current) return;
+        setModelsTotalCount(response.total_count);
+        if (modelPage === 1) {
+          setResolvedSelectedTarget(response.selected_target ?? null);
+        }
+        setModels((current) => {
+          if (modelPage === 1) return response.items;
+          const seen = new Set(current.map((item) => item.upstream_model_id));
+          return [
+            ...current,
+            ...response.items.filter(
+              (item) => !seen.has(item.upstream_model_id)
+            )
+          ];
+        });
+      })
+      .catch(() => {
+        if (!active || seq !== modelRequestSeq.current) return;
+        if (modelPage === 1) {
+          setModels([]);
+          setModelsTotalCount(0);
+          setResolvedSelectedTarget(null);
+        }
+      })
+      .finally(() => {
+        if (active && seq === modelRequestSeq.current) {
+          setModelsLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    open,
+    selectedProviderCode,
+    modelPage,
+    modelSearch,
+    selectedFirstPageModelId
+  ]);
+
+  const providerOptions = useMemo(() => {
+    const codes = providers.map((item) => item.provider_code);
+    if (
+      !providerSearch.trim() &&
+      selectedProviderCode &&
+      !codes.includes(selectedProviderCode)
+    ) {
+      codes.unshift(selectedProviderCode);
+    }
+    return codes.map((providerCode) => ({
+      label: providerCode,
+      value: providerCode
+    }));
+  }, [providerSearch, providers, selectedProviderCode]);
+
+  const modelOptions = useMemo(() => {
+    const ids = models.map((item) => item.upstream_model_id);
+    if (
+      !modelSearch.trim() &&
+      selectedModelId &&
+      resolvedSelectedTarget?.provider_code === selectedProviderCode &&
+      resolvedSelectedTarget?.upstream_model_id === selectedModelId &&
+      !ids.includes(selectedModelId)
+    ) {
+      ids.unshift(selectedModelId);
+    }
+    return ids.map((modelId) => ({
+      label: modelId,
+      value: modelId
+    }));
+  }, [
+    modelSearch,
+    models,
+    resolvedSelectedTarget,
+    selectedModelId,
+    selectedProviderCode
+  ]);
+
+  const selectedTarget =
+    models.find(
+      (target) =>
+        target.provider_code === selectedProviderCode &&
+        target.upstream_model_id === selectedModelId
+    ) ??
+    (resolvedSelectedTarget &&
+    resolvedSelectedTarget.provider_code === selectedProviderCode &&
+    resolvedSelectedTarget.upstream_model_id === selectedModelId
+      ? resolvedSelectedTarget
+      : undefined);
+
+  function handleProviderPopupScroll(event: UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget;
+    if (
+      !providersLoading &&
+      providers.length < providersTotalCount &&
+      target.scrollTop + target.offsetHeight >= target.scrollHeight - 24
+    ) {
+      setProviderPage((page) => page + 1);
+    }
+  }
+
+  function handleModelPopupScroll(event: UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget;
+    if (
+      !modelsLoading &&
+      models.length < modelsTotalCount &&
+      target.scrollTop + target.offsetHeight >= target.scrollHeight - 24
+    ) {
+      setModelPage((page) => page + 1);
+    }
+  }
 
   async function handleSave() {
     const values = await form.validateFields();
-    if (!selectedTarget) {
+    if (!selectedProviderCode || !selectedModelId) {
+      setPricingError(true);
+      return;
+    }
+    let confirmedTarget = selectedTarget;
+    if (!confirmedTarget) {
+      try {
+        const lookup = await listSettingsPricingTargets({
+          provider_code: selectedProviderCode,
+          selected_model_id: selectedModelId,
+          page: 1,
+          page_size: 1
+        });
+        confirmedTarget = lookup.selected_target ?? undefined;
+        if (confirmedTarget) {
+          setResolvedSelectedTarget(confirmedTarget);
+        }
+      } catch {
+        confirmedTarget = undefined;
+      }
+    }
+    if (!confirmedTarget) {
       setPricingError(true);
       return;
     }
@@ -106,8 +304,8 @@ export function ModelProviderConfiguredModelModal({
       context_window_input: values.context_window_input?.trim() ?? '',
       supports_multimodal: values.supports_multimodal,
       enabled: values.enabled,
-      pricing_provider_code: selectedTarget.provider_code,
-      pricing_model_id: selectedTarget.upstream_model_id
+      pricing_provider_code: confirmedTarget.provider_code,
+      pricing_model_id: confirmedTarget.upstream_model_id
     });
   }
 
@@ -222,14 +420,25 @@ export function ModelProviderConfiguredModelModal({
           >
             <Select
               showSearch
+              filterOption={false}
+              loading={providersLoading}
               aria-label={i18nText('settings', 'auto.billing_provider_code')}
               value={selectedProviderCode || undefined}
               options={providerOptions}
-              optionFilterProp="label"
               placeholder={i18nText('settings', 'auto.billing_provider_code')}
+              onSearch={(value) => {
+                setProviderSearch(value);
+                setProviderPage(1);
+              }}
+              onPopupScroll={handleProviderPopupScroll}
               onChange={(providerCode) => {
                 setSelectedProviderCode(providerCode);
                 setSelectedModelId('');
+                setModelSearch('');
+                setModelPage(1);
+                setModels([]);
+                setModelsTotalCount(0);
+                setResolvedSelectedTarget(null);
                 setPricingError(false);
               }}
             />
@@ -240,11 +449,18 @@ export function ModelProviderConfiguredModelModal({
           >
             <Select
               showSearch
+              filterOption={false}
+              disabled={!selectedProviderCode}
+              loading={modelsLoading}
               aria-label={i18nText('settings', 'auto.billing_model_id')}
               value={selectedModelId || undefined}
               options={modelOptions}
-              optionFilterProp="label"
               placeholder={i18nText('settings', 'auto.billing_model_id')}
+              onSearch={(value) => {
+                setModelSearch(value);
+                setModelPage(1);
+              }}
+              onPopupScroll={handleModelPopupScroll}
               onChange={(modelId) => {
                 setSelectedModelId(modelId);
                 setPricingError(false);
@@ -258,7 +474,7 @@ export function ModelProviderConfiguredModelModal({
           </Typography.Text>
         ) : null}
 
-        <Table<SettingsModelProviderPricingTarget>
+        <Table<SettingsPricingTarget>
           size="small"
           pagination={false}
           style={{ marginTop: 16 }}

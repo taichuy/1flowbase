@@ -114,7 +114,7 @@ describe('DataTableLayout', () => {
   });
 
   test.each([0, 1, 2, 3, 4])(
-    'shows at most two actions inline with %i actions',
+    'shows up to three actions inline without single-item overflow for %i actions',
     async (count) => {
       const handlers = Array.from({ length: count }, () => vi.fn());
       render(
@@ -127,13 +127,14 @@ describe('DataTableLayout', () => {
           }))}
         />
       );
-      for (let index = 0; index < Math.min(count, 2); index++) {
+      const inlineCount = count <= 3 ? count : 2;
+      for (let index = 0; index < inlineCount; index++) {
         fireEvent.click(
           screen.getByRole('button', { name: `Action ${index + 1}` })
         );
         expect(handlers[index]).toHaveBeenCalledTimes(1);
       }
-      if (count <= 2) {
+      if (count <= 3) {
         expect(
           screen.queryByRole('button', { name: 'More actions' })
         ).not.toBeInTheDocument();
@@ -171,6 +172,11 @@ describe('DataTableLayout', () => {
             label: 'Edit',
             disabled: true,
             onClick: disabledAction
+          },
+          {
+            key: 'duplicate',
+            label: 'Duplicate',
+            onClick: vi.fn()
           },
           {
             key: 'delete',

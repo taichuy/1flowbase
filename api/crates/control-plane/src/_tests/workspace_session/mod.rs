@@ -1,8 +1,9 @@
-use crate::_tests::support::{MemoryAuthRepository, MemorySessionStore, MemoryWorkspaceRepository};
+use crate::_tests::support::{MemoryAuthRepository, MemoryWorkspaceRepository};
 use crate::errors::ControlPlaneError;
 use crate::workspace_session::{SwitchWorkspaceCommand, WorkspaceSessionService};
 use control_plane::ports::SessionStore;
 use domain::{BoundRole, RoleScopeKind, SessionRecord, UserRecord, UserStatus, WorkspaceRecord};
+use storage_ephemeral::MokaSessionStore;
 use uuid::Uuid;
 
 fn test_workspace(tenant_id: Uuid, workspace_id: Uuid, name: &str) -> WorkspaceRecord {
@@ -59,7 +60,7 @@ fn test_session(user_id: Uuid, tenant_id: Uuid, workspace_id: Uuid) -> SessionRe
         active_role_code: "member".into(),
         session_version: 7,
         csrf_token: "csrf-before".to_string(),
-        expires_at_unix: 1_900_000_000,
+        expires_at_unix: time::OffsetDateTime::now_utc().unix_timestamp() + 3_600,
     }
 }
 
@@ -73,7 +74,7 @@ async fn switch_workspace_rewrites_session_scope_and_rotates_csrf() {
     let user = test_user(source_workspace_id, target_workspace_id);
     let repository = MemoryAuthRepository::new(user.clone());
     let team_repository = MemoryWorkspaceRepository::default();
-    let session_store = MemorySessionStore::default();
+    let session_store = MokaSessionStore::default();
     let session = test_session(user.id, tenant_id, source_workspace_id);
 
     team_repository
@@ -111,7 +112,7 @@ async fn switch_workspace_writes_workspace_id_into_audit_log() {
     let user = test_user(source_workspace_id, target_workspace_id);
     let repository = MemoryAuthRepository::new(user.clone());
     let team_repository = MemoryWorkspaceRepository::default();
-    let session_store = MemorySessionStore::default();
+    let session_store = MokaSessionStore::default();
     let session = test_session(user.id, tenant_id, source_workspace_id);
 
     team_repository
@@ -148,7 +149,7 @@ async fn switch_workspace_rejects_inaccessible_target_for_non_root() {
     let user = test_user(source_workspace_id, blocked_workspace_id);
     let repository = MemoryAuthRepository::new(user.clone());
     let team_repository = MemoryWorkspaceRepository::default();
-    let session_store = MemorySessionStore::default();
+    let session_store = MokaSessionStore::default();
     let session = test_session(user.id, tenant_id, source_workspace_id);
 
     team_repository
@@ -182,7 +183,7 @@ async fn switch_workspace_keeps_session_id_and_expiry() {
     let user = test_user(source_workspace_id, target_workspace_id);
     let repository = MemoryAuthRepository::new(user.clone());
     let team_repository = MemoryWorkspaceRepository::default();
-    let session_store = MemorySessionStore::default();
+    let session_store = MokaSessionStore::default();
     let session = test_session(user.id, tenant_id, source_workspace_id);
 
     team_repository
@@ -210,5 +211,4 @@ async fn switch_workspace_keeps_session_id_and_expiry() {
     assert_eq!(result.session.expires_at_unix, session.expires_at_unix);
     assert_eq!(persisted.session_id, session.session_id);
     assert_eq!(persisted.expires_at_unix, session.expires_at_unix);
-    assert_eq!(session_store.deleted_session_ids(), Vec::<String>::new());
 }

@@ -1,5 +1,5 @@
 import { evaluateFrontstageReactArtifact } from '../../lib/native-modules/modal/evaluator';
-import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
+import { BlockUiLoadingShell } from '@1flowbase/block-renderer/loading-shell';
 import {
   diagnoseLegacyBlockModuleSource,
   type NativeReactRuntimeDiagnostic,

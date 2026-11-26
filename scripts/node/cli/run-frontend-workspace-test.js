@@ -4,7 +4,9 @@ const { spawnSync } = require('node:child_process');
 
 const { buildNodePreferredEnv } = require('../testing/node-runtime.js');
 const { getRepoRoot } = require('../testing/warning-capture.js');
-const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
+const { isCiEnvironment, loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
+
+const { getLocalCpuBudget } = require('../testing/resources/budget.js');
 
 function normalizePassThroughArgs(args) {
   if (args[0] === '--') {
@@ -14,7 +16,13 @@ function normalizePassThroughArgs(args) {
   return args;
 }
 
-function buildWorkspaceTestCommand({ runtimeConfig, passThroughArgs = [] }) {
+function buildWorkspaceTestCommand({ runtimeConfig, passThroughArgs = [], cpuBudget }) {
+  if (passThroughArgs.some((argument) => /^--(?:concurrency|parallel|maxWorkers)(?:=|$)/u.test(argument))) {
+    throw new Error('Workspace test concurrency is managed by the repository runtime configuration');
+  }
+  const turboConcurrency = Math.min(runtimeConfig.frontend.turboConcurrency, cpuBudget ?? Infinity);
+  const vitestMaxWorkers = Math.min(runtimeConfig.frontend.vitestMaxWorkers ?? 1,
+    Math.floor((cpuBudget ?? Infinity) / turboConcurrency));
   return {
     command: 'pnpm',
     args: [
@@ -24,10 +32,11 @@ function buildWorkspaceTestCommand({ runtimeConfig, passThroughArgs = [] }) {
       'turbo',
       'run',
       'test',
-      `--concurrency=${runtimeConfig.frontend.turboConcurrency}`,
+      `--concurrency=${turboConcurrency}`,
       ...passThroughArgs,
     ],
     cwd: '.',
+    ...(cpuBudget === undefined ? {} : { env: { VITEST_MAX_WORKERS: String(vitestMaxWorkers) } }),
   };
 }
 
@@ -40,12 +49,13 @@ function main(argv = [], deps = {}) {
   const command = buildWorkspaceTestCommand({
     runtimeConfig,
     passThroughArgs: normalizePassThroughArgs(argv),
+    cpuBudget: isCiEnvironment(env) ? undefined : getLocalCpuBudget(),
   });
   const { env: commandEnv } = buildNodePreferredEnv(env);
 
   const result = spawnSyncImpl(command.command, command.args, {
     cwd: repoRoot,
-    env: commandEnv,
+    env: { ...commandEnv, ...command.env },
     stdio: 'inherit',
   });
 

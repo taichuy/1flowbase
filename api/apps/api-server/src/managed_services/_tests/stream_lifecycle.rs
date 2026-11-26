@@ -78,7 +78,8 @@ async fn generation_managed_socket_session_retains_old_owner_until_session_drop(
     let operation: plugin_framework::ManagedServiceOperation = serde_json::from_value(json!({
         "interface_id":"fixture.stream","contribution_id":"fixture.stream","method":"GET",
         "path":"/api/console/managed-services/fixture/stream","summary":"Stream","description":"Stream fixture",
-        "input_schema":{"type":"object"},"output_schema":{"type":"object"}
+        "input_schema":{"type":"object"},"output_schema":{"type":"object"},
+        "stream":{"input_schema":{"type":"object"},"event_schema":{"type":"object"}}
     })).unwrap();
     let (input, _) = mpsc::channel(1);
     let (_, events) = mpsc::channel(1);

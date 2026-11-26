@@ -40,7 +40,7 @@ impl PluginExecutionGateAuthority for ManagedPluginExecutionGateAuthority {
             let future = async {
                 let lease = self
                     .authority
-                    .lock_contribution_authority(&binding.subject)
+                    .lock_managed_callback_authority(&binding.subject)
                     .await
                     .map_err(|_| denied())?;
                 let installation = lease.installation(installation_id).ok_or_else(denied)?;
@@ -62,11 +62,14 @@ impl PluginExecutionGateAuthority for ManagedPluginExecutionGateAuthority {
                     .iter()
                     .find(|c| c.contribution_id == *binding.subject.contribution_id())
                     .ok_or_else(denied)?;
-                if contribution.point_id.as_str() != plugin_framework::MANAGED_SERVICE_POINT
-                    || !contribution
-                        .required_permissions
-                        .iter()
-                        .any(|p| p.as_str() == "execution.gate")
+                if !matches!(
+                    contribution.point_id.as_str(),
+                    plugin_framework::MANAGED_SERVICE_POINT
+                        | extension_contracts::WORKSPACE_POLICY_POINT
+                ) || !contribution
+                    .required_permissions
+                    .iter()
+                    .any(|p| p.as_str() == "execution.gate")
                 {
                     return Err(denied());
                 }

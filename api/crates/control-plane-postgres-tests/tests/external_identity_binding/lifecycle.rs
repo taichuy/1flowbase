@@ -28,11 +28,12 @@ async fn external_member(
     let result = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     )
     .complete_external_login(CompleteExternalLoginCommand {
+        invitation_token: None,
         login_entry_id: entry.id,
         identity: identity.clone(),
         registration_eligible: true,
@@ -62,7 +63,7 @@ async fn canonical_subject_crosses_connections_but_never_authorities() {
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -81,6 +82,7 @@ async fn canonical_subject_crosses_connections_but_never_authorities() {
         .unwrap();
     let login = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: b.id,
             identity: ib.clone(),
             registration_eligible: false,
@@ -103,11 +105,13 @@ async fn canonical_subject_crosses_connections_but_never_authorities() {
     let race_b = canonical(&b, "registration-race", "registration-race@example.com");
     let (first, second) = tokio::join!(
         kernel.complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: a.id,
             identity: race_a,
             registration_eligible: true
         }),
         kernel.complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: b.id,
             identity: race_b,
             registration_eligible: true
@@ -128,6 +132,7 @@ async fn canonical_subject_crosses_connections_but_never_authorities() {
         .is_none());
     let login = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: b.id,
             identity: other,
             registration_eligible: true,
@@ -161,7 +166,7 @@ async fn unlink_reserves_owner_blocks_signup_and_only_explicit_owner_binding_res
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -204,6 +209,7 @@ async fn unlink_reserves_owner_blocks_signup_and_only_explicit_owner_binding_res
         .unwrap();
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity.clone(),
             registration_eligible: true,
@@ -268,6 +274,7 @@ async fn unlink_reserves_owner_blocks_signup_and_only_explicit_owner_binding_res
     assert!(restored.unlinked_at.is_none());
     let login = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity,
             registration_eligible: false,
@@ -315,7 +322,7 @@ async fn methods_view_preserves_dto_order_and_unlink_counterexamples() {
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -470,7 +477,7 @@ async fn parallel_unlinks_keep_one_live_method_and_ignore_sentinel_contact_and_i
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -574,7 +581,7 @@ async fn initial_password_requires_live_owned_binding_creates_account_and_authen
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -640,12 +647,13 @@ async fn initial_password_requires_live_owned_binding_creates_account_and_authen
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
     let login = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             identifier: user.account,
             password: "password".into(),

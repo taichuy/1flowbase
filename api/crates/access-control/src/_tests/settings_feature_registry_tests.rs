@@ -68,6 +68,7 @@ fn feature(
     api_routes: &[(&str, &str)],
 ) -> SettingsFeatureRegistration {
     SettingsFeatureRegistration {
+        root_workspace_only: false,
         feature_id: feature_id.to_string(),
         owner: SettingsFeatureOwner {
             kind: owner_kind,

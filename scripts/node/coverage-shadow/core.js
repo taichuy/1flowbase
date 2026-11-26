@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { backendThresholds } = require('../testing/coverage-thresholds.js');
 
@@ -275,15 +276,88 @@ function run(command, {
   return logPrefix ? `${stdout}\n${stderr}` : stdout;
 }
 
+const ARCHIVE_NAME = 'api-server-nextest.tar.zst';
+const FROZEN_SHA = /^(?!0+$)[0-9a-f]{40}$/u;
+
+function sha256File(file) {
+  const hash = createHash('sha256');
+  const fd = fs.openSync(file, 'r');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    let length;
+    while ((length = fs.readSync(fd, buffer)) > 0) hash.update(buffer.subarray(0, length));
+    return hash.digest('hex');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function verifyFrozenCheckout({ repoRoot, env, spawnSyncImpl }) {
+  const sha = env.QUALITY_GATE_TARGET_SHA;
+  const options = { env, spawnSyncImpl, capture: true };
+  if (!FROZEN_SHA.test(sha ?? '') || run({ command: 'git', args: ['rev-parse', 'HEAD'], cwd: repoRoot }, options).trim() !== sha) {
+    throw new Error('coverage archive requires the exact frozen SHA checkout');
+  }
+  run({ command: 'git', args: ['diff', '--quiet', 'HEAD', '--', 'api'], cwd: repoRoot }, options);
+  return sha;
+}
+
+function archiveNextestArgs(archivePath, apiCwd) {
+  return ['--archive-file', archivePath, '--workspace-remap', apiCwd];
+}
+
+function buildApiServerCoverageArchive({ repoRoot, archiveDir, env = process.env, spawnSyncImpl }) {
+  const sha = verifyFrozenCheckout({ repoRoot, env, spawnSyncImpl });
+  const cwd = path.join(repoRoot, 'api');
+  const archivePath = path.join(archiveDir, ARCHIVE_NAME);
+  const inventoryPath = path.join(archiveDir, 'full-inventory.json');
+  const metadataPath = path.join(archiveDir, 'archive.json');
+  fs.mkdirSync(archiveDir, { recursive: true });
+  for (const file of [archivePath, inventoryPath, metadataPath]) fs.rmSync(file, { force: true });
+  const llvmEnv = parseLlvmCovEnvironment(run({ command: 'cargo', args: ['llvm-cov', 'show-env', '--sh'], cwd }, {
+    env, spawnSyncImpl, capture: true,
+  }));
+  const instrumentedEnv = { ...env, ...llvmEnv, CARGO_PROFILE_TEST_DEBUG: '0' };
+  run({ command: 'cargo', args: ['clean', ...apiPackageArgs(repoRoot)], cwd }, { env: instrumentedEnv, spawnSyncImpl });
+  run({ command: 'cargo', args: ['nextest', 'archive', '--locked', ...apiPackageArgs(repoRoot), '--archive-file', archivePath], cwd }, {
+    env: instrumentedEnv, spawnSyncImpl,
+  });
+  // List the archived binaries, never a new build, so the full inventory is bound to the executable set.
+  const inventory = JSON.parse(run({ command: 'cargo', args: ['nextest', 'list',
+    ...archiveNextestArgs(archivePath, cwd), '--message-format', 'json'], cwd }, { env, spawnSyncImpl, capture: true }));
+  if (!collectNextestTestIds(inventory).length) throw new Error('coverage archive has no runnable tests');
+  fs.writeFileSync(inventoryPath, `${JSON.stringify(inventory)}\n`);
+  fs.writeFileSync(metadataPath, `${JSON.stringify({
+    sha, packages: apiSourceOwners(repoRoot).map((owner) => owner.packageName),
+    archiveSha256: sha256File(archivePath), inventorySha256: sha256File(inventoryPath),
+  }, null, 2)}\n`);
+}
+
+function readVerifiedArchive({ repoRoot, archiveDir, env, spawnSyncImpl }) {
+  const sha = verifyFrozenCheckout({ repoRoot, env, spawnSyncImpl });
+  const metadata = readJson(path.join(archiveDir, 'archive.json'));
+  const archivePath = path.join(archiveDir, ARCHIVE_NAME);
+  const inventoryPath = path.join(archiveDir, 'full-inventory.json');
+  if (metadata.sha !== sha) throw new Error('coverage archive does not belong to the same frozen SHA');
+  if (JSON.stringify(metadata.packages) !== JSON.stringify(apiSourceOwners(repoRoot).map((owner) => owner.packageName))
+    || metadata.archiveSha256 !== sha256File(archivePath) || metadata.inventorySha256 !== sha256File(inventoryPath)) {
+    throw new Error('coverage archive package or artifact integrity mismatch');
+  }
+  return { archivePath, archiveSha256: metadata.archiveSha256, fullInventory: readJson(inventoryPath) };
+}
+
 function runApiServerShard({
-  repoRoot, shardIndex, shardCount, cargoTestThreads, env = process.env, spawnSyncImpl, writeStdout, writeStderr,
+  repoRoot, shardIndex, shardCount, cargoTestThreads, archiveDir, env = process.env, spawnSyncImpl, writeStdout, writeStderr,
 }) {
-  const [showEnv, cleanObjects, listTests, runTests] = buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTestThreads });
+  let [showEnv, cleanObjects, listTests, runTests] = buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTestThreads });
   const shardDir = path.dirname(runTests.profilePattern);
   fs.rmSync(shardDir, { recursive: true, force: true });
   fs.mkdirSync(shardDir, { recursive: true });
   if (!env.QUALITY_GATE_TARGET_SHA?.trim()) throw new Error('coverage shard requires a frozen SHA');
-  const llvmEnv = parseLlvmCovEnvironment(run(showEnv, { env, spawnSyncImpl, capture: true, writeStdout, writeStderr }));
+  const archive = archiveDir ? readVerifiedArchive({ repoRoot, archiveDir, env, spawnSyncImpl }) : null;
+  const llvmEnv = archive ? {} : parseLlvmCovEnvironment(run(showEnv, {
+    env, spawnSyncImpl, capture: true, writeStdout, writeStderr,
+  }));
   const instrumentedEnv = {
     ...env,
     ...llvmEnv,
@@ -291,7 +365,13 @@ function runApiServerShard({
     CARGO_PROFILE_TEST_DEBUG: '0',
     RUST_MIN_STACK: String(8 * 1024 * 1024),
   };
-  run(cleanObjects, { env: instrumentedEnv, spawnSyncImpl });
+  if (archive) {
+    const common = [...archiveNextestArgs(archive.archivePath, runTests.cwd), '--partition', `hash:${shardIndex}/${shardCount}`];
+    listTests = { ...listTests, args: ['nextest', 'list', ...common, '--message-format', 'json'] };
+    runTests = { ...runTests, args: ['nextest', 'run', ...common, '--test-threads', String(cargoTestThreads), '--no-fail-fast', '--no-tests=fail'] };
+  } else {
+    run(cleanObjects, { env: instrumentedEnv, spawnSyncImpl });
+  }
   const inventoryText = run(listTests, {
     env: instrumentedEnv, spawnSyncImpl, capture: true, writeStdout, writeStderr,
     capturePrefix: path.join(shardDir, `nextest-list-${shardIndex}`),
@@ -317,6 +397,7 @@ function runApiServerShard({
     passedCount: execution.passedCount,
     failedCount: execution.failedCount,
     profileCount: profiles.length,
+    ...(archive && { archiveSha256: archive.archiveSha256 }),
   }, null, 2)}\n`, 'utf8');
 }
 
@@ -329,6 +410,7 @@ function mergeApiServerShadow({
   shardCount,
   monolithicPath,
   monolithicShaPath,
+  archiveDir,
   env = process.env,
   spawnSyncImpl,
 }) {
@@ -363,19 +445,41 @@ function mergeApiServerShadow({
   }
 
   const apiCwd = path.join(repoRoot, 'api');
-  const targetDir = path.resolve(apiCwd, env.CARGO_TARGET_DIR || 'target');
-  fs.mkdirSync(targetDir, { recursive: true });
-  for (const name of fs.readdirSync(targetDir).filter((entry) => entry.endsWith('.profraw'))) {
-    fs.rmSync(path.join(targetDir, name), { force: true });
+  const archive = archiveDir ? readVerifiedArchive({ repoRoot, archiveDir, env, spawnSyncImpl }) : null;
+  let targetDir;
+  let instrumentedEnv;
+  let fullInventory;
+  if (archive) {
+    if (metadata.some((item) => item.archiveSha256 !== archive.archiveSha256)) {
+      throw new Error('coverage shards did not run the same instrumented archive');
+    }
+    fullInventory = archive.fullInventory;
+    const extraction = path.join(root, 'merge-archive');
+    fs.rmSync(extraction, { recursive: true, force: true });
+    fs.mkdirSync(extraction, { recursive: true });
+    targetDir = path.join(extraction, 'target');
+    // Nextest restores the explicit archived executable set under extract-to/target.
+    // Binaries-only lists/extracts it without running tests or invoking a build.
+    run({ command: 'cargo', args: ['nextest', 'list', ...archiveNextestArgs(archive.archivePath, apiCwd),
+      '--extract-to', extraction, '--list-type', 'binaries-only', '--message-format', 'json'], cwd: apiCwd },
+    { env, spawnSyncImpl, capture: true });
+    instrumentedEnv = { ...env, CARGO_TARGET_DIR: targetDir, CARGO_LLVM_COV_TARGET_DIR: targetDir,
+      CARGO_LLVM_COV_BUILD_DIR: targetDir };
+  } else {
+    targetDir = path.resolve(apiCwd, env.CARGO_TARGET_DIR || 'target');
+    fs.mkdirSync(targetDir, { recursive: true });
+    for (const name of fs.readdirSync(targetDir).filter((entry) => entry.endsWith('.profraw'))) {
+      fs.rmSync(path.join(targetDir, name), { force: true });
+    }
+    const showEnv = { command: 'cargo', args: ['llvm-cov', 'show-env', '--sh'], cwd: apiCwd };
+    const llvmEnv = parseLlvmCovEnvironment(run(showEnv, { env, spawnSyncImpl, capture: true }));
+    instrumentedEnv = { ...env, ...llvmEnv, CARGO_PROFILE_TEST_DEBUG: '0' };
+    run({ command: 'cargo', args: ['clean', ...apiPackageArgs(repoRoot)], cwd: apiCwd },
+      { env: instrumentedEnv, spawnSyncImpl });
+    fullInventory = JSON.parse(run({
+      command: 'cargo', args: ['nextest', 'list', ...apiPackageArgs(repoRoot), '--message-format', 'json'], cwd: apiCwd,
+    }, { env: instrumentedEnv, spawnSyncImpl, capture: true }));
   }
-  const showEnv = { command: 'cargo', args: ['llvm-cov', 'show-env', '--sh'], cwd: apiCwd };
-  const llvmEnv = parseLlvmCovEnvironment(run(showEnv, { env, spawnSyncImpl, capture: true }));
-  const instrumentedEnv = { ...env, ...llvmEnv, CARGO_PROFILE_TEST_DEBUG: '0' };
-  run({ command: 'cargo', args: ['clean', ...apiPackageArgs(repoRoot)], cwd: apiCwd },
-    { env: instrumentedEnv, spawnSyncImpl });
-  const fullInventory = JSON.parse(run({
-    command: 'cargo', args: ['nextest', 'list', ...apiPackageArgs(repoRoot), '--message-format', 'json'], cwd: apiCwd,
-  }, { env: instrumentedEnv, spawnSyncImpl, capture: true }));
   const inventoryResult = validateShardInventories({ fullInventory, shardInventories: inventories });
   for (const profile of profiles) {
     fs.copyFileSync(path.join(shardRoot, profile), path.join(targetDir, profile));
@@ -399,6 +503,7 @@ function mergeApiServerShadow({
   const evidence = {
     sha: [...shas][0],
     inventory: inventoryResult,
+    ...(archive && { archiveSha256: archive.archiveSha256 }),
     shards: metadata,
     coverage,
   };
@@ -411,6 +516,7 @@ function mergeApiServerShadow({
 }
 
 module.exports = {
+  buildApiServerCoverageArchive,
   buildApiServerShardCommands,
   collectNextestTestIds,
   compareCoverageSummaries,

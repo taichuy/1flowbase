@@ -705,15 +705,34 @@ fn open_record_fixture() -> Value {
 fn record_and_host_handle_selectors_validate_requiredness_and_open_response_binding() {
     assert!(parse(&open_record_fixture()).is_ok());
     for (pointer, replacement) in [
-        ("/managed_service/operations/0/input_schema/properties/body/required", json!([])),
-        ("/managed_service/operations/0/record_permission/selector/pointer", json!("/body/host_id~2")),
-        ("/managed_service/operations/0/output_schema/properties/session/properties/session_id/type", json!("number")),
-        ("/managed_service/operations/0/record_permission/response_handle_pointer", json!("/missing/session_id")),
-        ("/managed_service/operations/0/record_permission/selector/allow_missing", json!(true)),
+        (
+            "/managed_service/operations/0/input_schema/properties/body/required",
+            json!([]),
+        ),
+        (
+            "/managed_service/operations/0/record_permission/selector/pointer",
+            json!("/body/host_id~2"),
+        ),
+        (
+            "/managed_service/operations/0/output_schema/properties/session/properties/session_id/type",
+            json!("number"),
+        ),
+        (
+            "/managed_service/operations/0/record_permission/response_handle_pointer",
+            json!("/missing/session_id"),
+        ),
+        (
+            "/managed_service/operations/0/record_permission/selector/allow_missing",
+            json!(true),
+        ),
     ] {
         let mut value = open_record_fixture();
-        if let Some(target) = value.pointer_mut(pointer) { *target = replacement; }
-        else { value["managed_service"]["operations"][0]["record_permission"]["selector"]["allow_missing"] = replacement; }
+        if let Some(target) = value.pointer_mut(pointer) {
+            *target = replacement;
+        } else {
+            value["managed_service"]["operations"][0]["record_permission"]["selector"]["allow_missing"] =
+                replacement;
+        }
         assert!(parse(&value).is_err(), "{pointer} must fail closed");
     }
     let mut handle = open_record_fixture();
@@ -773,3 +792,6 @@ fn record_create_is_an_explicit_non_grantable_insert_classification() {
     value["managed_service"]["record_resources"][0]["actions"].as_array_mut().unwrap().push(json!({"action_code":"create", "label":"Create", "description":"Must never be grantable per record", "operation_ids":["managed_fixture.create"]}));
     assert!(parse(&value).is_err());
 }
+
+#[path = "managed_service_resource_tests.rs"]
+mod resource_declarations;

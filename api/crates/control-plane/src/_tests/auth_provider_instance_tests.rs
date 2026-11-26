@@ -24,7 +24,8 @@ use plugin_framework::{
 };
 use uuid::Uuid;
 
-use crate::_tests::support::{password_hash, MemorySessionStore};
+use crate::_tests::support::password_hash;
+use storage_ephemeral::MokaSessionStore;
 
 #[path = "auth_provider_instance/external_login.rs"]
 mod external_login;
@@ -413,11 +414,12 @@ async fn password_local_login_accepts_legacy_phc_and_rejects_wrong_password() {
     );
     let kernel = AuthKernel::new(
         repository.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
 
     let login = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: fixture["password"]["plaintext"]
@@ -432,6 +434,7 @@ async fn password_local_login_accepts_legacy_phc_and_rejects_wrong_password() {
 
     let rejected = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "incorrect-legacy-password".to_string(),
@@ -470,11 +473,12 @@ async fn password_local_entries_share_the_local_credential_connection() {
     );
     let kernel = AuthKernel::new(
         repository.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
 
     kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "change-me".to_string(),
@@ -506,12 +510,13 @@ async fn external_provider_cannot_replace_the_password_local_credential_verifier
         })]);
     let kernel = AuthKernel::with_registry(
         repository,
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
         registry,
     );
 
     kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "change-me".to_string(),
@@ -534,11 +539,12 @@ async fn password_local_login_rejects_a_non_local_connection() {
     let repository = InstanceAwareAuthRepository::new(vec![login_entry], user);
     let kernel = AuthKernel::new(
         repository.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
 
     let result = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "change-me".to_string(),
@@ -573,12 +579,13 @@ async fn auth_kernel_rejects_provider_claim_from_another_authenticator_instance(
         })]);
     let kernel = AuthKernel::with_registry(
         repository,
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
         registry,
     );
 
     let result = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
             identifier: "root@example.com".to_string(),
             password: "ignored".to_string(),
@@ -616,12 +623,13 @@ async fn auth_kernel_resolves_only_a_bound_verified_external_identity() {
         })]);
     let kernel = AuthKernel::with_registry(
         repository,
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
         registry,
     );
 
     let result = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
             identifier: "ignored".to_string(),
             password: "ignored".to_string(),
@@ -649,12 +657,13 @@ async fn auth_kernel_does_not_merge_an_unbound_external_email() {
         })]);
     let kernel = AuthKernel::with_registry(
         repository,
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
         registry,
     );
 
     let result = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
             identifier: "root@example.com".to_string(),
             password: "ignored".to_string(),

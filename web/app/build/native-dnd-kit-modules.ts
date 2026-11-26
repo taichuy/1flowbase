@@ -5,15 +5,19 @@ import type { Plugin } from 'vite';
 
 import {
   createDemandResolvedModuleDomain,
-  generateDemandResolvedLoaderRuntime
+  generateDemandResolvedLoaderRuntime,
+  generateDemandResolvedLoadersModule
 } from './native-demand-resolved-modules';
 
 export const NATIVE_DND_KIT_MODULES_VIRTUAL_ID =
   'virtual:1flowbase-native-dnd-kit-modules';
+export const NATIVE_DND_KIT_LOADERS_VIRTUAL_ID =
+  'virtual:1flowbase-native-dnd-kit-loaders';
 export const NATIVE_DND_KIT_LEAF_VIRTUAL_PREFIX =
   'virtual:1flowbase-native-dnd-kit-leaf/';
 
 const RESOLVED_VIRTUAL_ID = `\0${NATIVE_DND_KIT_MODULES_VIRTUAL_ID}`;
+const RESOLVED_LOADERS_VIRTUAL_ID = `\0${NATIVE_DND_KIT_LOADERS_VIRTUAL_ID}`;
 const DND_KIT_SCOPE = '@dnd-kit';
 const JAVASCRIPT_EXTENSIONS = ['.js', '.mjs', '.cjs'] as const;
 
@@ -45,21 +49,22 @@ export function nativeDndKitModulesPlugin({
     resolveId: {
       filter: {
         id: [
-          /^virtual:1flowbase-native-dnd-kit-modules$/u,
+          /^virtual:1flowbase-native-dnd-kit-(?:modules|loaders)$/u,
           /^virtual:1flowbase-native-dnd-kit-leaf\//u
         ]
       },
       handler(id) {
-        return id === NATIVE_DND_KIT_MODULES_VIRTUAL_ID
-          ? RESOLVED_VIRTUAL_ID
-          : demandDomain.resolveId(id);
+        if (id === NATIVE_DND_KIT_MODULES_VIRTUAL_ID) return RESOLVED_VIRTUAL_ID;
+        if (id === NATIVE_DND_KIT_LOADERS_VIRTUAL_ID)
+          return RESOLVED_LOADERS_VIRTUAL_ID;
+        return demandDomain.resolveId(id);
       }
     },
     load: {
       filter: {
         id: [
-          /^\x00virtual:1flowbase-native-dnd-kit-modules$/u,
-          /^\x00virtual:1flowbase-native-dnd-kit-leaf\//u
+          /virtual:1flowbase-native-dnd-kit-(?:modules|loaders)$/u,
+          /virtual:1flowbase-native-dnd-kit-leaf\//u
         ]
       },
       handler(id) {
@@ -67,6 +72,13 @@ export function nativeDndKitModulesPlugin({
           return command === 'serve'
             ? generateNativeDndKitDevModules(inventory)
             : renderNativeDndKitModules(inventory);
+        }
+        if (id === RESOLVED_LOADERS_VIRTUAL_ID) {
+          return generateDemandResolvedLoadersModule({
+            errorLabel: '@dnd-kit module',
+            modules: inventory,
+            virtualPrefix: NATIVE_DND_KIT_LEAF_VIRTUAL_PREFIX
+          });
         }
         return demandDomain.load(id, command);
       }
@@ -205,6 +217,30 @@ function generateNativeDndKitModules(
       ])
     ).values()
   ];
+  if (command === 'build') {
+    const moduleSources = inventory.map(({ moduleSource }) => moduleSource);
+    return `
+let loaderDomainPromise;
+async function loadLoaderDomain() {
+  loaderDomainPromise ??= import(${JSON.stringify(NATIVE_DND_KIT_LOADERS_VIRTUAL_ID)}).catch((error) => {
+    loaderDomainPromise = undefined;
+    throw error;
+  });
+  return loaderDomainPromise;
+}
+
+export const DND_KIT_MODULE_DEFINITIONS = Object.freeze(
+  ${JSON.stringify(moduleSources)}.map((module_source) => ({ module_source, exports: ['*'] }))
+);
+
+export const DND_KIT_PACKAGES = Object.freeze(${JSON.stringify(packages)});
+
+export async function loadDndKitModule(moduleSource) {
+  const domain = await loadLoaderDomain();
+  return domain.loadDemandResolvedModule(moduleSource);
+}
+`;
+  }
   const loaderRuntime = generateDemandResolvedLoaderRuntime({
     command,
     errorLabel: '@dnd-kit module',

@@ -1,21 +1,26 @@
 import {
-  deleteConsoleSession as requestDeleteConsoleSession,
   fetchConsoleMe as requestFetchConsoleMe,
   fetchConsoleSession as requestFetchConsoleSession,
   fetchPublicLoginEntries as requestFetchPublicLoginEntries,
   getDefaultApiBaseUrl,
   signInWithPassword as requestSignInWithPassword,
-  switchConsoleSessionRole as requestSwitchConsoleSessionRole,
   type ApiBaseUrlLocation,
   type ConsoleMe,
   type ConsoleSessionSnapshot,
+  type ConsoleWorkspaceSummary,
   type PasswordSignInInput,
   type PasswordSignInResponse,
   type PublicLoginEntry,
-  type PublicLoginEntriesResponse
+  type PublicLoginEntriesResponse,
+  type PublicOnboardingMode
 } from '@1flowbase/api-client/auth';
 
-export type { PasswordSignInResponse, PublicLoginEntry };
+export type {
+  ConsoleWorkspaceSummary,
+  PasswordSignInResponse,
+  PublicLoginEntry,
+  PublicOnboardingMode
+};
 
 const loginEntryFlights = new Map<
   string,
@@ -30,26 +35,6 @@ export function getAuthApiBaseUrl(
   return (
     import.meta.env.VITE_API_BASE_URL ?? getDefaultApiBaseUrl(locationLike)
   );
-}
-
-export function getScalarApiBaseUrl(
-  locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'
-    ? window.location
-    : undefined
-): string {
-  if (import.meta.env.VITE_SCALAR_API_BASE_URL) {
-    return import.meta.env.VITE_SCALAR_API_BASE_URL;
-  }
-
-  if (locationLike?.origin) {
-    return locationLike.origin;
-  }
-
-  const protocol = locationLike?.protocol === 'https:' ? 'https:' : 'http:';
-  const hostname = locationLike?.hostname || '127.0.0.1';
-  const port = locationLike?.port;
-
-  return port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
 }
 
 export function signInWithPassword(
@@ -84,19 +69,4 @@ export function fetchCurrentMe(
   baseUrl = getAuthApiBaseUrl()
 ): Promise<ConsoleMe> {
   return requestFetchConsoleMe(baseUrl);
-}
-
-export function signOut(
-  csrfToken: string,
-  baseUrl = getAuthApiBaseUrl()
-): Promise<void> {
-  return requestDeleteConsoleSession(csrfToken, baseUrl);
-}
-
-export function switchActiveRole(
-  roleCode: string,
-  csrfToken: string,
-  baseUrl = getAuthApiBaseUrl()
-): Promise<ConsoleSessionSnapshot> {
-  return requestSwitchConsoleSessionRole(roleCode, csrfToken, baseUrl);
 }

@@ -240,4 +240,200 @@ describe('reusable compiler pool', () => {
     expect(workers[1].terminate).toHaveBeenCalledOnce();
     pool.dispose();
   });
+
+  test('defaults to maxWorkers = 1 in DEV so concurrent unbundled blocks do not flood dev tunnels', async () => {
+    const workers: FakeBrowserWorker[] = [];
+    const pool = new NativeReactBrowserCompilerPool(() => {
+      const worker = new FakeBrowserWorker('singleton');
+      workers.push(worker);
+      return worker;
+    });
+    try {
+      const results = await Promise.all([
+        pool.compile({ ...input, flightKey: 'block-1' }),
+        pool.compile({ ...input, flightKey: 'block-2' }),
+        pool.compile({ ...input, flightKey: 'block-3' })
+      ]);
+      expect(results).toEqual([
+        expect.objectContaining({ ok: true }),
+        expect.objectContaining({ ok: true }),
+        expect.objectContaining({ ok: true })
+      ]);
+      expect(workers).toHaveLength(1);
+    } finally {
+      pool.dispose();
+    }
+  });
+
+  test('gates cold start to 1 lead Worker then bursts up to hardware maxWorkers in parallel once script cache is warm', async () => {
+    const workers: Array<{
+      worker: FakeBrowserWorker;
+      pendingRequest: unknown;
+      deliver: () => void;
+    }> = [];
+    const pool = new NativeReactBrowserCompilerPool(
+      () => {
+        const worker = new FakeBrowserWorker(`parallel-${workers.length}`);
+        const originalPostMessage = worker.postMessage.bind(worker);
+        const slot = {
+          worker,
+          pendingRequest: null as unknown,
+          deliver: () => {}
+        };
+        worker.postMessage = vi.fn((message) => {
+          slot.pendingRequest = message;
+          slot.deliver = () => originalPostMessage(message);
+        });
+        workers.push(slot);
+        return worker;
+      },
+      4,
+      { cacheGateInitialWorker: true }
+    );
+    try {
+      const flight1 = pool.compile({ ...input, flightKey: 'cold-1' });
+      const flight2 = pool.compile({ ...input, flightKey: 'cold-2' });
+      const flight3 = pool.compile({ ...input, flightKey: 'cold-3' });
+      const flight4 = pool.compile({ ...input, flightKey: 'cold-4' });
+
+      // Cold cache: strictly 1 lead Worker spawned while script cache is cold
+      expect(workers).toHaveLength(1);
+
+      // Once script cache warms (either via fetch warmup or first Worker response),
+      // remaining queued blocks burst across parallel CPU Workers simultaneously
+      pool.markScriptCacheWarm();
+      expect(workers).toHaveLength(4);
+
+      for (const slot of workers) {
+        slot.deliver();
+      }
+      const settled = await Promise.all([flight1, flight2, flight3, flight4]);
+      expect(settled).toEqual([
+        expect.objectContaining({ ok: true }),
+        expect.objectContaining({ ok: true }),
+        expect.objectContaining({ ok: true }),
+        expect.objectContaining({ ok: true })
+      ]);
+    } finally {
+      pool.dispose();
+    }
+  });
+
+  test('reclaims idle burst subordinate Workers after TTL while keeping 1 resident warm Worker', async () => {
+    vi.useFakeTimers();
+    const workers: FakeBrowserWorker[] = [];
+    const pool = new NativeReactBrowserCompilerPool(
+      () => {
+        const worker = new FakeBrowserWorker(`reclaim-${workers.length}`);
+        workers.push(worker);
+        return worker;
+      },
+      4,
+      { cacheGateInitialWorker: false, idleWorkerTtlMs: 5_000 }
+    );
+    try {
+      const settled = await Promise.all([
+        pool.compile({ ...input, flightKey: 'burst-1' }),
+        pool.compile({ ...input, flightKey: 'burst-2' }),
+        pool.compile({ ...input, flightKey: 'burst-3' }),
+        pool.compile({ ...input, flightKey: 'burst-4' })
+      ]);
+      expect(settled).toHaveLength(4);
+      expect(workers).toHaveLength(4);
+      expect(
+        workers.filter((w) => w.terminate.mock.calls.length > 0)
+      ).toHaveLength(0);
+
+      // Before TTL elapses, subordinate Workers remain available for follow-up bursts
+      vi.advanceTimersByTime(4_900);
+      expect(
+        workers.filter((w) => w.terminate.mock.calls.length > 0)
+      ).toHaveLength(0);
+
+      // Once idle TTL elapses, 3 subordinate Workers terminate and 1 warm Worker stays resident
+      vi.advanceTimersByTime(200);
+      expect(
+        workers.filter((w) => w.terminate.mock.calls.length > 0)
+      ).toHaveLength(3);
+
+      // Subsequent single-block compile reuses the 1 surviving warm Worker without spawning a 5th
+      const followUp = await pool.compile({ ...input, flightKey: 'warm-edit-1' });
+      expect(followUp).toMatchObject({ ok: true });
+      expect(workers).toHaveLength(4);
+    } finally {
+      pool.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  test('preempts queued P2 near-viewport preloads with P0/P1 visible viewport blocks and supports scroll promotion', async () => {
+    const dispatchedOrder: string[] = [];
+    let releaseLeadWorker!: () => void;
+    const pool = new NativeReactBrowserCompilerPool(
+      () => {
+        const worker = new FakeBrowserWorker('prio-worker');
+        const originalPost = worker.postMessage.bind(worker);
+        let firstCall = true;
+        worker.postMessage = vi.fn(
+          (message: Parameters<FakeBrowserWorker['postMessage']>[0]) => {
+            dispatchedOrder.push(message.requestId.split(':worker:')[0]!);
+            if (firstCall) {
+              firstCall = false;
+              releaseLeadWorker = () => originalPost(message);
+              return;
+            }
+            originalPost(message);
+          }
+        );
+        return worker;
+      },
+      1,
+      { cacheGateInitialWorker: false }
+    );
+    try {
+      const lead = pool.compile({
+        ...input,
+        requestId: 'slot-0-visible',
+        flightKey: 'f-0',
+        priority: 1,
+        slotIndex: 0
+      });
+      const nearA = pool.compile({
+        ...input,
+        requestId: 'slot-2-preload',
+        flightKey: 'f-2',
+        priority: 2,
+        slotIndex: 2
+      });
+      const nearB = pool.compile({
+        ...input,
+        requestId: 'slot-3-preload',
+        flightKey: 'f-3',
+        priority: 2,
+        slotIndex: 3
+      });
+      // User scrolls down: a newly visible block (priority=1) arrives AND slot-3 is promoted to selected (priority=0)!
+      const newlyVisible = pool.compile({
+        ...input,
+        requestId: 'slot-5-scrolled-visible',
+        flightKey: 'f-5',
+        priority: 1,
+        slotIndex: 5
+      });
+      pool.promote('f-3', 0);
+
+      releaseLeadWorker();
+      await Promise.all([lead, nearA, nearB, newlyVisible]);
+
+      // Expected dequeue order after lead: promoted P0 (slot-3) -> visible P1 (slot-5) -> preload P2 (slot-2)
+      expect(dispatchedOrder).toEqual([
+        'slot-0-visible',
+        'slot-3-preload',
+        'slot-5-scrolled-visible',
+        'slot-2-preload'
+      ]);
+    } finally {
+      pool.dispose();
+    }
+  });
 });

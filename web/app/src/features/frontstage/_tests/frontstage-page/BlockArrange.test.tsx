@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import {
   act,
@@ -72,32 +73,47 @@ vi.mock(
   () => blockTreeMutationsHook
 );
 vi.mock('../../api/block-tree', () => blockTreeApi);
+const studioLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
+vi.mock('../../lib/jsx-studio/studio-demand', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/jsx-studio/studio-demand')>(),
+  prepareFrontstageStudio: vi.fn(async () => undefined)
+}));
 vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
-  FrontstageJsxStudioDrawer: ({
+  FrontstageJsxStudioDrawer: function StudioFixture({
     open,
+    onClose,
     initialSection,
     workspaceId,
     pageId,
     block
   }: {
     open: boolean;
+    onClose: () => void;
     initialSection: string;
     workspaceId: string | null | undefined;
     pageId: string | null | undefined;
     block?: { id?: string; codeRef?: string | null } | null;
-  }) =>
-    open ? (
+  }) {
+    const [draft, setDraft] = useState('');
+    useEffect(() => {
+      studioLifecycle.mounts += 1;
+      return () => { studioLifecycle.unmounts += 1; };
+    }, []);
+    return open ? (
       <dialog
         open
         aria-label="TSX 编辑器"
         data-initial-section={initialSection}
       >
+        <input aria-label="Studio draft" value={draft} onChange={(event) => setDraft(event.target.value)} />
+        <button onClick={onClose}>Close Studio</button>
         <span>workspace:{workspaceId ?? 'none'}</span>
         <span>page:{pageId ?? 'none'}</span>
         <span>block:{block?.id ?? 'none'}</span>
         <span>code:{block?.codeRef ?? 'none'}</span>
       </dialog>
-    ) : null
+    ) : null;
+  }
 }));
 
 type FrontstagePageContentSaveState = {
@@ -240,16 +256,16 @@ async function clickAndFlush(element: HTMLElement) {
   });
 }
 
-function clickBlockToolbar(blockId: string, buttonName: string) {
+async function clickBlockToolbar(blockId: string, buttonName: string) {
   fireEvent.click(
-    within(screen.getByTestId(`block-slot-${blockId}`)).getByRole('button', {
+    await within(screen.getByTestId(`block-slot-${blockId}`)).findByRole('button', {
       name: buttonName
     })
   );
 }
 
 async function confirmBlockDelete(blockId: string) {
-  clickBlockToolbar(blockId, '更多区块操作');
+  await clickBlockToolbar(blockId, '更多区块操作');
   const deleteAction = (await screen.findByText('删除')).closest('button');
   if (!deleteAction) {
     throw new Error('Missing block delete action');
@@ -310,19 +326,38 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('feature'));
 
     expect(
-      within(getBlockRow('feature')).getByRole('button', {
+      await within(getBlockRow('feature')).findByRole('button', {
         name: '移动或排序区块'
       })
     ).toBeDisabled();
     expect(
-      within(getBlockRow('feature')).getByRole('button', { name: '编辑区块' })
+      await within(getBlockRow('feature')).findByRole('button', { name: '编辑区块' })
     ).toBeDisabled();
     expect(
-      within(getBlockRow('feature')).getByRole('button', {
+      await within(getBlockRow('feature')).findByRole('button', {
         name: '更多区块操作'
       })
     ).toBeDisabled();
     expect(screen.getByText('区块保存中')).toBeInTheDocument();
+  });
+
+  test('does not mount Studio on selection and retains its draft after the first close/reopen', async () => {
+    studioLifecycle.mounts = 0;
+    studioLifecycle.unmounts = 0;
+    authenticate(['frontstage.page.design']);
+    renderFrontStagePage(['hero']);
+    await activateDesignMode();
+    await clickAndFlush(getBlockRow('hero'));
+    expect(studioLifecycle.mounts).toBe(0);
+    await clickBlockToolbar('hero', '编辑区块');
+    const draft = await screen.findByRole('textbox', { name: 'Studio draft' });
+    fireEvent.change(draft, { target: { value: 'unsaved draft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Close Studio' }));
+    expect(screen.queryByRole('textbox', { name: 'Studio draft' })).not.toBeInTheDocument();
+    expect(studioLifecycle.unmounts).toBe(0);
+    await clickBlockToolbar('hero', '编辑区块');
+    expect(await screen.findByRole('textbox', { name: 'Studio draft' })).toHaveValue('unsaved draft');
+    expect(studioLifecycle.mounts).toBe(1);
   });
 
   test('opens JSX Studio on the code section for the selected block in design mode', async () => {
@@ -331,7 +366,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '编辑区块');
+    await clickBlockToolbar('hero', '编辑区块');
 
     const dialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(dialog).toHaveAttribute('data-initial-section', 'code');

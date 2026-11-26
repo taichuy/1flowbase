@@ -48,7 +48,6 @@ function ModelProviderInstanceDrawerContent({
   catalogEntry,
   instance,
   cachedModelCatalog,
-  pricingTargets,
   defaultIncludedInMain,
   submitting,
   onClose,
@@ -98,7 +97,6 @@ function ModelProviderInstanceDrawerContent({
     catalogEntry,
     instance,
     cachedModelCatalog,
-    pricingTargets,
     defaultIncludedInMain,
     submitting,
     onClose,
@@ -577,7 +575,6 @@ function ModelProviderInstanceDrawerContent({
           }
           return reserved;
         }, [])}
-        pricingTargets={pricingTargets}
         onCancel={() => setConfiguredModelEditor(null)}
         onSave={saveConfiguredModel}
       />

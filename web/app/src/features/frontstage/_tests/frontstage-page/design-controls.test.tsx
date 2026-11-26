@@ -23,6 +23,16 @@ import {
   within
 } from '@testing-library/react';
 
+// The Studio and its configuration panel stay real; jsdom has no Monaco canvas.
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+vi.mock('@monaco-editor/react', () => ({
+  default: ({ value }: { value?: string }) => (
+    <textarea aria-label="JSX source" readOnly value={value} />
+  )
+}));
+
 describe('FrontStagePage - design controls', () => {
   test('shows page context and design mode is unavailable without permission', () => {
     authenticate([]);
@@ -54,7 +64,7 @@ describe('FrontStagePage - design controls', () => {
 
     activateDesignMode();
     expect(
-      screen.getByRole('button', { name: '创建区块' })
+      await screen.findByRole('button', { name: '创建区块' })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: '代码区块试运行' })
@@ -179,7 +189,7 @@ describe('FrontStagePage - design controls', () => {
 
     const workspace = screen.getByTestId('frontstage-page-workspace');
     expect(workspace).toHaveAttribute('data-design-selected', 'true');
-    const configurePage = within(workspace).getByRole('button', {
+    const configurePage = await within(workspace).findByRole('button', {
       name: '配置页面'
     });
     expect(configurePage).toBeInTheDocument();
@@ -241,7 +251,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    const configurePage = screen.getByRole('button', {
+    const configurePage = await screen.findByRole('button', {
       name: '配置页面'
     });
     fireEvent.click(configurePage);
@@ -298,7 +308,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '配置页面' }));
+    fireEvent.click(await screen.findByRole('button', { name: '配置页面' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /刷新/ }));
     expect(await screen.findByText('正在刷新当前页面……')).toBeInTheDocument();
 
@@ -353,7 +363,7 @@ describe('FrontStagePage - design controls', () => {
     const tabContent = await screen.findByTestId('frontstage-tab-content');
     expect(tabContent).toHaveAttribute('data-design-selected', 'true');
     expect(
-      within(tabContent).getByRole('button', { name: '创建区块' })
+      await within(tabContent).findByRole('button', { name: '创建区块' })
     ).toBeInTheDocument();
     expect(
       within(tabContent).getByTestId('page-canvas-design-empty-state')
@@ -403,16 +413,30 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    const blockSlot = await screen.findByTestId('block-slot-orders-block');
-    fireEvent.mouseEnter(blockSlot);
-    fireEvent.click(
-      within(blockSlot).getByRole('button', { name: '编辑区块' })
-    );
+    const blockSlot = await screen.findByRole('button', {
+      name: '区块 orders-block'
+    });
+    await act(async () => {
+      fireEvent.click(blockSlot);
+      await vi.dynamicImportSettled();
+    });
+    const editBlock = await within(blockSlot).findByRole('button', {
+      name: '编辑区块'
+    });
+    await act(async () => {
+      fireEvent.click(editBlock);
+      await vi.dynamicImportSettled();
+    });
 
-    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
+    const studio = await screen.findByRole(
+      'dialog',
+      { name: 'TSX 编辑器' },
+      { timeout: 5_000 }
+    );
     const configurationButton = within(studio).getByRole('button', {
       name: '区块设置'
     });
+    expect(await within(studio).findByLabelText('JSX source')).toBeVisible();
     fireEvent.click(configurationButton);
     expect(configurationButton).toHaveClass(
       'frontstage-jsx-studio__rail-button--active'

@@ -54,15 +54,33 @@ pub async fn mcp_interface_catalog_entries_with(
     dependencies: &McpInterfaceCatalogDependencies,
     actor: &domain::ActorContext,
 ) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {
+    let restricted = restricted_interfaces(dependencies, actor).await?;
     let entries = crate::openapi_interface::build_openapi_capability_catalog_with(
         &dependencies.openapi,
         actor.current_workspace_id,
     )
     .await?
     .into_iter()
+    .filter(|entry| !restricted.contains(entry.interface.operation_id.as_str()))
     .map(mcp_interface_entry_from_capability)
     .collect::<Vec<_>>();
     Ok(entries)
+}
+
+async fn restricted_interfaces<'a>(
+    dependencies: &'a McpInterfaceCatalogDependencies,
+    actor: &domain::ActorContext,
+) -> Result<std::collections::BTreeSet<&'a str>, ApiError> {
+    use control_plane::ports::RoleRepository;
+    if actor.current_workspace_id == dependencies.store.bootstrap_workspace_id().await? {
+        return Ok(Default::default());
+    }
+    Ok(
+        crate::openapi_interface::root_workspace_only_capability_ids(
+            &dependencies.openapi.console_operations,
+            &dependencies.openapi.api_docs,
+        ),
+    )
 }
 
 pub fn mcp_interface_entry_from_capability(
@@ -150,6 +168,15 @@ pub async fn bindable_mcp_interface_with(
     actor: &domain::ActorContext,
     interface_id: &str,
 ) -> Result<domain::McpInterfaceCatalogEntry, ApiError> {
+    if restricted_interfaces(dependencies, actor)
+        .await?
+        .contains(interface_id)
+    {
+        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+            "permission_denied",
+        )
+        .into());
+    }
     let entry = mcp_interface_catalog_entries_with(dependencies, actor)
         .await?
         .into_iter()

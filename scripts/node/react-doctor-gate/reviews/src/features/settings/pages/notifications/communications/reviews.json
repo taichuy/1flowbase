@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx","sha256":"34e9ff16237167df007e11cd7b4944b0b9c9ac95a0812ed4f1e3fd53c1c7ff4b"},{"file":"web/app/src/shared/ui/data-table/DataTable.tsx","sha256":"c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"}]
+    [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx","sha256":"acdbbed82b06093779069883082d27ee4b57b5f55269047e44c54298b3550cd4"},{"file":"web/app/src/shared/ui/data-table/DataTable.tsx","sha256":"c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"}]
   ],
   "reviews": [
     {
@@ -23,7 +23,7 @@
       "rule": "react-doctor/prefer-module-scope-static-value",
       "sourceSha256": "8415f5437f50cae62d4979b0723d55d5e09dfb4b81d920c27d003f4cef20303f",
       "reason": "resetSelection is a tiny page/conversation reset patch spread into navigateCommunication calls in event handlers. Its object identity is never passed to a memoized child, dependency array, query key or external subscription. Moving it to module scope cannot remove the claimed child redraw; URL restoration and page/filter preservation tests cover the resulting navigation. P21b reassessed 2026-11-17: CommunicationBindingForm replaces command_settings with canonical typed commands and adds event command editing/save failure handling; async binding initialization still stops once dirty, while the parent validates and saves through the supported forwardRef/useImperativeHandle contract after instance persistence. Tests assert canonical registered/event payloads, retained dirty input, reopen/edit/delete, reserved-name validation and read-only permissions. Management tests now read authorized file metadata/preview directly; this real query migration invalidates the old mutation rationale, which stays held. History navigation reset/empty ReactNode slots and standalone empty-status marker remain unchanged.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx","sha256":"34e9ff16237167df007e11cd7b4944b0b9c9ac95a0812ed4f1e3fd53c1c7ff4b"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx","sha256":"acdbbed82b06093779069883082d27ee4b57b5f55269047e44c54298b3550cd4"}]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationHistory.tsx",
@@ -49,9 +49,9 @@
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/communication-presentation.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
-      "sourceSha256": "bcf94ce6082039a20986f3a3eb01485d341a077c437de54ecfb3676ea16603f6",
+      "sourceSha256": "2f134cb713ca74b64436f88d17fa02ef4be47d71aafd17ad05552ea46612190b",
       "reason": "CommunicationFile uses useMutation as an explicitly clicked access-link request: getCommunicationFile is a GET returning a temporary download URL, not a write to a cached entity. The result is consumed from link.data and errors are rendered locally. Invalidating message/conversation lists would not update a modified record because this request modifies none.",
-      "evidence": [{"file":"web/app/src/features/notifications/api/communications.ts","sha256":"c4af9b3d3c0cad1d580b4625258e69a477bd814844cd4a661f2fb1c5292b6db0"},{"file":"web/packages/api-client/src/console/notifications/communications.ts","sha256":"c0479944d6ace16157ec21029587825fef5f10bbd8b5eadedfae00b6f3e9dbcf"}]
+      "evidence": [{"file":"web/app/src/features/notifications/api/communications.ts","sha256":"f8f60594fd7f4d2012f029f4819993a70b1e1b586db4f45a179cf354778ab893"},{"file":"web/packages/api-client/src/console/notifications/communications.ts","sha256":"6ed48634f6e29f8b45e0d135ba6894dcfca75abc5ebf2953517d61525d4dd0f4"}]
     }
   ]
 }

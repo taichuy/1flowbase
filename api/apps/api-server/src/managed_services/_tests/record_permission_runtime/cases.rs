@@ -26,6 +26,40 @@ async fn capabilities(f: &Fixture, root: bool, id: &str) -> Value {
     assert_eq!(status, StatusCode::OK, "{result}");
     result["data"]["items"][0].clone()
 }
+async fn capability_batches_preserve_acl_order_and_missing_errors(f: &Fixture) {
+    let call = async |caller: &Credential, record_ids: Value| {
+        http(
+            &f.app,
+            caller,
+            "POST",
+            "/api/console/settings/roles/record-capabilities",
+            Some(json!({"plugin_code":CODE,"resource_code":"records","record_ids":record_ids})),
+        )
+        .await
+    };
+    let alias = Uuid::parse_str(&f.alpha).unwrap().simple().to_string();
+    for (root, caller) in [(true, &f.root), (false, &f.member)] {
+        let alpha = capabilities(f, root, &f.alpha).await;
+        let beta = capabilities(f, root, &f.beta).await;
+        let (status, batch) = call(caller, json!([f.beta, f.alpha, alias])).await;
+        assert_eq!(status, StatusCode::OK, "{batch}");
+        assert_eq!(batch["data"]["items"], json!([beta, alpha, alpha]));
+    }
+    let missing = Uuid::new_v4().to_string();
+    for (ids, expected) in [
+        (
+            json!([f.alpha, missing, "not-a-uuid"]),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            json!([f.alpha, "not-a-uuid", missing]),
+            StatusCode::BAD_REQUEST,
+        ),
+    ] {
+        let (status, result) = call(&f.root, ids).await;
+        assert_eq!(status, expected, "{result}");
+    }
+}
 fn resource_reference(result: &Value, payload_field: &str) -> String {
     let resource = result["result"]["content"]
         .as_array()
@@ -264,6 +298,7 @@ pub(super) async fn run(f: &Fixture) {
             .unwrap()
             .contains(&json!(action)));
     }
+    capability_batches_preserve_acl_order_and_missing_errors(f).await;
     get(f, true, &f.alpha, StatusCode::OK).await;
     expect(
         f,

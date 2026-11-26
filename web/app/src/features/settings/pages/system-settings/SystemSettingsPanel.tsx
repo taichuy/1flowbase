@@ -15,7 +15,10 @@ import {
 } from 'antd';
 import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { useTranslation } from 'react-i18next';
-import type { SystemMetadata } from '@1flowbase/api-client/auth';
+import type {
+  SystemBranding,
+  SystemMetadata
+} from '@1flowbase/api-client/auth';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { systemMetadataQueryKey } from '../../../../shared/api/system-metadata';
@@ -35,7 +38,7 @@ export function SystemSettingsPanel() {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const can = useConsoleOperationAccess();
   const canSave = can('system.branding.save');
-  const [form] = Form.useForm<SystemMetadata>();
+  const [form] = Form.useForm<SystemBranding>();
   const logo_url = Form.useWatch('logo_url', form);
   const query = useQuery({
     queryKey: systemSettingsQueryKey,
@@ -45,11 +48,23 @@ export function SystemSettingsPanel() {
     if (query.data) form.setFieldsValue(query.data);
   }, [query.data, form]);
   const mutation = useMutation({
-    mutationFn: (value: SystemMetadata) =>
+    mutationFn: (value: SystemBranding) =>
       saveConsoleSystemSettings(value, csrfToken ?? ''),
     onSuccess(value) {
       queryClient.setQueryData(systemSettingsQueryKey, value);
-      queryClient.setQueryData(systemMetadataQueryKey, value);
+      queryClient.setQueryData<SystemMetadata | undefined>(
+        systemMetadataQueryKey,
+        (previous) => ({
+          ...previous,
+          ...value,
+          page_title:
+            previous?.page_title &&
+            previous.page_title !== previous.system_name
+              ? previous.page_title
+              : value.system_name
+        })
+      );
+      void queryClient.invalidateQueries({ queryKey: systemMetadataQueryKey });
       form.setFieldsValue(value);
       void message.success(t('system_settings.saved'));
     }
