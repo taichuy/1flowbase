@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::{self, DirBuilder, File, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::Write,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
@@ -11,7 +11,10 @@ use std::{
 };
 
 #[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::{
+    fs::DirBuilder,
+    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
+};
 
 use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
@@ -699,11 +702,6 @@ fn terminate_process_group(pid: Option<u32>, signal: libc::c_int) -> std::io::Re
         return Ok(false);
     }
     Err(std::io::Error::last_os_error())
-}
-
-#[cfg(not(unix))]
-fn terminate_process_group(_pid: Option<u32>, _signal: libc::c_int) -> std::io::Result<bool> {
-    Ok(false)
 }
 
 #[cfg(unix)]

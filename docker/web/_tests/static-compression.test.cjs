@@ -146,7 +146,6 @@ test('native nginx serves the actual repository configuration safely', {
   const payload = Buffer.from('compressible data '.repeat(100));
   put('index.html', guarded);
   put('sign-in-preload.html', anonymous);
-  put('icon.svg', payload);
   put('small.txt', Buffer.alloc(511, 0x61), false);
   put('boundary.txt', Buffer.alloc(512, 0x61), false);
   for (const extension of ['txt', 'css', 'js', 'mjs', 'json', 'svg', 'wasm']) put(`dynamic.${extension}`, payload, false);
@@ -269,6 +268,12 @@ http {
     const unhashed = await request(port, '/assets/unhashed.js');
     assert.equal(unhashed.status, 200);
     assert.doesNotMatch(unhashed.headers['cache-control'] || '', /immutable/);
+    // Test the miss before serving the icon: open_file_cache can retain the served file after unlink.
+    const missingIcon = await request(port, '/icon.svg');
+    assert.equal(missingIcon.status, 404);
+    assert.equal(missingIcon.headers['cache-control'], undefined);
+
+    put('icon.svg', payload);
     const icon = await request(port, '/icon.svg', { 'Accept-Encoding': 'gzip', Via: '1.1 fixture-proxy' });
     assert.equal(icon.status, 200);
     assert.equal(icon.headers['cache-control'], 'public, max-age=86400');
@@ -276,11 +281,6 @@ http {
     assert.equal(icon.headers['content-encoding'], 'gzip');
     assert.ok(vary(icon).has('accept-encoding'));
     assert.deepEqual(gunzipSync(icon.body), payload);
-    fs.rmSync(path.join(htmlRoot, 'icon.svg'));
-    fs.rmSync(path.join(htmlRoot, 'icon.svg.gz'));
-    const missingIcon = await request(port, '/icon.svg');
-    assert.equal(missingIcon.status, 404);
-    assert.equal(missingIcon.headers['cache-control'], undefined);
   });
 
   await t.test('API/v1 proxy paths and forwarded origin still reach the same upstream', async () => {

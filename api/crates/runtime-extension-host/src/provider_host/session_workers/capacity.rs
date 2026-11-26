@@ -8,6 +8,7 @@ use tokio::sync::Notify;
 #[cfg(test)]
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+#[cfg(target_os = "linux")]
 use super::super::operations::transport_binding_error;
 use extension_package_runtime::error::FrameworkResult;
 
