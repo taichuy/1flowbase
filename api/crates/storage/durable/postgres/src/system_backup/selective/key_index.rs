@@ -20,13 +20,13 @@ impl KeyIndex {
     pub fn new() -> Result<Self> {
         let path =
             std::env::temp_dir().join(format!("1flowbase-settings-index-{}", uuid::Uuid::now_v7()));
-        let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         {
             use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
+            std::fs::DirBuilder::new().mode(0o700).create(&path)?;
         }
-        builder.create(&path)?;
+        #[cfg(not(unix))]
+        std::fs::create_dir(&path)?;
         Ok(Self {
             path,
             writers: BTreeMap::new(),

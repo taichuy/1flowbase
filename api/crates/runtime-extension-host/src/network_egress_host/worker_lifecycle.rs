@@ -225,6 +225,7 @@ impl NetworkEgressWorker {
         };
         // The worker is the process-group/session leader, but its descendants can outlive it.
         // Always address the retained PGID even when `try_wait` has already reaped the leader.
+        #[cfg(unix)]
         match terminate_process_group(process_group_id, libc::SIGTERM) {
             Ok(sent) => termination_signal_sent |= sent,
             Err(error) => {
