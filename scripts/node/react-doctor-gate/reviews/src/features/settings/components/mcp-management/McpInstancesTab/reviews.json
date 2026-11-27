@@ -13,7 +13,7 @@
       "rule": "react-doctor/rerender-functional-setstate",
       "sourceSha256": "d7066deb4dc718bb27d89106a1c24d4d8c8be9069f4c72618ec85ae11eaf9c91",
       "reason": "PageDown/Next target the immediate successor of the displayed server page only if that render’s query result reports another page. PageUp/Previous target its predecessor only above page 1. These are synchronous input/button handlers with an absolute destination, not delayed callbacks or accumulated increments. Accumulating two updates against one availability check could skip an unverified page. The picker test observes page 1 → 2, a search reset to 1 and filtered page 2; it does not simulate batched keyboard events.",
-      "evidence": [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/paged-browsing.test.tsx","sha256":"df6ad831138ee1f95dd58f19208336d1d298bf40efdc6479ce947a2610311696"}]
+      "evidence": [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/paged-browsing.test.tsx","sha256":"5455926ada6c0993017bc7db65790e32ac855e6c2b28d1ff9a4a8e0123ad4d92"}]
     }
   ]
 }

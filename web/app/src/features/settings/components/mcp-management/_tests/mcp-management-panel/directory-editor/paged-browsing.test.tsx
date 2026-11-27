@@ -44,7 +44,7 @@ describe('MCP directory and table browsing', () => {
     await waitFor(() => expect(api.fetchSettingsMcpToolsPage).toHaveBeenCalledWith({
       page: 2, page_size: 50, keyword: undefined
     }));
-    expect(await screen.findByText('Team tool 51')).toBeVisible();
+    await waitFor(() => expect(screen.getByText('Team tool 51')).toBeVisible());
     await change(picker, { target: { value: 'Team' } });
     await waitFor(() => expect(api.fetchSettingsMcpToolsPage).toHaveBeenCalledWith({
       page: 1, page_size: 50, keyword: 'Team'
@@ -130,7 +130,7 @@ describe('MCP directory and table browsing', () => {
     api.fetchSettingsMcpToolsPage.mockRejectedValueOnce(new Error('403: tool access denied'));
     await click(dialog.getByRole('button', { name: '挂载 Tool' }));
     await mouseDown(dialog.getByRole('combobox', { name: '选择 Tool' }));
-    expect(await screen.findByText('403: tool access denied')).toBeVisible();
+    await waitFor(() => expect(screen.getByText('403: tool access denied')).toBeVisible());
     await click(screen.getByRole('button', { name: /重\s*试/ }));
     await selectAntdOption('Search customer');
     expect(api.fetchSettingsMcpToolsPage).toHaveBeenCalledTimes(2);
