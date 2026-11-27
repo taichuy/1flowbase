@@ -61,7 +61,7 @@ fn progressive_interface_events_distinguish_query_and_detail_path() {
     let mut op = ApiOperationContext {
         interface_id: "mcp.catalog.view".into(),
         method: "GET".into(),
-        path: "/api/console/mcp/interface-capabilities/page".into(),
+        path: "/api/console/mcp/pages/interface-capabilities".into(),
     };
     let input = McpCatalogInput::InterfacesPage(McpInterfaceCapabilitiesPageQuery {
         limit: Some(5),

@@ -45,7 +45,8 @@ pub struct McpToolPageQuery {
     pub page: usize,
     pub page_size: usize,
     pub keyword: Option<String>,
-    pub keyword_interface_ids: Option<Vec<String>>,
+    /// Actor-visible wrapper operations used to search the same text as the catalog.
+    pub interface_operations: std::collections::HashMap<String, String>,
     pub execution_target_kind: Option<String>,
     pub interface_id: Option<String>,
     pub risk_level: Option<String>,

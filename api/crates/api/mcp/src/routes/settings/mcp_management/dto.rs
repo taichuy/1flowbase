@@ -416,6 +416,7 @@ pub struct McpToolPageHttpQuery {
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub des_id_required: Option<bool>,
+    /// JSON-encoded array of exact tool IDs. Omit for all IDs; [] matches none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_ids: Option<String>,
 }

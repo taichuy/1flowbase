@@ -287,7 +287,7 @@ async fn issue_1246_ac_008_ac_009_import_route_is_idempotent_and_returns_tagged_
         r#"insert into mcp_upstream_tool_sources (
             id,workspace_id,upstream_connection_id,remote_tool_name,description,input_schema,
             output_schema,schema_hash,source_status,discovered_at
-        ) values ($1,$2,$3,'weather.lookup','Weather',$4,$5,'schema-v1','not_imported',now())"#,
+        ) values ($1,$2,$3,'lookup','Weather',$4,$5,'schema-v1','not_imported',now())"#,
     )
     .bind(Uuid::now_v7())
     .bind(workspace_id)
@@ -313,7 +313,7 @@ async fn issue_1246_ac_008_ac_009_import_route_is_idempotent_and_returns_tagged_
                     .header("x-csrf-token", &csrf)
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        json!({"remote_tool_names":["weather.lookup"]}).to_string(),
+                        json!({"remote_tool_names":["lookup"]}).to_string(),
                     ))
                     .unwrap(),
             )
@@ -342,6 +342,30 @@ async fn issue_1246_ac_008_ac_009_import_route_is_idempotent_and_returns_tagged_
     assert_eq!(tool_ids[0], tool_ids[1]);
 
     let tool = imported_tool.unwrap();
+    // The same proxy is discoverable by its full displayed operation and source label.
+    for keyword in [
+        "McP%20tools%2Fcall%20lookup".to_owned(),
+        format!("{connection_id}%20%2F%20lookup"),
+    ] {
+        let page = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/console/mcp/pages/tools?status=draft&keyword={keyword}"
+                    ))
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.status(), StatusCode::OK);
+        let page = &response_json(page).await["data"];
+        assert_eq!(page["total"], 1);
+        assert_eq!(page["items"][0]["tool_id"], tool["tool_id"]);
+        assert_eq!(page["items"][0]["operation"], "MCP tools/call lookup");
+    }
     let update = app.clone().oneshot(
         Request::builder().method("PUT")
             .uri(format!("/api/console/mcp/tools/{}", tool["tool_id"].as_str().unwrap()))

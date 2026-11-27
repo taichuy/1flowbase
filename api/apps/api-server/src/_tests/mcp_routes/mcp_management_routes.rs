@@ -328,7 +328,7 @@ async fn mcp_tool_create_and_update_allow_omitting_full_description() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "tool_id": "optional_full_description",
+                        "tool_id": "page",
                         "des_id": null,
                         "name": "Optional full description",
                         "short_description": "Tool with an optional full description",
@@ -353,11 +353,14 @@ async fn mcp_tool_create_and_update_allow_omitting_full_description() {
         json!("")
     );
 
+    // A legal resource ID must never be captured by the collection reader.
+    let detail = mcp_data(&app, &root_cookie, "/api/console/mcp/tools/page").await;
+    assert_eq!(detail["tool_id"], "page");
     let update_response = app
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/mcp/tools/optional_full_description")
+                .uri("/api/console/mcp/tools/page")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -516,7 +519,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "instance_id": "workspace_ops",
+                        "instance_id": "page",
                         "name": "Workspace Ops",
                         "description_short": "Workspace MCP instance",
                         "status": "enabled",
@@ -587,7 +590,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     let first = mcp_data(
         &app,
         &root_cookie,
-        "/api/console/mcp/interface-capabilities/page?limit=1",
+        "/api/console/mcp/pages/interface-capabilities?limit=1",
     )
     .await;
     assert_eq!(
@@ -598,7 +601,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     let second = mcp_data(
         &app,
         &root_cookie,
-        "/api/console/mcp/interface-capabilities/page?limit=1&offset=1",
+        "/api/console/mcp/pages/interface-capabilities?limit=1&offset=1",
     )
     .await;
     assert_eq!(second["offset"], 1);
@@ -606,14 +609,14 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         first["items"][0]["interface_id"],
         second["items"][0]["interface_id"]
     );
-    let filtered = mcp_data(&app, &root_cookie, "/api/console/mcp/interface-capabilities/page?method=gEt&bindable_only=true&q=GET%20%2Fapi%2Fconsole%2Fsystem%2Fruntime-profile").await;
+    let filtered = mcp_data(&app, &root_cookie, "/api/console/mcp/pages/interface-capabilities?method=gEt&bindable_only=true&q=GET%20%2Fapi%2Fconsole%2Fsystem%2Fruntime-profile").await;
     assert_eq!(filtered["total"], 1);
     assert_eq!(filtered["items"][0]["interface_id"], "get_runtime_profile");
     assert!(filtered["items"][0].get("parameter_schema").is_none());
     let not_bindable = mcp_data(
         &app,
         &root_cookie,
-        "/api/console/mcp/interface-capabilities/page?bindable_only=true&q=debug-runs%2Fstream",
+        "/api/console/mcp/pages/interface-capabilities?bindable_only=true&q=debug-runs%2Fstream",
     )
     .await;
     assert_eq!(not_bindable["total"], 0);
@@ -708,7 +711,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "tool_id": "runtime_profile",
+                        "tool_id": "sales,lookup",
                         "des_id": "des12345",
                         "name": "Runtime profile",
                         "short_description": "Runtime profile",
@@ -731,7 +734,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert_eq!(create_tool_response.status(), StatusCode::CREATED);
     let create_tool_payload = response_json(create_tool_response).await;
     let tool_id = create_tool_payload["data"]["tool_id"].as_str().unwrap();
-    assert_eq!(tool_id, "runtime_profile");
+    assert_eq!(tool_id, "sales,lookup");
     assert!(create_tool_payload["data"]
         .get("usage_description")
         .is_none());
@@ -765,7 +768,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/mcp/instances/workspace_ops/groups")
+                .uri("/api/console/mcp/instances/page/groups")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -807,7 +810,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/mcp/instances/workspace_ops/tool-bindings")
+                .uri("/api/console/mcp/instances/page/tool-bindings")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -823,7 +826,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     let instance_page = mcp_data(
         &app,
         &root_cookie,
-        "/api/console/mcp/instances/page?page=0&page_size=1&status=enabled&keyword=wOrKsPaCe%20mCp",
+        "/api/console/mcp/pages/instances?page=0&page_size=1&status=enabled&keyword=wOrKsPaCe%20mCp",
     )
     .await;
     assert_eq!(instance_page["total"], 1);
@@ -833,7 +836,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     let second_page = mcp_data(
         &app,
         &root_cookie,
-        "/api/console/mcp/instances/page?page=2&page_size=1",
+        "/api/console/mcp/pages/instances?page=2&page_size=1",
     )
     .await;
     assert_eq!(second_page["total"], 1);
@@ -853,7 +856,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert_eq!(tools[0], get_tool_payload["data"]);
     assert_eq!(full["tools"], tools);
 
-    let tool_page = mcp_data(&app, &root_cookie, "/api/console/mcp/tools/page?page_size=1&keyword=gEt%20%2Fapi%2Fconsole%2Fsystem%2Fruntime-profile&execution_target_kind=interface_wrapper&interface_id=get_runtime_profile&risk_level=low&status=enabled&des_id_required=false&tool_ids=%20runtime_profile%2C%20%2C").await;
+    let tool_page = mcp_data(&app, &root_cookie, "/api/console/mcp/pages/tools?page_size=1&keyword=gEt%20%2Fapi%2Fconsole%2Fsystem%2Fruntime-profile&execution_target_kind=interface_wrapper&interface_id=get_runtime_profile&risk_level=low&status=enabled&des_id_required=false&tool_ids=%5B%22missing%22%2C%22sales%2Clookup%22%5D").await;
     assert_eq!(tool_page["total"], 1);
     let summary = &tool_page["items"][0];
     assert_eq!(summary["tool_id"], tool_id);
@@ -862,6 +865,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         "GET /api/console/system/runtime-profile"
     );
     assert_eq!(summary["availability_status"], "available");
+    let mut catalog_projection = full["tools"][0].clone();
     for field in [
         "full_description",
         "parameter_schema",
@@ -872,31 +876,50 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         "response_fields",
     ] {
         assert!(summary.get(field).is_none(), "summary leaked {field}");
-        assert!(tools[0].get(field).is_some(), "legacy list lost {field}");
+        assert!(
+            catalog_projection
+                .as_object_mut()
+                .unwrap()
+                .remove(field)
+                .is_some(),
+            "legacy list lost {field}"
+        );
     }
+    assert_eq!(summary, &catalog_projection);
     for filter in [
         "execution_target_kind=assistant_client",
         "interface_id=not-found",
         "risk_level=critical",
         "status=disabled",
         "des_id_required=true",
-        "tool_ids=missing",
+        "tool_ids=%5B%22sales%22%2C%22lookup%22%5D",
+        "tool_ids=%5B%5D",
     ] {
         assert_eq!(
             mcp_data(
                 &app,
                 &root_cookie,
-                &format!("/api/console/mcp/tools/page?{filter}")
+                &format!("/api/console/mcp/pages/tools?{filter}")
             )
             .await["total"],
             0,
             "{filter}"
         );
     }
+    assert_eq!(
+        mcp_get(
+            &app,
+            &root_cookie,
+            "/api/console/mcp/pages/tools?tool_ids=sales%2Clookup"
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
     let tool_second_page = mcp_data(
         &app,
         &root_cookie,
-        "/api/console/mcp/tools/page?page=2&page_size=1",
+        "/api/console/mcp/pages/tools?page=2&page_size=1",
     )
     .await;
     assert_eq!(tool_second_page["total"], 1);
@@ -945,7 +968,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/api/console/mcp/instances/workspace_ops/groups?path=%2Fsystem")
+                .uri("/api/console/mcp/instances/page/groups?path=%2Fsystem")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .body(Body::empty())
@@ -1008,6 +1031,19 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         missing_description_check_response.status(),
         StatusCode::NOT_FOUND
     );
+    let deleted = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/mcp/instances/page")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]
@@ -1067,7 +1103,7 @@ async fn progressive_interfaces_hide_root_workspace_only_capabilities() {
             .await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let page_uri =
-        "/api/console/mcp/interface-capabilities/page?q=extension_center_list_installed&method=GET";
+        "/api/console/mcp/pages/interface-capabilities?q=extension_center_list_installed&method=GET";
     let root_page = mcp_data(&app, &cookie, page_uri).await;
     assert_eq!(root_page["total"], 1);
     let interface_id = root_page["items"][0]["interface_id"].as_str().unwrap();

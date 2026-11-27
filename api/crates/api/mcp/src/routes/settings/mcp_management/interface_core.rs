@@ -343,7 +343,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "mcp.instances.view",
         binding_id: "http.console.mcp.instances.page.get.v1",
         method: "GET",
-        path: "/api/console/mcp/instances/page",
+        path: "/api/console/mcp/pages/instances",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

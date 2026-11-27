@@ -569,10 +569,15 @@ impl McpManagementRepository for McpBundleFixtureRepository {
 
     async fn get_mcp_tool(
         &self,
-        _workspace_id: Uuid,
-        _tool_id: &str,
+        workspace_id: Uuid,
+        tool_id: &str,
     ) -> anyhow::Result<Option<domain::McpToolRecord>> {
-        unreachable!("seed-only fixture does not read tools")
+        Ok(self
+            .export_snapshot()
+            .tools
+            .iter()
+            .find(|tool| tool.workspace_id == workspace_id && tool.tool_id == tool_id)
+            .cloned())
     }
 
     async fn create_mcp_tool(

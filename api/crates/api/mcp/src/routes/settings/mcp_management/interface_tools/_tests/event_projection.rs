@@ -59,7 +59,7 @@ fn tool_page_projects_only_its_named_query_and_summary() {
     let op = ApiOperationContext {
         interface_id: "mcp.tools.view".into(),
         method: "GET".into(),
-        path: "/api/console/mcp/tools/page".into(),
+        path: "/api/console/mcp/pages/tools".into(),
     };
     let input = McpToolsInput::ToolsPage(McpToolPageHttpQuery {
         keyword: Some("GET /api/example".into()),

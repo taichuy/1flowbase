@@ -97,7 +97,7 @@ async fn assert_catalog_contract(app: &Router, cookie: &str, interface_id: &str,
     let (status, page) = request(
         app,
         "GET",
-        "/api/console/mcp/interface-capabilities/page?q=callable-ticket&bindable_only=true",
+        "/api/console/mcp/pages/interface-capabilities?q=callable-ticket&bindable_only=true",
         cookie,
         "",
         Value::Null,

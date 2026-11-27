@@ -385,13 +385,13 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
         ]
     );
     let mcp_routes = routes("system.mcp-management");
-    assert!(mcp_routes.contains(&("GET", "/api/console/mcp/interface-capabilities/page")));
+    assert!(mcp_routes.contains(&("GET", "/api/console/mcp/pages/interface-capabilities")));
     assert!(mcp_routes.contains(&(
         "GET",
         "/api/console/mcp/interface-capabilities/{interface_id}"
     )));
-    assert!(mcp_routes.contains(&("GET", "/api/console/mcp/instances/page")));
-    assert!(mcp_routes.contains(&("GET", "/api/console/mcp/tools/page")));
+    assert!(mcp_routes.contains(&("GET", "/api/console/mcp/pages/instances")));
+    assert!(mcp_routes.contains(&("GET", "/api/console/mcp/pages/tools")));
     assert!(mcp_routes.contains(&("GET", "/api/console/mcp/catalog")));
     assert!(mcp_routes.contains(&("POST", "/api/console/mcp/instances")));
     for route in [

@@ -397,59 +397,43 @@ impl McpToolsAdapter {
                     .keyword
                     .map(|keyword| keyword.trim().to_string())
                     .filter(|keyword| !keyword.is_empty());
-                let mut operations = HashMap::new();
-                let keyword_interface_ids = if let Some(keyword) = &keyword {
-                    operations =
-                        interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?;
-                    let needle = keyword.to_lowercase();
-                    Some(
-                        operations
-                            .iter()
-                            .filter(|(_, operation)| operation.to_lowercase().contains(&needle))
-                            .map(|(interface_id, _)| interface_id.clone())
-                            .collect(),
-                    )
+                let tool_ids = query
+                    .tool_ids
+                    .as_deref()
+                    .map(serde_json::from_str::<Vec<String>>)
+                    .transpose()
+                    .map_err(|_| {
+                        control_plane::errors::ControlPlaneError::InvalidInput("tool_ids")
+                    })?;
+                let interface_operations = if keyword.is_some() {
+                    interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?
                 } else {
-                    None
+                    HashMap::new()
                 };
-                let searched_operations = keyword.is_some();
-                let page = service
-                    .list_tools_page_for_actor(
-                        actor,
-                        &McpToolPageQuery {
-                            page: query.page.unwrap_or(1).max(1),
-                            page_size: query.page_size.unwrap_or(20).clamp(1, 100),
-                            keyword,
-                            keyword_interface_ids,
-                            execution_target_kind: query.execution_target_kind,
-                            interface_id: query.interface_id,
-                            risk_level: query.risk_level,
-                            status: query.status,
-                            des_id_required: query.des_id_required,
-                            tool_ids: query
-                                .tool_ids
-                                .map(|ids| {
-                                    ids.split(',')
-                                        .map(str::trim)
-                                        .filter(|id| !id.is_empty())
-                                        .map(str::to_owned)
-                                        .collect::<Vec<_>>()
-                                })
-                                .filter(|ids| !ids.is_empty()),
-                        },
-                    )
-                    .await?;
-                if !searched_operations
+                let query = McpToolPageQuery {
+                    page: query.page.unwrap_or(1).max(1),
+                    page_size: query.page_size.unwrap_or(20).clamp(1, 100),
+                    keyword,
+                    interface_operations,
+                    execution_target_kind: query.execution_target_kind,
+                    interface_id: query.interface_id,
+                    risk_level: query.risk_level,
+                    status: query.status,
+                    des_id_required: query.des_id_required,
+                    tool_ids,
+                };
+                let page = service.list_tools_page_for_actor(actor, &query).await?;
+                let operations = if query.keyword.is_none()
                     && page.items.iter().any(|record| {
                         matches!(
                             record.execution_target,
                             domain::McpToolExecutionTarget::InterfaceWrapper { .. }
                         )
-                    })
-                {
-                    operations =
-                        interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?;
-                }
+                    }) {
+                    interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?
+                } else {
+                    query.interface_operations
+                };
                 let availabilities = tool_proxy_availabilities(
                     &service,
                     actor,
@@ -629,7 +613,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "mcp.tools.view",
         binding_id: "http.console.mcp.tools.page.get.v1",
         method: "GET",
-        path: "/api/console/mcp/tools/page",
+        path: "/api/console/mcp/pages/tools",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

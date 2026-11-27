@@ -191,7 +191,7 @@ pub(crate) enum McpCatalogOutput {
     Catalog(McpCatalogResponse),
     Interfaces(Vec<McpInterfaceCatalogEntryResponse>),
     InterfacesPage(McpInterfaceCapabilityPageResponse),
-    Interface(McpInterfaceCatalogEntryResponse),
+    Interface(Box<McpInterfaceCatalogEntryResponse>),
     List(Vec<McpListItemSummaryResponse>),
     Export(McpExportPackageResponse),
 }
@@ -1073,7 +1073,9 @@ impl McpCatalogAdapter {
                 let entry =
                     interface_catalog::mcp_interface_detail_with(&self.0, actor, &interface_id)
                         .await?;
-                Ok(McpCatalogOutput::Interface(to_interface_response(entry)))
+                Ok(McpCatalogOutput::Interface(Box::new(
+                    to_interface_response(entry),
+                )))
             }
             McpCatalogInput::List(query) => {
                 let items = service
@@ -1216,7 +1218,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "mcp.catalog.view",
         binding_id: "http.console.mcp.interfaces.page.get.v1",
         method: "GET",
-        path: "/api/console/mcp/interface-capabilities/page",
+        path: "/api/console/mcp/pages/interface-capabilities",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

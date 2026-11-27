@@ -79,13 +79,13 @@ pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
                 "/api/console/mcp/interface-capabilities",
                 "mcp.catalog.view"
             ),
-            ("GET", "/api/console/mcp/interface-capabilities/page", "mcp.catalog.view"),
+            ("GET", "/api/console/mcp/pages/interface-capabilities", "mcp.catalog.view"),
             ("GET", "/api/console/mcp/interface-capabilities/:interface_id", "mcp.catalog.view"),
             ("GET", "/api/console/mcp/list", "mcp.catalog.view"),
             ("GET", "/api/console/mcp/export", "mcp.catalog.export"),
             ("GET", "/api/console/mcp/instances", "mcp.instances.view"),
             ("POST", "/api/console/mcp/instances", "mcp.instances.create"),
-            ("GET", "/api/console/mcp/instances/page", "mcp.instances.view"),
+            ("GET", "/api/console/mcp/pages/instances", "mcp.instances.view"),
             (
                 "POST",
                 "/api/console/mcp/instances/:instance_id/copy",
@@ -158,7 +158,7 @@ pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
             ),
             ("GET", "/api/console/mcp/tools", "mcp.tools.view"),
             ("POST", "/api/console/mcp/tools", "mcp.tools.create"),
-            ("GET", "/api/console/mcp/tools/page", "mcp.tools.view"),
+            ("GET", "/api/console/mcp/pages/tools", "mcp.tools.view"),
             ("GET", "/api/console/mcp/tools/:tool_id", "mcp.tools.view"),
             ("PUT", "/api/console/mcp/tools/:tool_id", "mcp.tools.update"),
             (

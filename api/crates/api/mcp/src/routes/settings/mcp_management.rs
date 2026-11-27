@@ -164,7 +164,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/mcp/interface-capabilities/page",
+            "/mcp/pages/interface-capabilities",
             console_get(
                 list_mcp_interface_capabilities_page,
                 ConsoleOperation("mcp.catalog.view".to_string()),
@@ -203,7 +203,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/mcp/instances/page",
+            "/mcp/pages/instances",
             console_get(
                 list_mcp_instances_page,
                 ConsoleOperation("mcp.instances.view".to_string()),
@@ -301,7 +301,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/mcp/tools/page",
+            "/mcp/pages/tools",
             console_get(
                 list_mcp_tools_page,
                 ConsoleOperation("mcp.tools.view".to_string()),
@@ -1144,7 +1144,7 @@ fn to_update_tool_command(
 #[cfg(test)]
 mod tests;
 
-#[utoipa::path(get, path = "/api/console/mcp/interface-capabilities/page", summary = "List MCP interface capability summaries", description = "Returns a filtered page of MCP interface capabilities without their schemas.", params(McpInterfaceCapabilitiesPageQuery), responses((status = 200, body = McpInterfaceCapabilityPageResponse)))]
+#[utoipa::path(get, path = "/api/console/mcp/pages/interface-capabilities", summary = "List MCP interface capability summaries", description = "Returns a filtered page of MCP interface capabilities without their schemas.", params(McpInterfaceCapabilitiesPageQuery), responses((status = 200, body = McpInterfaceCapabilityPageResponse)))]
 pub async fn list_mcp_interface_capabilities_page(
     State(state): State<Arc<ApiState>>,
     Query(query): Query<McpInterfaceCapabilitiesPageQuery>,
@@ -1179,10 +1179,10 @@ pub async fn get_mcp_interface_capability(
     else {
         unreachable!()
     };
-    Ok(Json(ApiSuccess::new(value)))
+    Ok(Json(ApiSuccess::new(*value)))
 }
 
-#[utoipa::path(get, path = "/api/console/mcp/instances/page", summary = "List MCP instance summaries", description = "Returns a filtered page of MCP instances with group and tool binding counts.", params(McpInstancePageHttpQuery), responses((status = 200, body = McpInstancePageResponse)))]
+#[utoipa::path(get, path = "/api/console/mcp/pages/instances", summary = "List MCP instance summaries", description = "Returns a filtered page of MCP instances with group and tool binding counts.", params(McpInstancePageHttpQuery), responses((status = 200, body = McpInstancePageResponse)))]
 pub async fn list_mcp_instances_page(
     State(state): State<Arc<ApiState>>,
     Query(query): Query<McpInstancePageHttpQuery>,
@@ -1202,7 +1202,7 @@ pub async fn list_mcp_instances_page(
     Ok(Json(ApiSuccess::new(value)))
 }
 
-#[utoipa::path(get, path = "/api/console/mcp/tools/page", summary = "List MCP tool summaries", description = "Returns a filtered page of MCP tools without schemas, mappings, or full descriptions.", params(McpToolPageHttpQuery), responses((status = 200, body = McpToolSummaryPageResponse)))]
+#[utoipa::path(get, path = "/api/console/mcp/pages/tools", summary = "List MCP tool summaries", description = "Returns a filtered page of MCP tools without schemas, mappings, or full descriptions.", params(McpToolPageHttpQuery), responses((status = 200, body = McpToolSummaryPageResponse)))]
 pub async fn list_mcp_tools_page(
     State(state): State<Arc<ApiState>>,
     Query(query): Query<McpToolPageHttpQuery>,
