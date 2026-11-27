@@ -354,7 +354,7 @@ describe('MCP directory draft drag', () => {
   });
 
   test('a new mount moved during PUT keeps its unconfirmed visible flag and saves through the returned server identity', async () => {
-    grant(['mcp.directory.view', 'mcp.directory.replace', 'mcp.tools.view']);
+    grant(['mcp.directory.view', 'mcp.directory.replace', 'list_mcp_tools_page']);
     const newCatalog: ConsoleMcpCatalog = {
       ...catalog,
       tools: [newMountTool],

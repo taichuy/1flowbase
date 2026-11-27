@@ -324,7 +324,7 @@ export function McpInstancesTab({ page, pageSize, setPosition }: McpTablePaginat
                 >
                   {i18nText('settings', 'auto.instance_name')}
                 </Typography.Text>
-                {nodeEditing && can('mcp.instances.view') ? (
+                {nodeEditing && can('list_mcp_instances_page') ? (
                   <DirectoryPagedSelect<ConsoleMcpInstance>
                     aria-label={i18nText('settings', 'auto.instance_name')}
                     className="mcp-management__instance-select"

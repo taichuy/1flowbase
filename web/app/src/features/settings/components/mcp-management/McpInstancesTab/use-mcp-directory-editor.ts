@@ -183,7 +183,7 @@ export function useMcpDirectoryEditor() {
       [...new Set(selectedInstanceBindings.map((row) => row.tool_id))].sort(),
     [selectedInstanceBindings]
   );
-  const canReadTools = can('mcp.tools.view');
+  const canReadTools = can('list_mcp_tools_page');
   const boundToolsQuery = useQuery({
     queryKey: [...settingsMcpToolsQueryKey, 'directory-bound', boundToolIds],
     queryFn: () => fetchToolSummariesByIds(boundToolIds),

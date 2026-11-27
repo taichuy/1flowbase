@@ -14,7 +14,8 @@ async function openDirectory() {
 describe('MCP directory and table browsing', () => {
   setupDirectoryEditorFixture();
 
-  test('the directory reads bound IDs only; the open picker pages unfiltered and broad searches through to a saved mount', async () => {
+  test('exact non-root page and directory grants allow bound summaries, browsing and saving the 51st tool', async () => {
+    grantDirectoryPermissions(['list_mcp_instances_page', 'list_mcp_tools_page', 'mcp.directory.view', 'mcp.directory.replace']);
     await renderPanelWithMountedTool({
       configureCatalog({ tools }) {
         const original = tools[0]!;
@@ -62,14 +63,65 @@ describe('MCP directory and table browsing', () => {
     ));
   });
 
-  test('directory read/write without tools.view shows the permission reason, not an empty tool list', async () => {
+  test.each([
+    ['no tool operation', []],
+    ['detail only', ['get_mcp_tool']],
+    ['legacy profile only', ['mcp.tools.view']]
+  ] as const)('directory read/write with %s cannot browse tools', async (_label, tools) => {
+    grantDirectoryPermissions(['list_mcp_instances_page', 'mcp.directory.view', 'mcp.directory.replace', ...tools]);
     await renderPanelWithMountedTool();
-    grantDirectoryPermissions(['mcp.instances.view', 'mcp.directory.view', 'mcp.directory.replace']);
     const dialog = within(await openDirectory());
-    expect(dialog.getByText(/mcp\.tools\.view/)).toBeVisible();
+    expect(dialog.getByText(/list_mcp_tools_page/)).toBeVisible();
     expect(dialog.getByRole('button', { name: '挂载 Tool' })).toBeDisabled();
     expect(dialog.getByRole('button', { name: '新建分组' })).toBeEnabled();
     expect(api.fetchSettingsMcpToolsPage).not.toHaveBeenCalled();
+    expect(api.fetchSettingsMcpTool).not.toHaveBeenCalled();
+  });
+
+  test('the exact instance page grant can switch directories without a tool read grant', async () => {
+    grantDirectoryPermissions(['list_mcp_instances_page', 'mcp.directory.view', 'mcp.directory.replace']);
+    await renderPanelWithMountedTool({ secondInstance: true });
+    const row = screen.getByRole('row', { name: /Ops MCP/ });
+    await click(within(row).getByRole('button', { name: '目录编辑' }));
+    const dialog = within(await screen.findByRole('dialog', { name: '目录编辑' }));
+    await waitFor(() => expect(dialog.getByRole('button', { name: '新建分组' })).toBeEnabled());
+    await click(dialog.getByRole('button', { name: '新建分组' }));
+    await mouseDown(dialog.getByRole('combobox', { name: '实例名称' }));
+    await selectAntdOption('Other MCP');
+    expect(api.fetchSettingsMcpInstancesPage).toHaveBeenCalledWith({ page: 1, page_size: 50, keyword: undefined });
+    await waitFor(() => expect(api.fetchSettingsMcpInstanceDirectory).toHaveBeenLastCalledWith('other_mcp'));
+    expect(api.fetchSettingsMcpToolsPage).not.toHaveBeenCalled();
+    expect(api.replaceSettingsMcpInstanceDirectory).not.toHaveBeenCalled();
+  });
+
+  test('an open directory cannot use the legacy instance-list grant to read another picker page', async () => {
+    grantDirectoryPermissions(['list_mcp_instances_page', 'mcp.directory.view', 'mcp.directory.replace']);
+    await renderPanelWithMountedTool();
+    const dialog = within(await openDirectory());
+    const reads = api.fetchSettingsMcpInstancesPage.mock.calls.length;
+    grantDirectoryPermissions(['mcp.instances.view', 'mcp.directory.view', 'mcp.directory.replace']);
+    await click(dialog.getByRole('button', { name: '新建分组' }));
+    expect(dialog.queryByRole('combobox', { name: '实例名称' })).not.toBeInTheDocument();
+    expect(api.fetchSettingsMcpInstancesPage).toHaveBeenCalledTimes(reads);
+  });
+
+  test('page grants do not authorize directory replacement', async () => {
+    grantDirectoryPermissions(['list_mcp_instances_page', 'list_mcp_tools_page', 'mcp.directory.view']);
+    await renderPanelWithMountedTool();
+    const dialog = within(await openDirectory());
+    expect(api.fetchSettingsMcpToolsPage).toHaveBeenCalledExactlyOnceWith({
+      page: 1, page_size: 1, tool_ids: ['search_customer']
+    });
+    expect(dialog.getByRole('button', { name: '挂载 Tool' })).toBeDisabled();
+    expect(dialog.getByRole('button', { name: '保存目录' })).toBeDisabled();
+    expect(api.replaceSettingsMcpInstanceDirectory).not.toHaveBeenCalled();
+  });
+
+  test('the progressive API fixture distinguishes an explicit empty tool ID list from an omitted filter', async () => {
+    await renderPanelWithMountedTool();
+    const page = { page: 1, page_size: 50 };
+    expect(await api.fetchSettingsMcpToolsPage(page)).toMatchObject({ total: 1 });
+    expect(await api.fetchSettingsMcpToolsPage({ ...page, tool_ids: [] })).toMatchObject({ total: 0, items: [] });
   });
 
   test('a failed tool lookup displays the server error and retry fetches the same page', async () => {
