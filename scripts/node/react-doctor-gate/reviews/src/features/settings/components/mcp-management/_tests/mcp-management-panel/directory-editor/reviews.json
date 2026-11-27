@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/instance-contract.test.tsx","sha256":"364abd9cbf68230f7ab47d616bd468fbcbe0be4099935c7005b38b95e8edcaae"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/tool-editor.test.tsx","sha256":"d1cb996c49b43c3f731f2c544d35c9162477035f7e4aaf9908640f522d693554"}]
+    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/instance-contract.test.tsx","sha256":"364abd9cbf68230f7ab47d616bd468fbcbe0be4099935c7005b38b95e8edcaae"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/tool-editor.test.tsx","sha256":"2ab231e2824e9f037b176da45dc52c85735b968e5ec2e32dd74913b667d17f67"}]
   ],
   "reviews": [
     {
