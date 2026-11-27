@@ -967,6 +967,42 @@ async fn execute_callback(
             .await;
             exchange_service_response(result)
         }
+        MultiplexHostService::PrivacyMaskingV1 => {
+            let result = async {
+                let request: extension_contracts::PrivacyMaskingRequest =
+                    serde_json::from_value(request).map_err(|_| {
+                        extension_contracts::HostServiceError::new("host_service_request_invalid")
+                    })?;
+                request.validate()?;
+                let (binding, port) =
+                    context
+                        .and_then(|context| context.privacy_masking)
+                        .ok_or_else(|| {
+                            extension_contracts::HostServiceError::new("host_service_not_granted")
+                        })?;
+                let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
+                if remaining <= 0 {
+                    return Err(extension_contracts::HostServiceError::new(
+                        "host_service_deadline_exceeded",
+                    ));
+                }
+                if binding.deadline_unix_ms == i64::MAX {
+                    return port.execute(&binding, &request).await;
+                }
+                tokio::time::timeout(
+                    Duration::from_millis(remaining as u64),
+                    port.execute(&binding, &request),
+                )
+                .await
+                .unwrap_or_else(|_| {
+                    Err(extension_contracts::HostServiceError::new(
+                        "host_service_deadline_exceeded",
+                    ))
+                })
+            }
+            .await;
+            exchange_service_response(result)
+        }
         MultiplexHostService::PluginDataV1 => {
             let result = async {
                 let request: PluginDataRequest = serde_json::from_value(request)
@@ -1166,3 +1202,7 @@ mod execution_gate_dispatch;
 #[cfg(test)]
 #[path = "../_tests/host_services/workspace_governance_callbacks.rs"]
 mod workspace_governance_callbacks;
+
+#[cfg(test)]
+#[path = "../_tests/host_services/privacy_masking_callbacks.rs"]
+mod privacy_masking_callbacks;

@@ -194,6 +194,9 @@ impl Adapter {
                                 | "application.logs.read"
                                 | "application.logs.import"
                                 | "network.http.request"
+                                | "privacy.subjects.read"
+                                | "privacy.policy.sync"
+                                | "privacy.logs.read"
                         )
                     }) {
                 api_host_kernel::resource_import_context::capture_caller(

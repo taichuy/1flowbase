@@ -97,6 +97,10 @@ pub(crate) struct ProviderHostCallContext {
         extension_contracts::WorkspaceGovernanceBinding,
         Arc<dyn extension_contracts::WorkspaceGovernancePort>,
     )>,
+    pub privacy_masking: Option<(
+        extension_contracts::PrivacyMaskingBinding,
+        Arc<dyn extension_contracts::PrivacyMaskingPort>,
+    )>,
     pub execution_gate: Option<super::execution_gate_host::ExecutionGateCall>,
     pub plugin_ephemeral: Option<(
         extension_contracts::PluginEphemeralBinding,

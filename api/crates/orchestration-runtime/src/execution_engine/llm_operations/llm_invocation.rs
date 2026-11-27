@@ -50,6 +50,11 @@ impl LlmInvocationDebugContext {
         }
     }
 
+    pub(super) fn replace_persisted_prompt_snapshot(&mut self, input: &ProviderInvocationInput) {
+        self.effective_system = input.system.clone();
+        self.provider_messages = prompt_messages_from_provider_messages(&input.messages);
+    }
+
     pub(super) fn to_payload(&self, result: Option<&ProviderInvocationResult>) -> Value {
         let mut payload = Map::new();
         payload.insert("context_policy".to_string(), self.context_policy.clone());

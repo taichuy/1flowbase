@@ -134,6 +134,19 @@ pub(super) fn workspace_governance_caller(
     })
 }
 
+pub(super) fn privacy_masking_caller(
+    principal: &runtime_core::runtime_backend::RuntimeExecutionPrincipal,
+) -> Option<extension_contracts::PrivacyMaskingCallerDto> {
+    let caller = workspace_governance_caller(principal)?;
+    Some(extension_contracts::PrivacyMaskingCallerDto {
+        user_id: caller.user_id,
+        tenant_id: caller.tenant_id,
+        current_workspace_id: caller.current_workspace_id,
+        is_root: caller.is_root,
+        effective_display_role: caller.effective_display_role,
+    })
+}
+
 #[cfg(test)]
 #[path = "../_tests/host_services/workspace_governance_caller.rs"]
 mod workspace_governance_caller_tests;

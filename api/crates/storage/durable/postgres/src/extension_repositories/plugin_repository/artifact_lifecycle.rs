@@ -592,6 +592,11 @@ impl PgControlPlaneStore {
             .bind(&installation_ids)
             .execute(&mut *transaction)
             .await?;
+        crate::privacy_masking_repository::delete_policies_for_installations_in_tx(
+            &mut transaction,
+            &installation_ids,
+        )
+        .await?;
         for cleanup in &input.artifact_cleanups {
             sqlx::query(
                 r#"
@@ -644,6 +649,9 @@ impl PgControlPlaneStore {
         .execute(&mut *transaction)
         .await?;
         transaction.commit().await?;
+        for installation_id in installation_ids {
+            self.observe_privacy_installation_invalidation(installation_id);
+        }
         Ok(())
     }
 

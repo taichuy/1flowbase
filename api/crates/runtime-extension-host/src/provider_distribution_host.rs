@@ -173,6 +173,7 @@ fn distribution_host_calls(
         plugin_credentials: None,
         execution_gate: None,
         workspace_governance: None,
+        privacy_masking: None,
         plugin_ephemeral: None,
     }))
 }

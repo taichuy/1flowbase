@@ -119,6 +119,9 @@ pub use communications::*;
 pub mod communication_commands;
 pub use communication_commands::*;
 
+pub mod privacy_masking;
+pub use privacy_masking::*;
+
 #[path = "resource_ports/event_center.rs"]
 pub mod event_center;
 pub use event_center::*;

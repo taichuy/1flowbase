@@ -30,6 +30,9 @@ pub struct PgControlPlaneStore {
         Option<std::sync::Arc<dyn control_plane_contracts::ports::CommunicationLifecycleObserver>>,
     pub(crate) lifecycle_observer:
         Option<std::sync::Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>>,
+    pub(crate) privacy_masking_invalidation_observer: Option<
+        std::sync::Arc<dyn control_plane_contracts::ports::PrivacyMaskingInvalidationObserver>,
+    >,
     pub(crate) runtime_table_name_policy: crate::RuntimeTableNamePolicy,
     pub(crate) lifecycle_publication_catalog: std::sync::Arc<LifecyclePublicationCatalog>,
 }
@@ -51,6 +54,7 @@ impl PgControlPlaneStore {
             lifecycle_observer: None,
             application_lifecycle_observer: None,
             communication_lifecycle_observer: None,
+            privacy_masking_invalidation_observer: None,
             runtime_table_name_policy: crate::RuntimeTableNamePolicy::default(),
             lifecycle_publication_catalog: std::sync::Arc::new(
                 LifecyclePublicationCatalog::default(),
@@ -108,6 +112,28 @@ impl PgControlPlaneStore {
         self
     }
 
+    pub fn with_privacy_masking_invalidation_observer(
+        mut self,
+        observer: std::sync::Arc<
+            dyn control_plane_contracts::ports::PrivacyMaskingInvalidationObserver,
+        >,
+    ) -> Self {
+        self.privacy_masking_invalidation_observer = Some(observer);
+        self
+    }
+
+    pub(crate) fn observe_privacy_installation_invalidation(&self, installation_id: Uuid) {
+        if let Some(observer) = &self.privacy_masking_invalidation_observer {
+            observer.invalidate_installation(installation_id);
+        }
+    }
+
+    pub(crate) fn observe_privacy_workspace_invalidation(&self, workspace_id: Uuid) {
+        if let Some(observer) = &self.privacy_masking_invalidation_observer {
+            observer.invalidate_workspace(workspace_id);
+        }
+    }
+
     pub(crate) fn observe_lifecycle_commit(
         &self,
         input: &control_plane_contracts::ports::RecordLifecycleFactInput,
@@ -143,6 +169,9 @@ impl PgControlPlaneStore {
             lifecycle_observer: self.lifecycle_observer.clone(),
             application_lifecycle_observer: self.application_lifecycle_observer.clone(),
             communication_lifecycle_observer: self.communication_lifecycle_observer.clone(),
+            privacy_masking_invalidation_observer: self
+                .privacy_masking_invalidation_observer
+                .clone(),
             runtime_table_name_policy: self.runtime_table_name_policy.clone(),
             lifecycle_publication_catalog: std::sync::Arc::clone(
                 &self.lifecycle_publication_catalog,

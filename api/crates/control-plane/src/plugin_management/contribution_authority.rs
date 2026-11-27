@@ -133,7 +133,7 @@ impl HostContributionGrantPolicy {
             base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
-                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;plugin-resource-imports/v1;http-egress/v1;plugin-ephemeral/v1;execution-gate/v1;authentication/v1;workspace-governance/v1;workspace-policy/v1;frontend-block-trusted-host/v1"
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;plugin-resource-imports/v1;http-egress/v1;plugin-ephemeral/v1;execution-gate/v1;authentication/v1;workspace-governance/v1;workspace-policy/v1;privacy-masking/v1;frontend-block-trusted-host/v1"
                 ]
                 .concat()
             ))
@@ -238,6 +238,14 @@ impl HostContributionGrantPolicy {
                     WORKSPACE_GOVERNANCE_READ_PERMISSION
                     | WORKSPACE_GOVERNANCE_MANAGE_PERMISSION => {
                         request.permission_contract_id == WORKSPACE_GOVERNANCE_CONTRACT_ID
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
+                    PRIVACY_SUBJECTS_READ_PERMISSION
+                    | PRIVACY_POLICY_SYNC_PERMISSION
+                    | PRIVACY_LOGS_READ_PERMISSION
+                        if !is_policy =>
+                    {
+                        request.permission_contract_id == PRIVACY_MASKING_CONTRACT_ID
                             && request.resource_scope == ContributionResourceScope::System
                     }
                     "service.execute" if !is_policy => {

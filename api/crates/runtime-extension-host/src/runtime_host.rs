@@ -92,6 +92,7 @@ pub struct RuntimeExtensionHost {
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
     pub(crate) execution_gate_registry: crate::execution_gate_host::ExecutionGateRegistry,
     pub(crate) workspace_governance: Option<Arc<dyn extension_contracts::WorkspaceGovernancePort>>,
+    pub(crate) privacy_masking: Option<Arc<dyn extension_contracts::PrivacyMaskingPort>>,
     pub(crate) execution_gate: Option<Arc<dyn extension_contracts::PluginExecutionGateAuthority>>,
     pub(crate) plugin_ephemeral: Option<Arc<dyn extension_contracts::PluginEphemeralPort>>,
     managed_hash_budget: Arc<tokio::sync::Semaphore>,
@@ -201,6 +202,7 @@ impl RuntimeExtensionHost {
             execution_gate_registry: Default::default(),
             execution_gate: None,
             workspace_governance: None,
+            privacy_masking: None,
             plugin_ephemeral: None,
             managed_hash_budget: Arc::new(tokio::sync::Semaphore::new(4)),
         })
@@ -243,6 +245,14 @@ impl RuntimeExtensionHost {
         port: Arc<dyn extension_contracts::WorkspaceGovernancePort>,
     ) -> Self {
         self.workspace_governance = Some(port);
+        self
+    }
+
+    pub fn with_privacy_masking(
+        mut self,
+        port: Arc<dyn extension_contracts::PrivacyMaskingPort>,
+    ) -> Self {
+        self.privacy_masking = Some(port);
         self
     }
 

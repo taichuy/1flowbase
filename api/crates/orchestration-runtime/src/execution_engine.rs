@@ -307,6 +307,17 @@ pub trait ProviderInvoker: Send + Sync {
         false
     }
 
+    /// Optional host-owned projection of the input that should be recorded in durable debug/context
+    /// snapshots when privacy masking runs with `restore_output = false`.
+    async fn project_persisted_llm_input(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _resolved_route: &ResolvedProviderRoute,
+        _input: &ProviderInvocationInput,
+    ) -> Result<Option<ProviderInvocationInput>> {
+        Ok(None)
+    }
+
     async fn invoke_resolved_llm(
         &self,
         runtime: &CompiledLlmRuntime,

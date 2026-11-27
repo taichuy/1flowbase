@@ -78,3 +78,4 @@ pub use control_plane_contracts::ports::communication_commands::*;
 pub use control_plane_contracts::ports::EventCenterRepository;
 
 pub use control_plane_contracts::ports::RecordPermissionRepository;
+pub use control_plane_contracts::ports::privacy_masking::*;

@@ -85,6 +85,16 @@ pub(super) async fn app_and_runtime_host_from_config(
             .activate(&active_host_extensions)?,
         )?;
     let store = store.with_lifecycle_publication_catalog(lifecycle_publication_catalog.clone());
+    let privacy_masking_kernel = Arc::new(
+        control_plane::privacy_masking::PrivacyMaskingKernel::new(
+            Arc::new(store.clone()),
+            &config.provider_secret_master_key,
+        )?,
+    );
+    let store = store.with_privacy_masking_invalidation_observer(
+        privacy_masking_kernel.clone()
+            as Arc<dyn control_plane::ports::PrivacyMaskingInvalidationObserver>,
+    );
     notification_publication.activate(Arc::new(store.clone()))?;
     let session_store = infrastructure
         .session_store()
@@ -215,6 +225,14 @@ pub(super) async fn app_and_runtime_host_from_config(
             control_plane::plugin_management::ManagedPluginEphemeralService::new(
                 Arc::new(store.clone()), infrastructure.ephemeral_kv_store(),
             ),
+        )).with_privacy_masking(Arc::new(
+            control_plane::plugin_management::ManagedPrivacyMaskingService::new(
+                Arc::new(store.clone()),
+                Arc::new(store.clone()),
+                Arc::new(store.clone()),
+                Arc::new(store.clone()),
+                Arc::clone(&privacy_masking_kernel),
+            ),
         )),
     );
     runtime_extension_host
@@ -230,7 +248,8 @@ pub(super) async fn app_and_runtime_host_from_config(
                     runtime_backend,
                     Arc::clone(&extension_graph),
                     config.transport_session_registry.clone(),
-                )?,
+                )?
+                .with_privacy_masking_kernel(Arc::clone(&privacy_masking_kernel)),
             ),
             store.clone(),
             config.api_node_id.clone(),

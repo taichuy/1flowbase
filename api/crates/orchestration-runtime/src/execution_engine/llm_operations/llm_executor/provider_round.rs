@@ -525,13 +525,24 @@ where
                     .and_then(Value::as_str)
             })
             .map(str::to_string);
-        let invocation_messages = build_llm_debug_invocation_messages(
-            node,
-            resolved_inputs,
-            rendered_templates,
-            variable_pool,
-            &invocation.input,
-        );
+        let persisted_input_override = invoker
+            .project_persisted_llm_input(attempt_runtime, &resolved_route, &invocation.input)
+            .await?;
+        let invocation_messages = if let Some(masked_persisted) = persisted_input_override.as_ref()
+        {
+            invocation
+                .debug_context
+                .replace_persisted_prompt_snapshot(masked_persisted);
+            prompt_messages_from_provider_messages(&masked_persisted.messages)
+        } else {
+            build_llm_debug_invocation_messages(
+                node,
+                resolved_inputs,
+                rendered_templates,
+                variable_pool,
+                &invocation.input,
+            )
+        };
         if invocation.input.messages.is_empty() && !native_responses_passthrough {
             let attempt_finished_at = OffsetDateTime::now_utc();
             let error_payload = build_empty_prompt_messages_error_payload(attempt_runtime);

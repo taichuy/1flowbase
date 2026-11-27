@@ -102,3 +102,7 @@ pub mod workspace_governance_contract;
 pub use workspace_governance_contract::*;
 pub mod workspace_policy_contract;
 pub use workspace_policy_contract::*;
+
+#[path = "host_services/privacy_masking_contract.rs"]
+pub mod privacy_masking_contract;
+pub use privacy_masking_contract::*;

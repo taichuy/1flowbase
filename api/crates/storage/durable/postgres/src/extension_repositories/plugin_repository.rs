@@ -744,7 +744,17 @@ impl PluginRepository for PgControlPlaneStore {
         guard_managed_desired_state(&mut transaction, input.installation_id, input.desired_state)
             .await?;
         let installation = write_plugin_desired_state(&mut transaction, input).await?;
+        if input.desired_state == domain::PluginDesiredState::Disabled {
+            crate::privacy_masking_repository::delete_policies_for_installations_in_tx(
+                &mut transaction,
+                &[input.installation_id],
+            )
+            .await?;
+        }
         transaction.commit().await?;
+        if input.desired_state == domain::PluginDesiredState::Disabled {
+            self.observe_privacy_installation_invalidation(input.installation_id);
+        }
         Ok(installation)
     }
 

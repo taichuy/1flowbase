@@ -628,4 +628,10 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             .await
             .map(Some)
     }
+
+    fn privacy_masking_kernel(
+        &self,
+    ) -> Option<Arc<control_plane::privacy_masking::PrivacyMaskingKernel>> {
+        self.services.privacy_masking_kernel()
+    }
 }
