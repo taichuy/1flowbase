@@ -2,7 +2,8 @@
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
     [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-bundles.test.tsx","sha256":"21e39554295adc69406ce64ede100f11f58b3b4fce9ba39c55bb5ca4a85488d8"},{"file":"web/app/src/features/settings/components/mcp-management/bundle/McpBundleImportFlow.tsx","sha256":"d842b7a18a6f653efb6cda1620062b760eab9935ae166cff8a098412fc2f3023"}],
-    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-bundles.test.tsx","sha256":"21e39554295adc69406ce64ede100f11f58b3b4fce9ba39c55bb5ca4a85488d8"}]
+    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-bundles.test.tsx","sha256":"21e39554295adc69406ce64ede100f11f58b3b4fce9ba39c55bb5ca4a85488d8"}],
+    [{"file":"web/app/src/features/settings/components/mcp-management/bundle/_tests/McpTemplateLibrary.test.tsx","sha256":"ccd9b00d6fcbcdb66175b8d5c3cbf21f5bb0e01efdd121579d1435e49dda4c9e"}]
   ],
   "reviews": [
     {
@@ -36,30 +37,30 @@
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "cd6489e509a66a9939cd7f422503106ad96701dfacad5c7c5de045e67de7df53",
-      "reason": "The external owner/identity changed, so previous draft/error/resource state is explicitly invalidated; the nearest fixture/source demonstrates that lifecycle. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners. Reassessed 2026-11-03: Template library remains readable independently of manage access; import/sync/switch/repair/delete controls consume individual operations. Selected-version and per-operation pending owners remain.",
-      "evidenceSet": 1
+      "sourceSha256": "1efc6d510cee23beda260989f199b1f47c09fdc7f3056fcb49b07586e72402f9",
+      "reason": "selectedKey is user selection. Once the fetched catalog exists, an absent selected bundle invalidates that key so it cannot silently reappear as selected in a later catalog. The tests exercise refreshed catalog and import selection; the missing-key guard is source evidence.",
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
       "rule": "react-doctor/no-chain-state-updates",
-      "sourceSha256": "cd6489e509a66a9939cd7f422503106ad96701dfacad5c7c5de045e67de7df53",
-      "reason": "The guarded correction responds to an external catalog/permission/viewport change; it is not a derivation chain which can be removed without retaining an invalid selection. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners. Reassessed 2026-11-03: Template library remains readable independently of manage access; import/sync/switch/repair/delete controls consume individual operations. Selected-version and per-operation pending owners remain.",
-      "evidenceSet": 1
+      "sourceSha256": "1efc6d510cee23beda260989f199b1f47c09fdc7f3056fcb49b07586e72402f9",
+      "reason": "selected is a lookup of selectedKey in libraryQuery.data, not another effect-produced state. Clearing a missing key converges to null; it does not enqueue a selection chain. The refreshed-index scenario supplies the real external data transition.",
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
       "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "cd6489e509a66a9939cd7f422503106ad96701dfacad5c7c5de045e67de7df53",
-      "reason": "This exact branch is a query/read-model/availability or resource synchronization expression, not a callback that can move solely into a click handler. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners. Reassessed 2026-11-03: Template library remains readable independently of manage access; import/sync/switch/repair/delete controls consume individual operations. Selected-version and per-operation pending owners remain.",
-      "evidenceSet": 1
+      "sourceSha256": "1efc6d510cee23beda260989f199b1f47c09fdc7f3056fcb49b07586e72402f9",
+      "reason": "Query completion and removal of a previously selected key are not tied to one UI event. The query is also declaratively gated by enabled; remote synchronization itself is an explicit action. The library tests check no remote refresh on initial load and a request after clicking Refresh.",
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "cd6489e509a66a9939cd7f422503106ad96701dfacad5c7c5de045e67de7df53",
-      "reason": "The named owner and extracted child/controller boundaries below explain this component; declaration length alone is not a demonstrated competing responsibility or behavior failure. McpTemplateLibrary queries only when canManage && enabled. selectedKey is local user selection; when a refreshed backend catalog no longer contains it, the guarded effect clears it. This is identity invalidation of an externally removed bundle, not an event handler or pure derived display value. Import flow and operation actions are separate child/async owners. Reassessed 2026-11-03: Template library remains readable independently of manage access; import/sync/switch/repair/delete controls consume individual operations. Selected-version and per-operation pending owners remain.",
-      "evidenceSet": 1
+      "sourceSha256": "1efc6d510cee23beda260989f199b1f47c09fdc7f3056fcb49b07586e72402f9",
+      "reason": "The library owns one local bundle catalog, per-operation pending keys and selection. Import confirmation is delegated to the bundle import flow. Tests distinguish local load from explicit remote refresh, isolate pending rows and inspect the selected import version.",
+      "evidenceSet": 2
     }
   ]
 }

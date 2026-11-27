@@ -1,21 +1,21 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/components/files/_tests/FileTableView.test.tsx","sha256":"a30251ad2eb51150015e813f0baea5c2cf7cba82cab7b6de9486af4bb3c2d8ca"},{"file":"web/app/src/features/frontstage/components/files/FileShareModal.tsx","sha256":"32cc5e760262e4a10069283e750a60d33d4fc96a254d3cff14c6d3445d37a357"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+    [{"file":"web/app/src/features/frontstage/components/files/_tests/FileTableView.test.tsx","sha256":"9174cd207fc01ac9a690dec1ee79cf63e849492af732793ba4448eceabc70ec9"},{"file":"web/app/src/features/frontstage/components/files/FileShareModal.tsx","sha256":"32cc5e760262e4a10069283e750a60d33d4fc96a254d3cff14c6d3445d37a357"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/components/files/FileTableView.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "09a6b1ce330eb20993d654eee3ac32203c5d147d4f79f013162537abe43b5743",
-      "reason": "Table code and authenticated workspace select the server query and scope search, page and sharing state. They can change outside any table click. A share target must also match the current table and workspace at render time; the workspace-switch test rejects a late link result.",
+      "sourceSha256": "dc36acacfc98a79315a308c189e2decf0dfb83e985b522dc7c6a938e2926e78f",
+      "reason": "Table/workspace identity scopes the page, search and share target. A workspace switch can happen without a table event. Rendering checks the target identity and the sharing scenario ignores an old pending result after the switch.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/components/files/FileTableView.tsx",
       "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "09a6b1ce330eb20993d654eee3ac32203c5d147d4f79f013162537abe43b5743",
-      "reason": "The 300ms timer commits the trimmed server filter together with page 1; its cleanup cancels superseded input. A separate effect clears table-scoped search, page and share state when the workspace or table changes. The server search/sort and pending-share workspace-switch scenarios exercise these independent boundaries.",
+      "sourceSha256": "dc36acacfc98a79315a308c189e2decf0dfb83e985b522dc7c6a938e2926e78f",
+      "reason": "The debounce now schedules only a changed normalized filename. Its callback commits that server filter and page 1 together; separate table/workspace identity changes clear scope-local state. The regression holds the page-2 request across the debounce boundary and requires a page-1 request and newest row after upload.",
       "evidenceSet": 0
     }
   ]
