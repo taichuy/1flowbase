@@ -294,6 +294,48 @@ describe('frontstage startup prefetch', () => {
     stop();
   });
 
+  test.each([
+    ['nested', 'nested'],
+    ['elsewhere', 'landing'],
+    ['group-only', 'landing']
+  ])(
+    'prefetches the scoped page or canonical fallback for /other/pages/%s',
+    async (requested, expected) => {
+      authenticateWithMe();
+      const page = (id: string) => ({ kind: 'page', id, children: [] });
+      apiMocks.fetchFrontstagePageTree.mockResolvedValue([
+        { ...page('landing'), placement: 'topbar', slug: 'first' },
+        { ...page('elsewhere'), placement: 'topbar', slug: 'elsewhere' },
+        {
+          kind: 'group',
+          id: 'other',
+          placement: 'topbar',
+          slug: 'other',
+          children: [
+            { kind: 'group', id: 'group-only', children: [page('nested')] }
+          ]
+        }
+      ]);
+      const stop = startFrontstageStartupPrefetch(
+        createApplicationQueryClient(),
+        {
+          getPathname: () => `/other/pages/${requested}`,
+          preloadWorkspaceRoute: async () => ({}),
+          useBootstrapEndpoint: false
+        }
+      );
+      try {
+        await waitFor(() =>
+          expect(apiMocks.fetchFrontstagePageTabs.mock.calls).toEqual([
+            ['workspace-1', expected]
+          ])
+        );
+      } finally {
+        stop();
+      }
+    }
+  );
+
   test('does nothing on console paths or when me is null', () => {
     authenticateWithMe();
     const client = createApplicationQueryClient();

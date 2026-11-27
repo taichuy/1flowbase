@@ -585,12 +585,14 @@ describe('start node variables', () => {
         }
       ]).map((option) => ({
         value: option.value,
+        outputLabel: option.outputLabel,
         label: option.displayLabel
       }))
     ).toEqual(
       expect.arrayContaining([
         {
           value: ['env', 'ApiBaseUrl'],
+          outputLabel: 'env.ApiBaseUrl',
           label: 'env.ApiBaseUrl'
         }
       ])
@@ -618,12 +620,14 @@ describe('start node variables', () => {
     expect(
       listVisibleSelectorOptions(document, 'node-answer').map((option) => ({
         value: option.value,
+        outputLabel: option.outputLabel,
         label: option.displayLabel
       }))
     ).toEqual(
       expect.arrayContaining([
         {
           value: ['conversation', 'ApiBaseUrl'],
+          outputLabel: 'conversation.ApiBaseUrl',
           label: 'conversation.ApiBaseUrl'
         }
       ])

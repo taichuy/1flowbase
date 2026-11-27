@@ -266,26 +266,32 @@ export function listVisibleSelectorOptions(
         displayLabel: variable.title
       }))
     : [];
-  const environmentOptions = environmentVariables.map((variable) => ({
-    nodeId: environmentVariableNodeId,
-    nodeLabel: i18nText('agentFlow', 'auto.environment_variables'),
-    outputKey: variable.name,
-    outputLabel: formatEnvironmentVariableTitle(variable.name),
-    valueType: variable.value_type,
-    value: [environmentVariableNodeId, variable.name],
-    displayLabel: formatEnvironmentVariableTitle(variable.name)
-  }));
+  const environmentOptions = environmentVariables.map((variable) => {
+    const label = formatEnvironmentVariableTitle(variable.name);
+    return {
+      nodeId: environmentVariableNodeId,
+      nodeLabel: i18nText('agentFlow', 'auto.environment_variables'),
+      outputKey: variable.name,
+      outputLabel: label,
+      valueType: variable.value_type,
+      value: [environmentVariableNodeId, variable.name],
+      displayLabel: label
+    };
+  });
   const conversationOptions = isWorkflowDocument
     ? []
-    : listConversationVariables(document).map((variable) => ({
-        nodeId: conversationVariableNodeId,
-        nodeLabel: i18nText('agentFlow', 'auto.conversation_variables'),
-        outputKey: variable.name,
-        outputLabel: formatConversationVariableTitle(variable.name),
-        valueType: variable.valueType,
-        value: [conversationVariableNodeId, variable.name],
-        displayLabel: formatConversationVariableTitle(variable.name)
-      }));
+    : listConversationVariables(document).map((variable) => {
+        const label = formatConversationVariableTitle(variable.name);
+        return {
+          nodeId: conversationVariableNodeId,
+          nodeLabel: i18nText('agentFlow', 'auto.conversation_variables'),
+          outputKey: variable.name,
+          outputLabel: label,
+          valueType: variable.valueType,
+          value: [conversationVariableNodeId, variable.name],
+          displayLabel: label
+        };
+      });
 
   const nodeOptions = document.graph.nodes
     .filter((node) => visibleNodeIds.has(node.id))
