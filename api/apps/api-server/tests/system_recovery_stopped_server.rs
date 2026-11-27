@@ -20,10 +20,11 @@ use control_plane::{
     plugin_management::{BackupArtifactDisposition, BackupArtifactEntry, BackupArtifactKind},
     ports::{
         BackupRepository, CreateDataSourceInstanceInput, CreateMcpUpstreamConnectionInput,
-        CreateModelProviderInstanceInput, DataSourceRepository, ExtensionInstallationRepository,
-        McpManagementRepository, ModelProviderRepository, UpsertDataSourceSecretInput,
-        UpsertExtensionInstallationInput, UpsertMcpUpstreamSecretInput,
-        UpsertModelProviderSecretInput,
+        CreateModelProviderInstanceInput, CreatePluginAssignmentInput, DataSourceRepository,
+        ExtensionInstallationRepository, McpManagementRepository, ModelProviderRepository,
+        PluginRepository, UpsertDataSourceSecretInput, UpsertExtensionInstallationInput,
+        UpsertMcpUpstreamSecretInput, UpsertModelProviderSecretInput,
+        UpsertPluginInstallationInput,
     },
     system_backup::{
         BackupComponentDescriptor, BackupComponentSource, BackupSourceError,
@@ -645,7 +646,14 @@ impl RecoveryScenario {
             &CreateDataSourceInstanceInput {
                 instance_id: data_source_instance_id,
                 workspace_id: bootstrap.workspace_id,
-                installation_id,
+                installation_id: assigned_fixture_plugin(
+                    &store,
+                    bootstrap.workspace_id,
+                    bootstrap.root_user_id,
+                    "recovery_fixture_source",
+                    "1flowbase.data_source/v1",
+                )
+                .await,
                 source_code: "recovery_fixture_source".to_owned(),
                 display_name: "Recovery fixture source".to_owned(),
                 status: domain::DataSourceInstanceStatus::Draft,
@@ -675,7 +683,14 @@ impl RecoveryScenario {
             &CreateModelProviderInstanceInput {
                 instance_id: model_provider_instance_id,
                 workspace_id: bootstrap.workspace_id,
-                installation_id,
+                installation_id: assigned_fixture_plugin(
+                    &store,
+                    bootstrap.workspace_id,
+                    bootstrap.root_user_id,
+                    "recovery_fixture_provider",
+                    "1flowbase.provider/v2",
+                )
+                .await,
                 provider_code: "recovery_fixture_provider".to_owned(),
                 protocol: "openai".to_owned(),
                 display_name: "Recovery fixture provider".to_owned(),
@@ -888,6 +903,51 @@ impl BackupComponentSource for BytesBackupSource {
             .await
             .map_err(|_| BackupSourceError::Unavailable)
     }
+}
+
+// Secret-bearing instances are ordinary plugin references; the MCP backup artifact is not one.
+async fn assigned_fixture_plugin(
+    store: &impl PluginRepository,
+    workspace_id: Uuid,
+    actor_user_id: Uuid,
+    code: &str,
+    contract: &str,
+) -> Uuid {
+    let installed = store
+        .upsert_installation(&UpsertPluginInstallationInput {
+            installation_id: Uuid::now_v7(),
+            category: ExtensionCategory::RuntimeExtensions,
+            organization: "acme".into(),
+            provider_code: code.into(),
+            plugin_id: format!("{code}@1.0.0"),
+            plugin_version: "1.0.0".into(),
+            contract_version: contract.into(),
+            protocol: "stdio_json".into(),
+            display_name: code.into(),
+            source_kind: "uploaded".into(),
+            trust_level: "unverified".into(),
+            verification_status: domain::PluginVerificationStatus::Valid,
+            desired_state: domain::PluginDesiredState::ActiveRequested,
+            expected_checksum: None,
+            signature_status: ExtensionSignatureStatus::Missing,
+            signature_algorithm: None,
+            signing_key_id: None,
+            metadata_json: serde_json::json!({}),
+            is_system_reserved: false,
+            actor_user_id,
+        })
+        .await
+        .unwrap();
+    store
+        .create_assignment(&CreatePluginAssignmentInput {
+            installation_id: installed.id,
+            workspace_id,
+            provider_code: code.into(),
+            actor_user_id,
+        })
+        .await
+        .unwrap();
+    installed.id
 }
 
 fn recovery_sources(
