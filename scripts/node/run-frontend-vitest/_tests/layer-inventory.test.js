@@ -23,12 +23,14 @@ function inventory(patterns, filters, files) {
     for (const file of matches) excluded.add(file);
   }
   // Vitest positional arguments match substrings (even when they contain a literal '*').
+  const selected = new Set();
   for (const filter of filters) {
-    if (!files.has(filter) && !paths.some((file) => file.includes(filter))) unmatched.push(filter);
+    const matches = paths.filter((file) => file.includes(filter));
+    if (!matches.length) unmatched.push(filter);
+    for (const file of matches) selected.add(file);
   }
-  const selected = new Set(filters);
-  const missing = [...excluded].filter((file) => !selected.has(file) && !filters.some((filter) => file.includes(filter)));
-  return { missing, unmatched };
+  // Page regression is a partition, not a superset: no test may also run in stable.
+  return { missing: [...excluded.difference(selected)], overlap: [...selected.difference(excluded)], unmatched };
 }
 
 function checkBinding(script, mode, selectors, extra = []) {
@@ -76,7 +78,7 @@ test('every selector exists; stable and page suites together cover every targete
     assert.ok(testFiles.has(file), `contract test must exist: ${file}`);
     assert.ok(!result.missing.includes(file), `contract must execute: ${file}`);
   }
-  assert.deepEqual(result, { missing: [], unmatched: [] });
+  assert.deepEqual(result, { missing: [], overlap: [], unmatched: [] });
 });
 
 test('inventory rejects a literal positional glob, omitted directory and retired paths', () => {
@@ -86,8 +88,9 @@ test('inventory rejects a literal positional glob, omitted directory and retired
   const glob = `${dir}**/*.test.tsx`;
   const removed = 'src/pages/retired.test.tsx';
   const moved = 'src/pages/moved.test.tsx';
-  assert.deepEqual(inventory([glob], [dir, 'src/pages/sign-in.test.tsx'], files), { missing: [], unmatched: [] });
-  assert.deepEqual(inventory([glob], [glob], files), { missing: [file], unmatched: [glob] });
+  assert.deepEqual(inventory([glob], [dir], files), { missing: [], overlap: [], unmatched: [] });
+  assert.deepEqual(inventory([glob], [dir, 'src/pages/'], files).overlap, ['src/pages/sign-in.test.tsx']);
+  assert.deepEqual(inventory([glob], [glob], files), { missing: [file], overlap: [], unmatched: [glob] });
   assert.deepEqual(inventory([glob], [], files).missing, [file]);
   assert.deepEqual(inventory([glob, removed], [dir, moved], files).unmatched, [removed, moved]);
 });
