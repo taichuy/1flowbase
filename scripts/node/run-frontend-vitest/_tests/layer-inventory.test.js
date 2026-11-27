@@ -7,10 +7,11 @@ const { exclusions, pageFilters } = require('../layers.js');
 const { parseCliArgs, buildVitestCommand } = require('../../cli/run-frontend-vitest.js');
 const { CONTRACT_TEST_FILES } = require('../../test/index.js');
 
-const src = path.resolve(__dirname, '../../../../web/app/src');
-const testFiles = new Set(fs.readdirSync(src, { recursive: true })
-  .filter((file) => /\.test\.tsx?$/u.test(file))
-  .map((file) => `src/${file.split(path.sep).join('/')}`));
+// Vitest's default discovery pattern, rooted at the entire app (also build/ and vite/).
+const app = path.resolve(__dirname, '../../../../web/app');
+const testFiles = new Set(fs.globSync('**/*.{test,spec}.?(c|m)[jt]s?(x)', {
+  cwd: app, exclude: ['**/node_modules', '**/.git'],
+}).map((file) => file.split(path.sep).join('/')));
 
 function inventory(patterns, filters, files) {
   const excluded = new Set();
