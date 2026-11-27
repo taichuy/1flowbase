@@ -693,11 +693,12 @@ describe('section shell routing', () => {
         'settings_feature.access.system.network-center'
       ]);
 
-      renderApp(pathname);
       // The query is mounted by the lazy route. Wait for that boundary before querying its DOM.
       const load = pathname.endsWith('/routing-rules')
         ? networkCenterApi.fetchSettingsNetworkEgressRoutes
         : networkCenterApi.fetchSettingsNetworkEgressProviderTypes;
+      load.mockClear();
+      renderApp(pathname);
       await waitFor(() => expect(load).toHaveBeenCalled(), SECTION_REDIRECT_WAIT_OPTIONS);
 
       expect(await screen.findByTestId(shellTestId)).toBeInTheDocument();
