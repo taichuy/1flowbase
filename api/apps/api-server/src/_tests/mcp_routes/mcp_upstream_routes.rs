@@ -352,7 +352,7 @@ async fn issue_1246_ac_008_ac_009_import_route_is_idempotent_and_returns_tagged_
             .oneshot(
                 Request::builder()
                     .uri(format!(
-                        "/api/console/mcp/pages/tools?status=draft&keyword={keyword}"
+                        "/api/console/mcp/tools/page?status=draft&keyword={keyword}"
                     ))
                     .header("cookie", &cookie)
                     .body(Body::empty())

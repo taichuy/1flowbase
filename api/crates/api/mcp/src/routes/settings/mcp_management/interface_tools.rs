@@ -397,14 +397,28 @@ impl McpToolsAdapter {
                     .keyword
                     .map(|keyword| keyword.trim().to_string())
                     .filter(|keyword| !keyword.is_empty());
-                let tool_ids = query
-                    .tool_ids
-                    .as_deref()
-                    .map(serde_json::from_str::<Vec<String>>)
-                    .transpose()
-                    .map_err(|_| {
-                        control_plane::errors::ControlPlaneError::InvalidInput("tool_ids")
-                    })?;
+                let tool_ids = match (query.tool_ids, query.tool_ids_json) {
+                    (Some(_), Some(_)) => {
+                        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                            "tool_ids_json",
+                        )
+                        .into())
+                    }
+                    (_, Some(ids)) => {
+                        Some(serde_json::from_str::<Vec<String>>(&ids).map_err(|_| {
+                            control_plane::errors::ControlPlaneError::InvalidInput("tool_ids_json")
+                        })?)
+                    }
+                    (csv, None) => csv
+                        .map(|ids| {
+                            ids.split(',')
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_owned)
+                                .collect::<Vec<_>>()
+                        })
+                        .filter(|ids| !ids.is_empty()),
+                };
                 let interface_operations = if keyword.is_some() {
                     interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?
                 } else {
@@ -613,7 +627,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "mcp.tools.view",
         binding_id: "http.console.mcp.tools.page.get.v1",
         method: "GET",
-        path: "/api/console/mcp/pages/tools",
+        path: "/api/console/mcp/tools/page",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

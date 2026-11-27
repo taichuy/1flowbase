@@ -1218,7 +1218,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         interface_id: "mcp.catalog.view",
         binding_id: "http.console.mcp.interfaces.page.get.v1",
         method: "GET",
-        path: "/api/console/mcp/pages/interface-capabilities",
+        path: "/api/console/mcp/interface-capabilities/page",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

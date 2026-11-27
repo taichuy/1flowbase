@@ -116,7 +116,7 @@ export function fetchConsoleMcpInstancesPage(
   }
   const query = params.toString();
   return apiFetch<ConsoleMcpInstancePage>({
-    path: `/api/console/mcp/pages/instances${query ? `?${query}` : ''}`,
+    path: `/api/console/mcp/instances/page${query ? `?${query}` : ''}`,
     baseUrl
   });
 }
@@ -151,11 +151,11 @@ export function fetchConsoleMcpToolsPage(
     params.set('des_id_required', String(options.des_id_required));
   }
   if (options.tool_ids !== undefined) {
-    params.set('tool_ids', JSON.stringify(options.tool_ids));
+    params.set('tool_ids_json', JSON.stringify(options.tool_ids));
   }
   const query = params.toString();
   return apiFetch<ConsoleMcpToolSummaryPage>({
-    path: `/api/console/mcp/pages/tools${query ? `?${query}` : ''}`,
+    path: `/api/console/mcp/tools/page${query ? `?${query}` : ''}`,
     baseUrl
   });
 }
@@ -197,7 +197,7 @@ export function fetchConsoleMcpInterfaceCapabilitiesPage(
   }
   const query = params.toString();
   return apiFetch<ConsoleMcpInterfaceCapabilityPage>({
-    path: `/api/console/mcp/pages/interface-capabilities${query ? `?${query}` : ''}`,
+    path: `/api/console/mcp/interface-capabilities/page${query ? `?${query}` : ''}`,
     baseUrl
   });
 }
@@ -207,7 +207,7 @@ export function fetchConsoleMcpInterfaceCapability(
   baseUrl?: string
 ) {
   return apiFetch<ConsoleMcpInterfaceCapability>({
-    path: `/api/console/mcp/interface-capabilities/${encodeURIComponent(interfaceId)}`,
+    path: `/api/console/mcp/interface-capabilities/${interfaceId === 'page' ? 'by-id?interface_id=page' : encodeURIComponent(interfaceId)}`,
     baseUrl
   });
 }
@@ -492,7 +492,7 @@ export function repairConsoleMcpTemplateLibraryRelease(
 
 export function fetchConsoleMcpTool(toolId: string, baseUrl?: string) {
   return apiFetch<ConsoleMcpTool>({
-    path: `/api/console/mcp/tools/${encodeURIComponent(toolId)}`,
+    path: `/api/console/mcp/tools/${toolId === 'page' ? 'by-id?tool_id=page' : encodeURIComponent(toolId)}`,
     baseUrl
   });
 }

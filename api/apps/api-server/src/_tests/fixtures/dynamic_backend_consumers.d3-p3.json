@@ -898,6 +898,12 @@
       "View MCP instances"
     ],
     [
+      "list_mcp_instances_page",
+      "GET",
+      "/api/console/mcp/instances/page",
+      "List MCP instances page"
+    ],
+    [
       "mcp.client_credential.reveal",
       "GET",
       "/api/console/mcp/instances/:instance_id/client-credential",
@@ -922,6 +928,12 @@
       "List MCP interface capabilities"
     ],
     [
+      "list_mcp_interface_capabilities_page",
+      "GET",
+      "/api/console/mcp/interface-capabilities/page",
+      "List MCP interface capabilities page"
+    ],
+    [
       "get_mcp_interface_capability",
       "GET",
       "/api/console/mcp/interface-capabilities/:interface_id",
@@ -934,28 +946,16 @@
       "List MCP items"
     ],
     [
-      "list_mcp_instances_page",
-      "GET",
-      "/api/console/mcp/pages/instances",
-      "List MCP instances page"
-    ],
-    [
-      "list_mcp_interface_capabilities_page",
-      "GET",
-      "/api/console/mcp/pages/interface-capabilities",
-      "List MCP interface capabilities page"
-    ],
-    [
-      "list_mcp_tools_page",
-      "GET",
-      "/api/console/mcp/pages/tools",
-      "List MCP tools page"
-    ],
-    [
       "list_mcp_tools",
       "GET",
       "/api/console/mcp/tools",
       "List MCP tools"
+    ],
+    [
+      "list_mcp_tools_page",
+      "GET",
+      "/api/console/mcp/tools/page",
+      "List MCP tools page"
     ],
     [
       "get_mcp_tool",
@@ -3088,5 +3088,5 @@
       "UI management templates default set"
     ]
   ],
-  "evidence": "Six source-proven additions to the prior exact projection: notification send-log list/get from 15c076df491d88bf9824d07232b09ef5475622df and OTLP/Langfuse import/export from 900a2adca9adecfaa26b1bbbc7618883cdb4fd3e. Operation/method/path come from owner route declarations and core_console_operation_specs; summary values remain the static English API-owner values in console_route_assembly. Recipient channel/read-state operations were initially Authenticated; the four state mutations are now independently role-configurable under other.personal-account (2552dfd65), while notification reads remain Authenticated. Bounded dev merge a72190c9 includes f88bd597c8cfa122e1b79dcc39b58a05f583f51a: the two host-owned Langfuse rows added by f8a779ca1 are now removed, leaving four surviving source-proven additions and exactly 419 role-configurable interfaces. Langfuse export/import belong to managed-plugin contributions and are not core Console projection entries. Frozen official i18n seed bytes and product text remain unchanged. Existing system.branding.get/save declarations add GET/PUT /api/console/settings/system with API-owner summaries Read system settings and Save system settings; pinned official seed bytes remain unchanged. 2026-10-30: exact merged registry additionally contains the existing local_commands.execute and agent_flow.http_node_proxy_options.list owner routes; retain all 12 communications contracts, including immutable official-catalog pending coverage. 2026-11-03: seven exact owner-declared additions since the 445-row fixture: three independently authorized personal writes, three notification read-state mutations, and files.access_links.create. Method/path and summary values are source-bound to owned route declarations and console_route_assembly/interface_metadata.rs; preserve the full 452-row exact projection and original order. 2026-11-06: fifteen independently authorized terminal operations added under other.local-commands; exact owner-declared method, path and static English summary retained. MCP collection pages and visible interface detail add four role-configurable projections; page routes use the dedicated /api/console/mcp/pages namespace."
+  "evidence": "Six source-proven additions to the prior exact projection: notification send-log list/get from 15c076df491d88bf9824d07232b09ef5475622df and OTLP/Langfuse import/export from 900a2adca9adecfaa26b1bbbc7618883cdb4fd3e. Operation/method/path come from owner route declarations and core_console_operation_specs; summary values remain the static English API-owner values in console_route_assembly. Recipient channel/read-state operations were initially Authenticated; the four state mutations are now independently role-configurable under other.personal-account (2552dfd65), while notification reads remain Authenticated. Bounded dev merge a72190c9 includes f88bd597c8cfa122e1b79dcc39b58a05f583f51a: the two host-owned Langfuse rows added by f8a779ca1 are now removed, leaving four surviving source-proven additions and exactly 419 role-configurable interfaces. Langfuse export/import belong to managed-plugin contributions and are not core Console projection entries. Frozen official i18n seed bytes and product text remain unchanged. Existing system.branding.get/save declarations add GET/PUT /api/console/settings/system with API-owner summaries Read system settings and Save system settings; pinned official seed bytes remain unchanged. 2026-10-30: exact merged registry additionally contains the existing local_commands.execute and agent_flow.http_node_proxy_options.list owner routes; retain all 12 communications contracts, including immutable official-catalog pending coverage. 2026-11-03: seven exact owner-declared additions since the 445-row fixture: three independently authorized personal writes, three notification read-state mutations, and files.access_links.create. Method/path and summary values are source-bound to owned route declarations and console_route_assembly/interface_metadata.rs; preserve the full 452-row exact projection and original order. 2026-11-06: fifteen independently authorized terminal operations added under other.local-commands; exact owner-declared method, path and static English summary retained. MCP collection pages and visible interface detail add four role-configurable projections; the three original collection routes retain their concrete identities."
 }
