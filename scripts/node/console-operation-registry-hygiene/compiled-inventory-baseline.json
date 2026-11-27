@@ -1716,7 +1716,7 @@
         "interface_id": "list_mcp_instances_page",
         "route": {
           "method": "GET",
-          "path": "/api/console/mcp/instances/page"
+          "path": "/api/console/mcp/pages/instances"
         },
         "summary": "List MCP instances page",
         "description": "List MCP instances page in the system backend.",
@@ -1766,7 +1766,7 @@
         "interface_id": "list_mcp_interface_capabilities_page",
         "route": {
           "method": "GET",
-          "path": "/api/console/mcp/interface-capabilities/page"
+          "path": "/api/console/mcp/pages/interface-capabilities"
         },
         "summary": "List MCP interface capabilities page",
         "description": "List MCP interface capabilities page in the system backend.",
@@ -1806,7 +1806,7 @@
         "interface_id": "list_mcp_tools_page",
         "route": {
           "method": "GET",
-          "path": "/api/console/mcp/tools/page"
+          "path": "/api/console/mcp/pages/tools"
         },
         "summary": "List MCP tools page",
         "description": "List MCP tools page in the system backend.",
@@ -11593,7 +11593,7 @@
         "routes": [
           {
             "method": "GET",
-            "path": "/api/console/mcp/instances/page"
+            "path": "/api/console/mcp/pages/instances"
           }
         ],
         "authorization": {
@@ -11641,7 +11641,7 @@
         "routes": [
           {
             "method": "GET",
-            "path": "/api/console/mcp/interface-capabilities/page"
+            "path": "/api/console/mcp/pages/interface-capabilities"
           }
         ],
         "authorization": {
@@ -11713,7 +11713,7 @@
         "routes": [
           {
             "method": "GET",
-            "path": "/api/console/mcp/tools/page"
+            "path": "/api/console/mcp/pages/tools"
           }
         ],
         "authorization": {
@@ -21023,7 +21023,7 @@
     {
       "route": {
         "method": "GET",
-        "path": "/api/console/mcp/interface-capabilities/page"
+        "path": "/api/console/mcp/pages/interface-capabilities"
       },
       "ownership": {
         "kind": "console_operation",
@@ -21083,7 +21083,7 @@
     {
       "route": {
         "method": "GET",
-        "path": "/api/console/mcp/instances/page"
+        "path": "/api/console/mcp/pages/instances"
       },
       "ownership": {
         "kind": "console_operation",
@@ -21253,7 +21253,7 @@
     {
       "route": {
         "method": "GET",
-        "path": "/api/console/mcp/tools/page"
+        "path": "/api/console/mcp/pages/tools"
       },
       "ownership": {
         "kind": "console_operation",
