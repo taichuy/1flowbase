@@ -79,10 +79,13 @@ pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
                 "/api/console/mcp/interface-capabilities",
                 "mcp.catalog.view"
             ),
+            ("GET", "/api/console/mcp/interface-capabilities/page", "mcp.catalog.view"),
+            ("GET", "/api/console/mcp/interface-capabilities/:interface_id", "mcp.catalog.view"),
             ("GET", "/api/console/mcp/list", "mcp.catalog.view"),
             ("GET", "/api/console/mcp/export", "mcp.catalog.export"),
             ("GET", "/api/console/mcp/instances", "mcp.instances.view"),
             ("POST", "/api/console/mcp/instances", "mcp.instances.create"),
+            ("GET", "/api/console/mcp/instances/page", "mcp.instances.view"),
             (
                 "POST",
                 "/api/console/mcp/instances/:instance_id/copy",
@@ -155,6 +158,7 @@ pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
             ),
             ("GET", "/api/console/mcp/tools", "mcp.tools.view"),
             ("POST", "/api/console/mcp/tools", "mcp.tools.create"),
+            ("GET", "/api/console/mcp/tools/page", "mcp.tools.view"),
             ("GET", "/api/console/mcp/tools/:tool_id", "mcp.tools.view"),
             ("PUT", "/api/console/mcp/tools/:tool_id", "mcp.tools.update"),
             (
@@ -319,6 +323,44 @@ pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
             ),
         ]
     );
+    let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
+    let bindings = crate::routes::console_route_assembly::migrated_core_console_contract_bindings();
+    let registry =
+        crate::routes::console_route_assembly::compile_migrated_core_console_operation_registry(
+            &settings, &bindings,
+        )
+        .unwrap();
+    for (path, operation_id, profile_id) in [
+        ("instances", "mcp.instances.view", "mcp.instances.view"),
+        (
+            "instances/page",
+            "list_mcp_instances_page",
+            "mcp.instances.view",
+        ),
+        ("tools/page", "list_mcp_tools_page", "mcp.tools.view"),
+        ("tools/a-tool", "get_mcp_tool", "mcp.tools.view"),
+        (
+            "interface-capabilities/page",
+            "list_mcp_interface_capabilities_page",
+            "mcp.catalog.view",
+        ),
+        (
+            "interface-capabilities/an-interface",
+            "get_mcp_interface_capability",
+            "mcp.catalog.view",
+        ),
+    ] {
+        let path = format!("/api/console/mcp/{path}");
+        let access = registry.access_for_console_route("GET", &path).unwrap();
+        assert_eq!(access.operation_id, operation_id, "{path}");
+        let operation = registry
+            .inventory()
+            .operations
+            .iter()
+            .find(|operation| operation.operation_id == access.operation_id)
+            .unwrap();
+        assert_eq!(operation.authorization_profile_id, profile_id, "{path}");
+    }
     assert_eq!(
         route_bindings(&user_api_keys),
         vec![

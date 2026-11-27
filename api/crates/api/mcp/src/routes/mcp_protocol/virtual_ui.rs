@@ -805,9 +805,6 @@ pub(crate) fn apply_catalog_registration_capabilities(
     catalog: &domain::McpCatalogSnapshot,
     registration: &mut control_plane::mcp_management::McpLlmRegistration,
 ) {
-    if registration.operation != McpLlmOperation::List {
-        return;
-    }
     let regex_enabled = catalog
         .instances
         .iter()
@@ -818,7 +815,14 @@ pub(crate) fn apply_catalog_registration_capabilities(
                 .iter()
                 .any(|policy| policy.instance_record_id == instance.id && policy.list_regex_enabled)
         });
-    if regex_enabled {
+    apply_registration_capabilities(regex_enabled, registration);
+}
+
+pub(crate) fn apply_registration_capabilities(
+    regex_enabled: bool,
+    registration: &mut control_plane::mcp_management::McpLlmRegistration,
+) {
+    if regex_enabled || registration.operation != McpLlmOperation::List {
         return;
     }
     if let Some(properties) = registration

@@ -24,11 +24,16 @@ import {
   fetchConsoleMcpBundleExportDefaults,
   fetchConsoleMcpCatalog,
   fetchConsoleMcpInstanceDiscoveryPolicy,
+  fetchConsoleMcpInstances,
+  fetchConsoleMcpInstancesPage,
   fetchConsoleMcpInterfaceCapabilities,
+  fetchConsoleMcpInterfaceCapabilitiesPage,
+  fetchConsoleMcpInterfaceCapability,
   fetchConsoleMcpListItems,
   fetchConsoleMcpTemplateLibrary,
   fetchConsoleOfficialMcpBundles,
   fetchConsoleMcpTool,
+  fetchConsoleMcpToolsPage,
   moveConsoleMcpGroup,
   importConsoleMcpBundle,
   importConsoleMcpTemplateLibraryBundle,
@@ -115,11 +120,68 @@ describe('console-mcp-management client', () => {
       expected: { path: '/api/console/mcp/catalog' }
     },
     {
+      name: 'instances with status filter',
+      request: () => fetchConsoleMcpInstances({ status: 'enabled' }),
+      expected: { path: '/api/console/mcp/instances?status=enabled' }
+    },
+    {
+      name: 'instances page',
+      request: () =>
+        fetchConsoleMcpInstancesPage({
+          page: 2,
+          page_size: 20,
+          status: 'enabled',
+          keyword: 'ops'
+        }),
+      expected: {
+        path: '/api/console/mcp/instances/page?page=2&page_size=20&status=enabled&keyword=ops'
+      }
+    },
+    {
+      name: 'tools page',
+      request: () =>
+        fetchConsoleMcpToolsPage({
+          page: 1,
+          page_size: 20,
+          keyword: 'runtime',
+          execution_target_kind: 'interface_wrapper',
+          interface_id: 'get_runtime',
+          risk_level: 'low',
+          status: 'enabled',
+          des_id_required: true,
+          tool_ids: ['tool_a', 'tool_b']
+        }),
+      expected: {
+        path: '/api/console/mcp/tools/page?page=1&page_size=20&keyword=runtime&execution_target_kind=interface_wrapper&interface_id=get_runtime&risk_level=low&status=enabled&des_id_required=true&tool_ids=tool_a%2Ctool_b'
+      }
+    },
+    {
       name: 'interface capabilities with bindable filter',
       request: () =>
         fetchConsoleMcpInterfaceCapabilities({ bindable_only: true }),
       expected: {
         path: '/api/console/mcp/interface-capabilities?bindable_only=true'
+      }
+    },
+    {
+      name: 'interface capabilities page',
+      request: () =>
+        fetchConsoleMcpInterfaceCapabilitiesPage({
+          bindable_only: false,
+          q: 'runtime',
+          method: 'GET',
+          offset: 20,
+          limit: 20
+        }),
+      expected: {
+        path: '/api/console/mcp/interface-capabilities/page?bindable_only=false&q=runtime&method=GET&offset=20&limit=20'
+      }
+    },
+    {
+      name: 'single interface capability',
+      request: () => fetchConsoleMcpInterfaceCapability('runtime/profile'),
+      expected: {
+        path: '/api/console/mcp/interface-capabilities/runtime%2Fprofile'
       }
     },
     {

@@ -55,3 +55,44 @@ fn list_output_preserves_every_record_and_long_descriptions() {
         expected
     );
 }
+
+#[test]
+fn progressive_interface_events_distinguish_query_and_detail_path() {
+    let mut op = ApiOperationContext {
+        interface_id: "mcp.catalog.view".into(),
+        method: "GET".into(),
+        path: "/api/console/mcp/interface-capabilities/page".into(),
+    };
+    let input = McpCatalogInput::InterfacesPage(McpInterfaceCapabilitiesPageQuery {
+        limit: Some(5),
+        bindable_only: Some(false),
+        ..Default::default()
+    });
+    assert_eq!(
+        input.project_document_input(&op).unwrap(),
+        json!({"query":{"limit":5,"bindable_only":false}})
+    );
+    assert_eq!(input.project_for_managed_hook().unwrap()["0"]["limit"], 5);
+    let output = McpCatalogOutput::InterfacesPage(McpInterfaceCapabilityPageResponse {
+        items: vec![],
+        total: 1,
+        offset: 1,
+        limit: 5,
+        has_more: false,
+        next_offset: None,
+    });
+    assert_eq!(
+        output.project_document_output(&op).unwrap(),
+        json!({"items":[],"total":1,"offset":1,"limit":5,"has_more":false,"next_offset":null})
+    );
+    op.path = "/api/console/mcp/interface-capabilities/:interface_id".into();
+    let input = McpCatalogInput::Interface("capability-id".into());
+    assert_eq!(
+        input.project_document_input(&op).unwrap(),
+        json!({"path":{"interface_id":"capability-id"}})
+    );
+    assert_eq!(
+        input.project_for_managed_hook().unwrap()["0"]["interface_id"],
+        "capability-id"
+    );
+}

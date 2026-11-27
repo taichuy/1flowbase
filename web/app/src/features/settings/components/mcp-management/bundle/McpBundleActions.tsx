@@ -9,7 +9,7 @@ import { i18nText } from '../../../../../shared/i18n/text';
 import {
   exportSettingsMcpBundle,
   fetchSettingsMcpBundleExportDefaults,
-  settingsMcpCatalogQueryKey,
+  invalidateSettingsMcpInstancesAndTools,
   settingsMcpBundleExportDefaultsQueryKey,
   type ExportSettingsMcpBundleBody
 } from '../../../api/mcp-management';
@@ -35,12 +35,11 @@ export function McpBundleActions(_props: { canManage?: boolean } = {}) {
   const exportDefaults = useQuery({
     queryKey: settingsMcpBundleExportDefaultsQueryKey,
     queryFn: fetchSettingsMcpBundleExportDefaults,
+    enabled: exportOpen
   });
   const closeImportFlow = useCallback(() => setImportSource(null), []);
   const refreshMcpCatalog = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: settingsMcpCatalogQueryKey
-    });
+    await invalidateSettingsMcpInstancesAndTools(queryClient);
   }, [queryClient]);
 
   function handleFile(file: File) {

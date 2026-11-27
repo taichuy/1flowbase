@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { App, Form } from 'antd';
 import {
   useCallback,
@@ -9,12 +10,18 @@ import {
   type SetStateAction
 } from 'react';
 import type {
-  ConsoleMcpCatalog,
   ConsoleMcpInstance,
   ConsoleMcpToolBinding,
   ConsoleMcpGroup,
-  ConsoleMcpInstanceDirectory
+  ConsoleMcpInstanceDirectory,
+  ConsoleMcpToolSummary
 } from '@1flowbase/api-client';
+import {
+  fetchSettingsMcpInstances,
+  fetchSettingsMcpToolsPage,
+  settingsMcpInstancesQueryKey,
+  settingsMcpToolsQueryKey
+} from '../../../api/mcp-management';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { i18nText } from '../../../../../shared/i18n/text';
@@ -32,9 +39,35 @@ import {
   buildMcpDirectoryEditorTreeData,
   type McpDirectoryTreeDropInfo
 } from './directory-tree';
-import { countMcpInstanceDirectoryItems } from './catalog-view';
 import { useDirectoryDraft } from './use-directory-draft';
 import type { GroupFormValues, BindingFormValues } from './editor-types';
+
+const DIRECTORY_TOOL_LOOKUP_CHUNK_SIZE = 100;
+const DIRECTORY_TOOL_PICKER_PAGE_SIZE = 50;
+
+async function fetchToolSummariesByIds(
+  toolIds: string[]
+): Promise<ConsoleMcpToolSummary[]> {
+  if (toolIds.length === 0) return [];
+  const chunks: string[][] = [];
+  for (
+    let index = 0;
+    index < toolIds.length;
+    index += DIRECTORY_TOOL_LOOKUP_CHUNK_SIZE
+  ) {
+    chunks.push(toolIds.slice(index, index + DIRECTORY_TOOL_LOOKUP_CHUNK_SIZE));
+  }
+  const pages = await Promise.all(
+    chunks.map((chunk) =>
+      fetchSettingsMcpToolsPage({
+        page: 1,
+        page_size: chunk.length,
+        tool_ids: chunk
+      })
+    )
+  );
+  return pages.flatMap((page) => page.items);
+}
 
 function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
   if (
@@ -50,7 +83,7 @@ function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
 }
 
 /** Node editing buffers are independent of the confirmed directory draft and its persistence. */
-export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
+export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
   const can = useConsoleOperationAccess();
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
@@ -90,6 +123,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
   const [expandedDirectoryKeys, setExpandedDirectoryKeys] = useState<string[]>(
     []
   );
+  const [toolSearchKeyword, setToolSearchKeyword] = useState('');
   const groupSavedValuesRef = useRef<GroupFormValues | null>(null);
   const editingGroupIdRef = useRef<string | null>(null);
   const bindingSavedValuesRef = useRef<BindingFormValues | null>(null);
@@ -98,7 +132,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
   const pendingDirectorySessionChangeRef = useRef<(() => void) | null>(null);
   const [instancesState, dispatch] = useReducer(
     mcpInstancesReducer,
-    catalog.instances[0]?.instance_id ?? '',
+    instances[0]?.instance_id ?? '',
     createInitialMcpInstancesState
   );
   const {
@@ -110,6 +144,12 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     requestedInstanceId,
     selectedDirectoryKey
   } = instancesState;
+  const allInstancesQuery = useQuery({
+    queryKey: [...settingsMcpInstancesQueryKey, 'all'],
+    queryFn: () => fetchSettingsMcpInstances(),
+    enabled: directoryModalOpen
+  });
+  const availableInstances = allInstancesQuery.data ?? instances;
   const setEditingInstance = useCallback(
     (value: SetStateAction<ConsoleMcpInstance | null>) =>
       dispatch({ type: 'setEditingInstance', value }),
@@ -146,8 +186,8 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     []
   );
   const selectedInstance =
-    catalog.instances.find((row) => row.instance_id === requestedInstanceId) ??
-    catalog.instances[0];
+    availableInstances.find((row) => row.instance_id === requestedInstanceId) ??
+    availableInstances[0];
   const selectedInstanceGroups = useMemo(
     () => draft.snapshot?.groups ?? [],
     [draft.snapshot]
@@ -155,6 +195,64 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
   const selectedInstanceBindings = useMemo(
     () => draft.snapshot?.bindings ?? [],
     [draft.snapshot]
+  );
+  const boundToolIds = useMemo(
+    () =>
+      [...new Set(selectedInstanceBindings.map((row) => row.tool_id))].sort(),
+    [selectedInstanceBindings]
+  );
+  const boundToolsQuery = useQuery({
+    queryKey: [...settingsMcpToolsQueryKey, 'directory-bound', boundToolIds],
+    queryFn: () => fetchToolSummariesByIds(boundToolIds),
+    enabled: directoryModalOpen && boundToolIds.length > 0
+  });
+  const normalizedToolSearch = toolSearchKeyword.trim();
+  const pickerToolsQuery = useQuery({
+    queryKey: [
+      ...settingsMcpToolsQueryKey,
+      'directory-picker',
+      normalizedToolSearch
+    ],
+    queryFn: () =>
+      fetchSettingsMcpToolsPage({
+        page: 1,
+        page_size: DIRECTORY_TOOL_PICKER_PAGE_SIZE,
+        keyword: normalizedToolSearch || undefined
+      }),
+    enabled: directoryModalOpen
+  });
+  const directoryTools = useMemo(() => {
+    const byToolId = new Map<string, ConsoleMcpToolSummary>();
+    for (const tool of boundToolsQuery.data ?? []) {
+      byToolId.set(tool.tool_id, tool);
+    }
+    for (const tool of pickerToolsQuery.data?.items ?? []) {
+      byToolId.set(tool.tool_id, tool);
+    }
+    return [...byToolId.values()];
+  }, [boundToolsQuery.data, pickerToolsQuery.data]);
+  const toolOptions = useMemo(() => {
+    const pickerItems = pickerToolsQuery.data?.items ?? [];
+    const options = pickerItems.map((tool) => ({
+      label: tool.name,
+      value: tool.tool_id
+    }));
+    if (
+      watchedToolId &&
+      !options.some((option) => option.value === watchedToolId)
+    ) {
+      const selected = directoryTools.find(
+        (tool) => tool.tool_id === watchedToolId
+      );
+      if (selected) {
+        options.unshift({ label: selected.name, value: selected.tool_id });
+      }
+    }
+    return options;
+  }, [directoryTools, pickerToolsQuery.data, watchedToolId]);
+  const selectedTool = useMemo(
+    () => directoryTools.find((tool) => tool.tool_id === watchedToolId),
+    [directoryTools, watchedToolId]
   );
   const groupByPath = useMemo(
     () => new Map(selectedInstanceGroups.map((row) => [row.path, row])),
@@ -168,10 +266,6 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     label: row.tool_id,
     value: row.id
   }));
-  const { groupCounts, toolCounts } = useMemo(
-    () => countMcpInstanceDirectoryItems(catalog),
-    [catalog]
-  );
 
   const directorySnapshot = draft.snapshot;
   const resolveDirectoryId = draft.resolveId;
@@ -355,6 +449,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     if (draft.saveDirectoryMutation.isPending) return;
     requestDirectorySessionChange(() => {
       draft.clear();
+      setToolSearchKeyword('');
       setDirectoryModalOpen(false);
       setNodeEditing(false);
       setDirectoryDraftActive(false);
@@ -364,7 +459,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     }, true);
   }
   function changeDirectoryInstance(instanceId: string) {
-    const instance = catalog.instances.find(
+    const instance = availableInstances.find(
       (row) => row.instance_id === instanceId
     );
     if (instance && !draft.saveDirectoryMutation.isPending)
@@ -516,7 +611,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
             row.tool_id === editingBinding.tool_id &&
             row.group_path === editingBinding.group_path
         ));
-    const tool = catalog.tools.find((row) => row.tool_id === values.tool_id);
+    const tool = directoryTools.find((row) => row.tool_id === values.tool_id);
     if (!tool) return;
     const saved: ConsoleMcpToolBinding = {
       id: old?.id ?? `draft:${crypto.randomUUID()}`,
@@ -648,7 +743,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
         selectedInstance,
         selectedInstanceGroups,
         selectedInstanceBindings,
-        tools: catalog.tools,
+        tools: directoryTools,
         groupByPath,
         directoryEditorMode,
         watchedPath,
@@ -664,7 +759,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
       selectedInstance,
       selectedInstanceGroups,
       selectedInstanceBindings,
-      catalog.tools,
+      directoryTools,
       groupByPath,
       directoryEditorMode,
       watchedPath,
@@ -711,9 +806,13 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     setDirectoryEditorMode,
     setRequestedInstanceId,
     setSelectedDirectoryKey,
-    groupCounts,
-    toolCounts,
+    availableInstances,
     selectedInstance,
+    selectedTool,
+    toolOptions,
+    toolSearchKeyword,
+    setToolSearchKeyword,
+    pickerToolsLoading: pickerToolsQuery.isFetching,
     bindingOptions,
     treeData,
     handleTreeDrop,

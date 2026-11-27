@@ -132,10 +132,16 @@ describe('McpManagementPanel', () => {
     await renderPanelWithMountedTool({ fullDescription: '' });
 
     await domEvents.click(screen.getByRole('tab', { name: 'Tool 配置' }));
-    const toolRow = screen.getByRole('row', { name: /Search customer/ });
+    const toolRow = await screen.findByRole('row', { name: /Search customer/ });
     await domEvents.click(within(toolRow).getAllByRole('button')[0]);
 
     const dialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(
+        mcpManagementApi.fetchSettingsMcpTool
+      ).toHaveBeenCalledWith('search_customer');
+    });
+    await within(dialog).findByDisplayValue('Search customer');
     await clickSegmentedOption(dialog, 'input_mapping');
     await domEvents.click(
       within(dialog).getByRole('button', {

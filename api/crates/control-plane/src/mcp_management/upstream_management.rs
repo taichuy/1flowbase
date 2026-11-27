@@ -268,20 +268,12 @@ where
         connection_id: Uuid,
         remote_tool_name: &str,
     ) -> Result<domain::McpToolAvailabilityStatus> {
-        let Some(connection) = self
+        let connection = self
             .repository
             .get_mcp_upstream_connection(actor.current_workspace_id, connection_id)
-            .await?
-        else {
-            return Ok(domain::McpToolAvailabilityStatus::UpstreamDisabled);
-        };
-        if connection.status != domain::McpUpstreamConnectionStatus::Enabled {
-            return Ok(domain::McpToolAvailabilityStatus::UpstreamDisabled);
-        }
-        if connection.auth_type != domain::McpUpstreamAuthType::None
-            && !connection.credentials_configured
-        {
-            return Ok(domain::McpToolAvailabilityStatus::CredentialsMissing);
+            .await?;
+        if let Some(status) = upstream_connection_unavailability(connection.as_ref()) {
+            return Ok(status);
         }
         let source = self
             .repository
@@ -289,20 +281,52 @@ where
             .await?
             .into_iter()
             .find(|source| source.remote_tool_name == remote_tool_name);
-        Ok(match source.map(|source| source.source_status) {
-            Some(domain::McpUpstreamSourceStatus::Imported) => {
-                domain::McpToolAvailabilityStatus::Available
+        Ok(upstream_source_availability(
+            source.map(|source| source.source_status),
+        ))
+    }
+
+    pub async fn upstream_proxy_availabilities_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        pairs: &[(Uuid, String)],
+    ) -> Result<HashMap<(Uuid, String), domain::McpToolAvailabilityStatus>> {
+        if pairs.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let workspace_id = actor.current_workspace_id;
+        let connections = self
+            .repository
+            .list_mcp_upstream_connections(workspace_id)
+            .await?
+            .into_iter()
+            .map(|connection| (connection.id, connection))
+            .collect::<HashMap<_, _>>();
+        let (available, unavailable): (Vec<_>, Vec<_>) = pairs
+            .iter()
+            .cloned()
+            .partition(|(id, _)| upstream_connection_unavailability(connections.get(id)).is_none());
+        let statuses = if available.is_empty() {
+            HashMap::new()
+        } else {
+            self.repository
+                .list_mcp_upstream_proxy_source_statuses(workspace_id, &available)
+                .await?
+                .into_iter()
+                .map(|(id, name, status)| ((id, name), status))
+                .collect()
+        };
+        let mut result = HashMap::new();
+        for pair in unavailable {
+            if let Some(status) = upstream_connection_unavailability(connections.get(&pair.0)) {
+                result.insert(pair, status);
             }
-            Some(domain::McpUpstreamSourceStatus::DefinitionChanged) => {
-                domain::McpToolAvailabilityStatus::MappingInvalid
-            }
-            Some(domain::McpUpstreamSourceStatus::RemoteMissing) | None => {
-                domain::McpToolAvailabilityStatus::UpstreamToolMissing
-            }
-            Some(domain::McpUpstreamSourceStatus::NotImported) => {
-                domain::McpToolAvailabilityStatus::UpstreamToolMissing
-            }
-        })
+        }
+        for pair in available {
+            let status = upstream_source_availability(statuses.get(&pair).copied());
+            result.insert(pair, status);
+        }
+        Ok(result)
     }
 
     pub async fn prepare_upstream_management_action(
@@ -465,5 +489,32 @@ where
             imported.push(tool);
         }
         Ok(imported)
+    }
+}
+
+fn upstream_connection_unavailability(
+    connection: Option<&domain::McpUpstreamConnectionRecord>,
+) -> Option<domain::McpToolAvailabilityStatus> {
+    let Some(connection) = connection
+        .filter(|connection| connection.status == domain::McpUpstreamConnectionStatus::Enabled)
+    else {
+        return Some(domain::McpToolAvailabilityStatus::UpstreamDisabled);
+    };
+    (connection.auth_type != domain::McpUpstreamAuthType::None
+        && !connection.credentials_configured)
+        .then_some(domain::McpToolAvailabilityStatus::CredentialsMissing)
+}
+
+fn upstream_source_availability(
+    status: Option<domain::McpUpstreamSourceStatus>,
+) -> domain::McpToolAvailabilityStatus {
+    match status {
+        Some(domain::McpUpstreamSourceStatus::Imported) => {
+            domain::McpToolAvailabilityStatus::Available
+        }
+        Some(domain::McpUpstreamSourceStatus::DefinitionChanged) => {
+            domain::McpToolAvailabilityStatus::MappingInvalid
+        }
+        _ => domain::McpToolAvailabilityStatus::UpstreamToolMissing,
     }
 }

@@ -177,8 +177,10 @@ pub(super) fn map_group(row: sqlx::postgres::PgRow) -> Result<domain::McpGroupRe
     })
 }
 
-pub(super) fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolRecord> {
-    let execution_target = match row.get::<String, _>("execution_kind").as_str() {
+pub(super) fn map_execution_target(
+    row: &sqlx::postgres::PgRow,
+) -> Result<domain::McpToolExecutionTarget> {
+    Ok(match row.get::<String, _>("execution_kind").as_str() {
         "interface_wrapper" => domain::McpToolExecutionTarget::InterfaceWrapper {
             interface_id: row.get("interface_id"),
         },
@@ -191,7 +193,10 @@ pub(super) fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolReco
             capability_code: row.get("assistant_client_capability_code"),
         },
         _ => anyhow::bail!("invalid MCP tool execution kind"),
-    };
+    })
+}
+
+pub(super) fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolRecord> {
     Ok(domain::McpToolRecord {
         id: row.get("id"),
         workspace_id: row.get("workspace_id"),
@@ -199,7 +204,7 @@ pub(super) fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolReco
         name: row.get("name"),
         short_description: row.get("short_description"),
         full_description: row.get("full_description"),
-        execution_target,
+        execution_target: map_execution_target(&row)?,
         parameter_schema: row.get("parameter_schema"),
         result_schema: row.get("result_schema"),
         input_mapping: row.get("input_mapping"),
@@ -223,7 +228,9 @@ pub(super) fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolReco
     })
 }
 
-fn managed_bundle_source(row: &sqlx::postgres::PgRow) -> Option<domain::McpManagedBundleSource> {
+pub(super) fn managed_bundle_source(
+    row: &sqlx::postgres::PgRow,
+) -> Option<domain::McpManagedBundleSource> {
     Some(domain::McpManagedBundleSource {
         organization: row
             .try_get::<Option<String>, _>("managed_bundle_organization")

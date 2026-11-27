@@ -240,6 +240,29 @@ impl McpManagementRepository for McpBundleFixtureRepository {
             .collect())
     }
 
+    async fn list_mcp_instances_with_counts(
+        &self,
+        _workspace_id: Uuid,
+        _status: Option<domain::McpInstanceStatus>,
+    ) -> anyhow::Result<Vec<McpInstanceSummaryRecord>> {
+        unreachable!("bundle fixture does not read instance summaries")
+    }
+
+    async fn list_mcp_instances_page(
+        &self,
+        _workspace_id: Uuid,
+        _query: &McpInstancePageQuery,
+    ) -> anyhow::Result<McpInstancePage> {
+        unreachable!("bundle fixture does not page instances")
+    }
+
+    async fn get_mcp_instance_directory_counts(
+        &self,
+        _instance_record_id: Uuid,
+    ) -> anyhow::Result<(i64, i64)> {
+        unreachable!("bundle fixture does not read directory counts")
+    }
+
     async fn get_mcp_instance(
         &self,
         workspace_id: Uuid,
@@ -526,6 +549,22 @@ impl McpManagementRepository for McpBundleFixtureRepository {
             .filter(|tool| tool.workspace_id == workspace_id)
             .cloned()
             .collect())
+    }
+
+    async fn list_mcp_tools_page(
+        &self,
+        _workspace_id: Uuid,
+        _query: &McpToolPageQuery,
+    ) -> anyhow::Result<McpToolPage> {
+        unreachable!("bundle fixture does not page tools")
+    }
+
+    async fn list_mcp_upstream_proxy_source_statuses(
+        &self,
+        _workspace_id: Uuid,
+        _pairs: &[(Uuid, String)],
+    ) -> anyhow::Result<Vec<(Uuid, String, domain::McpUpstreamSourceStatus)>> {
+        unreachable!("bundle fixture does not read proxy source statuses")
     }
 
     async fn get_mcp_tool(

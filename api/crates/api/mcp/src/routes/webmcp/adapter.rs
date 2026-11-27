@@ -12,6 +12,7 @@ use axum::http::HeaderMap;
 use control_plane::mcp_management::{
     mcp_llm_instance_registration, McpLlmOperation, McpManagementService,
 };
+use control_plane::ports::McpManagementRepository;
 use domain::{McpInstanceStatus, WebMcpExposure};
 use interface_runtime::UserPrincipal;
 use serde_json::{json, Value};
@@ -54,22 +55,35 @@ impl WebMcpPort for WebMcpAdapter {
 
 impl WebMcpAdapter {
     async fn registrations(&self, principal: &UserPrincipal) -> Result<WebMcpOutput, ApiError> {
-        let catalog = McpManagementService::new(self.store.clone())
-            .read_catalog_for_actor(principal.actor())
-            .await?;
-        let registrations = catalog
-            .instances
-            .iter()
+        let instances = McpManagementService::new(self.store.clone())
+            .list_instances_for_actor(principal.actor())
+            .await?
+            .into_iter()
             .filter(|instance| {
                 instance.status == McpInstanceStatus::Enabled
                     && instance.webmcp_exposure == WebMcpExposure::AuthenticatedSession
             })
+            .collect::<Vec<_>>();
+        let ids = instances
+            .iter()
+            .map(|instance| instance.id)
+            .collect::<Vec<_>>();
+        let regex_enabled = self
+            .store
+            .list_mcp_instance_discovery_policies(&ids)
+            .await?
+            .into_iter()
+            .filter(|policy| policy.list_regex_enabled)
+            .map(|policy| policy.instance_record_id)
+            .collect::<std::collections::HashSet<_>>();
+        let registrations = instances
+            .iter()
             .map(|instance| {
                 let tools = mcp_llm_instance_registration(&instance.instance_id)
                     .into_iter()
                     .map(|mut registration| {
-                        virtual_ui::apply_catalog_registration_capabilities(
-                            &catalog,
+                        virtual_ui::apply_registration_capabilities(
+                            regex_enabled.contains(&instance.id),
                             &mut registration,
                         );
                         let function = &registration.provider_tool["function"];

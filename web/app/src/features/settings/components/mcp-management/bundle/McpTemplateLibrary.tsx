@@ -31,6 +31,8 @@ import {
   repairSettingsMcpTemplateLibraryRelease,
   setSettingsMcpTemplateLibraryCurrentVersion,
   settingsMcpCatalogQueryKey,
+  settingsMcpInstancesQueryKey,
+  settingsMcpToolsQueryKey,
   settingsMcpTemplateLibraryQueryKey,
   syncSettingsMcpTemplateLibraryBundle,
   type SettingsMcpTemplateLibraryBundle,
@@ -126,9 +128,11 @@ export function McpTemplateLibrary({
   }, [queryClient]);
   const closeImportFlow = useCallback(() => setImportSource(null), []);
   const refreshMcpCatalog = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: settingsMcpCatalogQueryKey
-    });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: settingsMcpInstancesQueryKey }),
+      queryClient.invalidateQueries({ queryKey: settingsMcpToolsQueryKey }),
+      queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey })
+    ]);
   }, [queryClient]);
 
   const start = (key: string) =>

@@ -12,8 +12,15 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConsoleMcpCatalog, ConsoleMcpTool } from '@1flowbase/api-client';
 import { McpToolsTab } from '../../McpToolsTab';
+import { installProgressiveMcpApi } from '../../_tests/mcp-management-panel/fixtures/progressive-api';
 
-const api = vi.hoisted(() => ({ updateSettingsMcpTool: vi.fn() }));
+const api = vi.hoisted(() => ({
+  updateSettingsMcpTool: vi.fn(),
+  fetchSettingsMcpToolsPage: vi.fn(),
+  fetchSettingsMcpTool: vi.fn(),
+  fetchSettingsMcpInterfaceCapabilitiesPage: vi.fn(),
+  fetchSettingsMcpInterfaceCapability: vi.fn()
+}));
 vi.mock('../../../../api/mcp-management', async (original) => ({
   ...(await original<typeof import('../../../../api/mcp-management')>()),
   ...api
@@ -65,6 +72,7 @@ async function openEditor() {
     bindings: [],
     discovery_policies: []
   };
+  installProgressiveMcpApi(api, catalog, []);
   render(
     <QueryClientProvider
       client={
@@ -77,13 +85,17 @@ async function openEditor() {
       }
     >
       <App>
-        <McpToolsTab canManage catalog={catalog} interfaceCapabilities={[]} />
+        <McpToolsTab canManage />
       </App>
     </QueryClientProvider>
   );
   const row = await screen.findByRole('row', { name: /Read tab/ });
   fireEvent.click(within(row).getAllByRole('button')[0]);
-  return screen.findByRole('dialog');
+  const dialog = await screen.findByRole('dialog');
+  await within(dialog).findByRole('spinbutton', {
+    name: '默认返回长度（字符）'
+  });
+  return dialog;
 }
 
 describe('MCP return default editor', () => {

@@ -4,6 +4,7 @@ impl InterfaceContract for McpCoreInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            managed_page::query_schema("InstancesPage", "page", "page_size"),
             mp::object_schema([
                 ("variant", mp::tag_schema("GetCredential")),
                 ("0", mp::object_schema([("byte_count", mp::count_schema())])),
@@ -209,6 +210,13 @@ impl InterfaceContract for McpCoreInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::InstancesPage(query) => managed_page::query(
+                "InstancesPage",
+                ("page", query.page),
+                ("page_size", query.page_size),
+                query.keyword.as_deref(),
+            ),
+
             Self::GetCredential(_field_0) => mp::object_value([
                 (
                     "variant",
@@ -239,7 +247,7 @@ impl InterfaceContract for McpCoreInput {
                     mp::object_value([("byte_count", serde_json::json!((_field_0).len()))]),
                 ),
             ]),
-            Self::ListInstances => mp::object_value([(
+            Self::ListInstances(_) => mp::object_value([(
                 "variant",
                 serde_json::Value::String("ListInstances".to_owned()),
             )]),
@@ -594,6 +602,10 @@ impl InterfaceContract for McpCoreOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            managed_page::count_schema(
+                "InstancesPage",
+                ["item_count", "total", "page", "page_size"],
+            ),
             mp::object_schema([
                 ("variant", mp::tag_schema("Credential")),
                 (
@@ -735,6 +747,16 @@ impl InterfaceContract for McpCoreOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::InstancesPage(page) => managed_page::project(
+                "InstancesPage",
+                [
+                    ("item_count", serde_json::json!(page.items.len())),
+                    ("total", serde_json::json!(page.total)),
+                    ("page", serde_json::json!(page.page)),
+                    ("page_size", serde_json::json!(page.page_size)),
+                ],
+            ),
+
             Self::Credential(_field_0) => mp::object_value([
                 (
                     "variant",

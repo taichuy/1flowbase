@@ -1,6 +1,68 @@
 use super::*;
 
 #[derive(Debug, Clone)]
+pub struct McpInstanceSummaryRecord {
+    pub instance: domain::McpInstanceRecord,
+    pub group_count: i64,
+    pub tool_count: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct McpInstancePageQuery {
+    pub page: usize,
+    pub page_size: usize,
+    pub status: Option<domain::McpInstanceStatus>,
+    pub keyword: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct McpInstancePage {
+    pub items: Vec<McpInstanceSummaryRecord>,
+    pub total: i64,
+    pub page: usize,
+    pub page_size: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct McpToolSummaryRecord {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub tool_id: String,
+    pub name: String,
+    pub short_description: String,
+    pub execution_target: domain::McpToolExecutionTarget,
+    pub permission_code: Option<String>,
+    pub risk_level: domain::McpRiskLevel,
+    pub des_id: String,
+    pub des_id_required: bool,
+    pub status: domain::McpToolStatus,
+    pub revision: i32,
+    pub managed_by: Option<domain::McpManagedBundleSource>,
+}
+
+#[derive(Debug, Clone)]
+pub struct McpToolPageQuery {
+    pub page: usize,
+    pub page_size: usize,
+    pub keyword: Option<String>,
+    pub keyword_interface_ids: Option<Vec<String>>,
+    pub execution_target_kind: Option<String>,
+    pub interface_id: Option<String>,
+    pub risk_level: Option<String>,
+    pub status: Option<String>,
+    pub des_id_required: Option<bool>,
+    pub tool_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct McpToolPage {
+    pub items: Vec<McpToolSummaryRecord>,
+    pub total: i64,
+    pub page: usize,
+    pub page_size: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct ReplaceMcpInstanceDirectoryInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
@@ -258,6 +320,20 @@ pub trait McpManagementRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::McpInstanceRecord>>;
+    async fn list_mcp_instances_with_counts(
+        &self,
+        workspace_id: Uuid,
+        status: Option<domain::McpInstanceStatus>,
+    ) -> anyhow::Result<Vec<McpInstanceSummaryRecord>>;
+    async fn list_mcp_instances_page(
+        &self,
+        workspace_id: Uuid,
+        query: &McpInstancePageQuery,
+    ) -> anyhow::Result<McpInstancePage>;
+    async fn get_mcp_instance_directory_counts(
+        &self,
+        instance_record_id: Uuid,
+    ) -> anyhow::Result<(i64, i64)>;
     async fn get_mcp_instance(
         &self,
         workspace_id: Uuid,
@@ -405,6 +481,16 @@ pub trait McpManagementRepository: Send + Sync {
         &self,
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::McpToolRecord>>;
+    async fn list_mcp_tools_page(
+        &self,
+        workspace_id: Uuid,
+        query: &McpToolPageQuery,
+    ) -> anyhow::Result<McpToolPage>;
+    async fn list_mcp_upstream_proxy_source_statuses(
+        &self,
+        workspace_id: Uuid,
+        pairs: &[(Uuid, String)],
+    ) -> anyhow::Result<Vec<(Uuid, String, domain::McpUpstreamSourceStatus)>>;
     async fn get_mcp_tool(
         &self,
         workspace_id: Uuid,

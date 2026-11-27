@@ -1,8 +1,8 @@
 import type {
-  ConsoleMcpInterfaceCapability,
+  ConsoleMcpInterfaceCapabilitySummary,
   ConsoleMcpProxyInputMapping,
   ConsoleMcpProxyOutputMapping,
-  ConsoleMcpTool,
+  ConsoleMcpToolSummary,
   SaveConsoleMcpToolBody,
   UpdateConsoleMcpToolBody
 } from '@1flowbase/api-client';
@@ -82,11 +82,15 @@ export function toUpdateToolBody(
   return updateBody as UpdateConsoleMcpToolBody;
 }
 
-export function interfaceOptionLabel(entry: ConsoleMcpInterfaceCapability) {
+export function interfaceOptionLabel(
+  entry: Pick<ConsoleMcpInterfaceCapabilitySummary, 'method' | 'path'>
+) {
   return `${entry.method} ${entry.path}`;
 }
 
-export function toolTypeLabel(tool: ConsoleMcpTool) {
+export function toolTypeLabel(
+  tool: Pick<ConsoleMcpToolSummary, 'execution_target'>
+) {
   if (tool.execution_target.kind === 'assistant_client') {
     return 'Assistant client';
   }
@@ -95,7 +99,9 @@ export function toolTypeLabel(tool: ConsoleMcpTool) {
     : i18nText('settingsMcpManagement', 'auto.tool_type_interface_wrapper');
 }
 
-export function toolSourceLabel(tool: ConsoleMcpTool) {
+export function toolSourceLabel(
+  tool: Pick<ConsoleMcpToolSummary, 'execution_target'>
+) {
   if (tool.execution_target.kind === 'assistant_client') {
     return tool.execution_target.capability_code;
   }

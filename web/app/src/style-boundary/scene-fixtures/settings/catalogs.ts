@@ -42,6 +42,8 @@ export const styleBoundaryMcpCatalog = {
       updated_by: 'user-1',
       created_at: '2026-06-21T00:00:00Z',
       updated_at: '2026-06-21T00:00:00Z',
+      group_count: 1,
+      tool_count: 1,
       llm_tool_registration: {
         prefix: 'workspace_ops',
         tools: [

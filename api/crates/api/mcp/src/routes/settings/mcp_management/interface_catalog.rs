@@ -1,5 +1,5 @@
 use super::*;
-use crate::openapi_interface::OpenApiCapabilitySource;
+use crate::openapi_interface::{OpenApiCapabilityIndexEntry, OpenApiCapabilitySource};
 
 pub trait McpInterfaceRegistrySnapshotPort: Send + Sync + 'static {
     fn snapshot(&self) -> Result<Arc<interface_runtime::CompiledInterfaceRegistry>, ApiError>;
@@ -177,13 +177,16 @@ pub async fn bindable_mcp_interface_with(
         )
         .into());
     }
-    let entry = mcp_interface_catalog_entries_with(dependencies, actor)
-        .await?
-        .into_iter()
-        .find(|entry| entry.interface_id == interface_id)
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "mcp_interface",
-        ))?;
+    let entry = crate::openapi_interface::get_openapi_capability_with(
+        &dependencies.openapi,
+        actor.current_workspace_id,
+        interface_id,
+    )
+    .await?
+    .map(mcp_interface_entry_from_capability)
+    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+        "mcp_interface",
+    ))?;
     if !entry.bindable {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput("interface_id").into());
     }
@@ -194,14 +197,77 @@ pub(super) async fn mcp_interface_operation_map_with(
     dependencies: &McpInterfaceCatalogDependencies,
     actor: &domain::ActorContext,
 ) -> Result<HashMap<String, String>, ApiError> {
-    Ok(mcp_interface_catalog_entries_with(dependencies, actor)
+    Ok(mcp_interface_index_with(dependencies, actor)
         .await?
         .into_iter()
         .map(|entry| {
-            let operation = interface_operation(&entry);
-            (entry.interface_id, operation)
+            (
+                entry.interface_id,
+                format!("{} {}", entry.method, entry.path),
+            )
         })
         .collect())
+}
+
+pub(super) async fn mcp_interface_index_with(
+    dependencies: &McpInterfaceCatalogDependencies,
+    actor: &domain::ActorContext,
+) -> Result<Vec<OpenApiCapabilityIndexEntry>, ApiError> {
+    let restricted = restricted_interfaces(dependencies, actor).await?;
+    Ok(
+        crate::openapi_interface::list_openapi_capability_index_with(
+            &dependencies.openapi,
+            actor.current_workspace_id,
+        )
+        .await?
+        .into_iter()
+        .filter(|entry| !restricted.contains(entry.interface_id.as_str()))
+        .collect(),
+    )
+}
+
+pub(super) async fn mcp_interface_operation_for_id_with(
+    dependencies: &McpInterfaceCatalogDependencies,
+    actor: &domain::ActorContext,
+    interface_id: &str,
+) -> Result<Option<String>, ApiError> {
+    if restricted_interfaces(dependencies, actor)
+        .await?
+        .contains(interface_id)
+    {
+        return Ok(None);
+    }
+    Ok(
+        crate::openapi_interface::get_openapi_capability_index_entry_with(
+            &dependencies.openapi,
+            actor.current_workspace_id,
+            interface_id,
+        )
+        .await?
+        .map(|entry| format!("{} {}", entry.method, entry.path)),
+    )
+}
+
+pub(super) async fn mcp_interface_detail_with(
+    dependencies: &McpInterfaceCatalogDependencies,
+    actor: &domain::ActorContext,
+    interface_id: &str,
+) -> Result<domain::McpInterfaceCatalogEntry, ApiError> {
+    let not_found = control_plane::errors::ControlPlaneError::NotFound("mcp_interface");
+    if restricted_interfaces(dependencies, actor)
+        .await?
+        .contains(interface_id)
+    {
+        return Err(not_found.into());
+    }
+    Ok(crate::openapi_interface::get_openapi_capability_with(
+        &dependencies.openapi,
+        actor.current_workspace_id,
+        interface_id,
+    )
+    .await?
+    .map(mcp_interface_entry_from_capability)
+    .ok_or(not_found)?)
 }
 
 pub(super) fn interface_operation(entry: &domain::McpInterfaceCatalogEntry) -> String {

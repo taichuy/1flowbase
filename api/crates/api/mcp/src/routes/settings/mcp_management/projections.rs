@@ -1,4 +1,7 @@
+pub(super) mod managed_page;
+
 use super::*;
+use control_plane::ports::{McpInstanceSummaryRecord, McpToolSummaryRecord};
 
 pub(super) fn to_catalog_response(
     snapshot: domain::McpCatalogSnapshot,
@@ -7,11 +10,7 @@ pub(super) fn to_catalog_response(
     let discovery_policies =
         discovery_policy_responses(&snapshot.instances, snapshot.discovery_policies)?;
     Ok(McpCatalogResponse {
-        instances: snapshot
-            .instances
-            .into_iter()
-            .map(to_instance_response)
-            .collect(),
+        instances: instance_responses(snapshot.instances, &snapshot.groups, &snapshot.bindings),
         groups: snapshot.groups.into_iter().map(to_group_response).collect(),
         tools: snapshot
             .tools
@@ -34,11 +33,7 @@ pub(super) fn to_export_response(
     let discovery_policies =
         discovery_policy_responses(&export.instances, export.discovery_policies)?;
     Ok(McpExportPackageResponse {
-        instances: export
-            .instances
-            .into_iter()
-            .map(to_instance_response)
-            .collect(),
+        instances: instance_responses(export.instances, &export.groups, &export.bindings),
         groups: export.groups.into_iter().map(to_group_response).collect(),
         tools: export
             .tools
@@ -54,7 +49,37 @@ pub(super) fn to_export_response(
     })
 }
 
-pub(super) fn to_instance_response(record: domain::McpInstanceRecord) -> McpInstanceResponse {
+fn instance_responses(
+    instances: Vec<domain::McpInstanceRecord>,
+    groups: &[domain::McpGroupRecord],
+    bindings: &[domain::McpToolBindingRecord],
+) -> Vec<McpInstanceResponse> {
+    let mut counts = HashMap::<Uuid, (i64, i64)>::new();
+    for group in groups {
+        counts.entry(group.instance_record_id).or_default().0 += 1;
+    }
+    for binding in bindings {
+        counts.entry(binding.instance_record_id).or_default().1 += 1;
+    }
+    instances
+        .into_iter()
+        .map(|record| {
+            let counts = counts.get(&record.id).copied().unwrap_or_default();
+            to_instance_response(record, counts)
+        })
+        .collect()
+}
+
+pub(super) fn to_instance_summary_response(
+    summary: McpInstanceSummaryRecord,
+) -> McpInstanceResponse {
+    to_instance_response(summary.instance, (summary.group_count, summary.tool_count))
+}
+
+pub(super) fn to_instance_response(
+    record: domain::McpInstanceRecord,
+    (group_count, tool_count): (i64, i64),
+) -> McpInstanceResponse {
     let registrations =
         control_plane::mcp_management::mcp_llm_instance_registration(&record.instance_id);
     let llm_tool_registration = McpLlmToolRegistrationResponse {
@@ -84,6 +109,8 @@ pub(super) fn to_instance_response(record: domain::McpInstanceRecord) -> McpInst
         updated_by: record.updated_by.to_string(),
         created_at: record.created_at.to_string(),
         updated_at: record.updated_at.to_string(),
+        group_count,
+        tool_count,
         llm_tool_registration,
     }
 }
@@ -104,76 +131,181 @@ pub(super) fn to_tool_response(
     record: domain::McpToolRecord,
     operations: &HashMap<String, String>,
 ) -> McpToolResponse {
-    let (operation, availability_status) = match &record.execution_target {
-        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
-            let available_operation = operations.get(interface_id).cloned();
-            let availability_status = if available_operation.is_some() {
-                domain::McpToolAvailabilityStatus::Available
-            } else {
-                domain::McpToolAvailabilityStatus::InterfaceMissing
-            };
-            (
-                available_operation.unwrap_or_else(|| interface_id.clone()),
-                availability_status,
-            )
-        }
-        domain::McpToolExecutionTarget::McpProxy {
-            remote_tool_name, ..
-        } => (
-            format!("MCP tools/call {remote_tool_name}"),
-            domain::McpToolAvailabilityStatus::Available,
-        ),
-        domain::McpToolExecutionTarget::AssistantClient { capability_code } => (
-            format!("Assistant browser capability {capability_code}"),
-            domain::McpToolAvailabilityStatus::Available,
-        ),
-    };
-
-    to_tool_response_with_operation(record, operation, availability_status)
+    to_tool_list_response(record, operations, &HashMap::new())
 }
 
-pub(super) async fn to_tool_response_for_actor(
-    store: &storage_durable_postgres::MainDurableStore,
+type ProxyAvailabilities = HashMap<(Uuid, String), domain::McpToolAvailabilityStatus>;
+
+pub(super) async fn tool_proxy_availabilities<'a>(
+    service: &McpManagementService<storage_durable_postgres::MainDurableStore>,
     actor: &domain::ActorContext,
-    record: domain::McpToolRecord,
-    operations: &HashMap<String, String>,
-) -> Result<McpToolResponse, ApiError> {
-    let availability = match &record.execution_target {
+    targets: impl IntoIterator<Item = &'a domain::McpToolExecutionTarget>,
+) -> Result<ProxyAvailabilities, ApiError> {
+    let pairs = targets
+        .into_iter()
+        .filter_map(proxy_target)
+        .collect::<BTreeSet<_>>();
+    Ok(service
+        .upstream_proxy_availabilities_for_actor(actor, &pairs.into_iter().collect::<Vec<_>>())
+        .await?)
+}
+
+fn proxy_target(target: &domain::McpToolExecutionTarget) -> Option<(Uuid, String)> {
+    match target {
         domain::McpToolExecutionTarget::McpProxy {
             upstream_connection_id,
             remote_tool_name,
             ..
-        } => Some(
-            McpManagementService::new(store.clone())
-                .upstream_proxy_availability_for_actor(
-                    actor,
-                    *upstream_connection_id,
-                    remote_tool_name,
-                )
-                .await?,
+        } => Some((*upstream_connection_id, remote_tool_name.clone())),
+        _ => None,
+    }
+}
+
+fn tool_operation_and_availability(
+    target: &domain::McpToolExecutionTarget,
+    interface_operation: Option<String>,
+    proxy_availability: Option<domain::McpToolAvailabilityStatus>,
+) -> (String, domain::McpToolAvailabilityStatus) {
+    use domain::{McpToolAvailabilityStatus as Status, McpToolExecutionTarget as Target};
+    match target {
+        Target::InterfaceWrapper { interface_id } => match interface_operation {
+            Some(operation) => (operation, Status::Available),
+            None => (interface_id.clone(), Status::InterfaceMissing),
+        },
+        Target::McpProxy {
+            remote_tool_name, ..
+        } => (
+            format!("MCP tools/call {remote_tool_name}"),
+            proxy_availability.unwrap_or(Status::Available),
         ),
-        domain::McpToolExecutionTarget::InterfaceWrapper { .. }
-        | domain::McpToolExecutionTarget::AssistantClient { .. } => None,
+        Target::AssistantClient { capability_code } => (
+            format!("Assistant browser capability {capability_code}"),
+            Status::Available,
+        ),
+    }
+}
+
+fn project_tool_list_target(
+    target: &domain::McpToolExecutionTarget,
+    operations: &HashMap<String, String>,
+    availabilities: &ProxyAvailabilities,
+) -> (String, domain::McpToolAvailabilityStatus) {
+    let operation = match target {
+        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+            operations.get(interface_id).cloned()
+        }
+        _ => None,
     };
-    if let Some(availability) = availability {
-        let operation = match &record.execution_target {
-            domain::McpToolExecutionTarget::McpProxy {
-                remote_tool_name, ..
-            } => {
-                format!("MCP tools/call {remote_tool_name}")
-            }
-            domain::McpToolExecutionTarget::InterfaceWrapper { .. } => String::new(),
-            domain::McpToolExecutionTarget::AssistantClient { capability_code } => {
-                format!("Assistant browser capability {capability_code}")
-            }
-        };
-        Ok(to_tool_response_with_operation(
-            record,
-            operation,
-            availability,
-        ))
+    let availability = proxy_target(target).and_then(|pair| availabilities.get(&pair).copied());
+    tool_operation_and_availability(target, operation, availability)
+}
+
+pub(super) fn to_tool_list_response(
+    record: domain::McpToolRecord,
+    operations: &HashMap<String, String>,
+    availabilities: &ProxyAvailabilities,
+) -> McpToolResponse {
+    let (operation, availability) =
+        project_tool_list_target(&record.execution_target, operations, availabilities);
+    to_tool_response_with_operation(record, operation, availability)
+}
+
+pub(super) fn to_tool_summary_response(
+    record: McpToolSummaryRecord,
+    operations: &HashMap<String, String>,
+    availabilities: &ProxyAvailabilities,
+) -> McpToolSummaryResponse {
+    let (operation, availability) =
+        project_tool_list_target(&record.execution_target, operations, availabilities);
+    McpToolSummaryResponse {
+        id: record.id.to_string(),
+        workspace_id: record.workspace_id.to_string(),
+        tool_id: record.tool_id,
+        name: record.name,
+        short_description: record.short_description,
+        execution_target: execution_target_dto(record.execution_target),
+        operation,
+        permission_code: record.permission_code,
+        risk_level: record.risk_level.as_str().into(),
+        des_id: record.des_id,
+        des_id_required: record.des_id_required,
+        status: record.status.as_str().into(),
+        availability_status: availability.into(),
+        availability_reason: availability_reason(availability),
+        revision: record.revision,
+        managed_by: record.managed_by.map(to_managed_bundle_source_response),
+    }
+}
+
+pub(super) async fn to_single_tool_response(
+    dependencies: &McpInterfaceCatalogDependencies,
+    actor: &domain::ActorContext,
+    record: domain::McpToolRecord,
+    check_proxy_availability: bool,
+) -> Result<McpToolResponse, ApiError> {
+    let operation = match &record.execution_target {
+        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+            interface_catalog::mcp_interface_operation_for_id_with(
+                dependencies,
+                actor,
+                interface_id,
+            )
+            .await?
+        }
+        _ => None,
+    };
+    let availability = if check_proxy_availability {
+        if let domain::McpToolExecutionTarget::McpProxy {
+            upstream_connection_id,
+            remote_tool_name,
+            ..
+        } = &record.execution_target
+        {
+            Some(
+                McpManagementService::new(dependencies.store.clone())
+                    .upstream_proxy_availability_for_actor(
+                        actor,
+                        *upstream_connection_id,
+                        remote_tool_name,
+                    )
+                    .await?,
+            )
+        } else {
+            None
+        }
     } else {
-        Ok(to_tool_response(record, operations))
+        None
+    };
+    let (operation, availability) =
+        tool_operation_and_availability(&record.execution_target, operation, availability);
+    Ok(to_tool_response_with_operation(
+        record,
+        operation,
+        availability,
+    ))
+}
+
+fn availability_reason(status: domain::McpToolAvailabilityStatus) -> Option<String> {
+    (status != domain::McpToolAvailabilityStatus::Available).then(|| status.as_str().to_string())
+}
+
+fn execution_target_dto(target: domain::McpToolExecutionTarget) -> McpToolExecutionTargetDto {
+    match target {
+        domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
+            McpToolExecutionTargetDto::InterfaceWrapper { interface_id }
+        }
+        domain::McpToolExecutionTarget::McpProxy {
+            upstream_connection_id,
+            remote_tool_name,
+            source_schema_hash,
+        } => McpToolExecutionTargetDto::McpProxy {
+            upstream_connection_id: upstream_connection_id.to_string(),
+            remote_tool_name,
+            source_schema_hash,
+        },
+        domain::McpToolExecutionTarget::AssistantClient { capability_code } => {
+            McpToolExecutionTargetDto::AssistantClient { capability_code }
+        }
     }
 }
 
@@ -182,7 +314,6 @@ pub(super) fn to_tool_response_with_operation(
     operation: String,
     availability_status: domain::McpToolAvailabilityStatus,
 ) -> McpToolResponse {
-    let managed_by = record.managed_by.clone();
     let des_id_required = domain::mcp_management::mcp_des_id_required(&record.input_mapping);
     McpToolResponse {
         id: record.id.to_string(),
@@ -191,23 +322,7 @@ pub(super) fn to_tool_response_with_operation(
         name: record.name,
         short_description: record.short_description,
         full_description: record.full_description,
-        execution_target: match record.execution_target {
-            domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
-                McpToolExecutionTargetDto::InterfaceWrapper { interface_id }
-            }
-            domain::McpToolExecutionTarget::McpProxy {
-                upstream_connection_id,
-                remote_tool_name,
-                source_schema_hash,
-            } => McpToolExecutionTargetDto::McpProxy {
-                upstream_connection_id: upstream_connection_id.to_string(),
-                remote_tool_name,
-                source_schema_hash,
-            },
-            domain::McpToolExecutionTarget::AssistantClient { capability_code } => {
-                McpToolExecutionTargetDto::AssistantClient { capability_code }
-            }
-        },
+        execution_target: execution_target_dto(record.execution_target),
         operation,
         parameter_schema: record.parameter_schema,
         result_schema: record.result_schema,
@@ -223,10 +338,9 @@ pub(super) fn to_tool_response_with_operation(
         des_id_required,
         status: record.status.as_str().into(),
         availability_status: availability_status.into(),
-        availability_reason: (availability_status != domain::McpToolAvailabilityStatus::Available)
-            .then(|| availability_status.as_str().to_string()),
+        availability_reason: availability_reason(availability_status),
         revision: record.revision,
-        managed_by: managed_by.map(to_managed_bundle_source_response),
+        managed_by: record.managed_by.map(to_managed_bundle_source_response),
     }
 }
 

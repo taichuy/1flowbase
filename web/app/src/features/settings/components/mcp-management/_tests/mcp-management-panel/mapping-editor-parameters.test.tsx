@@ -35,12 +35,13 @@ describe('McpManagementPanel', () => {
     fireEvent.click(
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
+    await within(dialog).findByDisplayValue('app_id');
     fireEvent.click(await within(dialog).findByText('映射层'));
     fireEvent.click(within(dialog).getByRole('button', { name: '全部' }));
 
-    expect(within(dialog).getByLabelText('mcp_param app_id')).toHaveValue(
-      'app_id'
-    );
+    expect(
+      await within(dialog).findByLabelText('mcp_param app_id')
+    ).toHaveValue('app_id');
     expect(within(dialog).getByLabelText('mcp_param display_name')).toHaveValue(
       'display_name'
     );
@@ -153,6 +154,7 @@ describe('McpManagementPanel', () => {
     fireEvent.click(
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
+    await within(dialog).findByLabelText('call_parameter des_id');
     fireEvent.click(await within(dialog).findByText('映射层'));
     fireEvent.mouseDown(
       within(dialog).getByRole('combobox', { name: 'interface_param' })

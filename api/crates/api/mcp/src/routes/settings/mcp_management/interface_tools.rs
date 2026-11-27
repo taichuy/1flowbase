@@ -1,6 +1,7 @@
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use std::{collections::HashMap, sync::Arc};
 
+use control_plane::ports::McpToolPageQuery;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 
 use super::*;
@@ -13,6 +14,8 @@ use crate::routes::console_interface::{
 #[serde(untagged)]
 pub(crate) enum McpToolsInput {
     List,
+    #[serde(serialize_with = "json_contract::query")]
+    ToolsPage(McpToolPageHttpQuery),
     #[serde(serialize_with = "json_contract::body")]
     Create(CreateMcpToolBody),
     #[serde(serialize_with = "json_contract::path")]
@@ -31,6 +34,7 @@ impl InterfaceContract for McpToolsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            managed_page::query_schema("ToolsPage", "page", "page_size"),
             mp::object_schema([("variant", mp::tag_schema("List"))]),
             mp::object_schema([
                 ("variant", mp::tag_schema("Create")),
@@ -195,7 +199,9 @@ impl InterfaceContract for McpToolsInput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(match self {Self::List => mp::object_value([("variant",serde_json::Value::String("List".to_owned()))]), Self::Create(_field_0) => mp::object_value([("variant",serde_json::Value::String("Create".to_owned())), ("0",mp::object_value([("tool_id",mp::text(&(_field_0).tool_id)?), ("des_id",match (_field_0).des_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("name",mp::object_value([("byte_count",serde_json::json!((_field_0).name.len()))])), ("short_description",mp::object_value([("byte_count",serde_json::json!((_field_0).short_description.len()))])), ("full_description",match (_field_0).full_description.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("execution_target",match &(_field_0).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value([("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value([("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value([("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value([("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value([("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("parameter_schema",mp::json_summary(&(_field_0).parameter_schema)), ("result_schema",mp::json_summary(&(_field_0).result_schema)), ("input_mapping",mp::json_summary(&(_field_0).input_mapping)), ("output_mapping",mp::json_summary(&(_field_0).output_mapping)), ("max_inline_chars",serde_json::json!((_field_0).max_inline_chars)), ("response_fields",mp::json_summary(&serde_json::json!((_field_0).response_fields))), ("permission_code",match (_field_0).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value([("byte_count",serde_json::json!((_field_0).risk_level.len()))])), ("status",mp::text(&(_field_0).status)?)]))]), Self::Get(_field_0) => mp::object_value([("variant",serde_json::Value::String("Get".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))]))]), Self::Update(_field_0, _field_1) => mp::object_value([("variant",serde_json::Value::String("Update".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value([("name",mp::object_value([("byte_count",serde_json::json!((_field_1).name.len()))])), ("des_id",match (_field_1).des_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("short_description",mp::object_value([("byte_count",serde_json::json!((_field_1).short_description.len()))])), ("full_description",match (_field_1).full_description.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("execution_target",match &(_field_1).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value([("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value([("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value([("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value([("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value([("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("parameter_schema",mp::json_summary(&(_field_1).parameter_schema)), ("result_schema",mp::json_summary(&(_field_1).result_schema)), ("input_mapping",mp::json_summary(&(_field_1).input_mapping)), ("output_mapping",mp::json_summary(&(_field_1).output_mapping)), ("max_inline_chars",serde_json::json!((_field_1).max_inline_chars)), ("response_fields",mp::json_summary(&serde_json::json!((_field_1).response_fields))), ("permission_code",match (_field_1).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value([("byte_count",serde_json::json!((_field_1).risk_level.len()))])), ("status",mp::text(&(_field_1).status)?)]))]), Self::Delete(_field_0) => mp::object_value([("variant",serde_json::Value::String("Delete".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))]))]), Self::RefreshDescription(_field_0) => mp::object_value([("variant",serde_json::Value::String("RefreshDescription".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))]))]), Self::CheckDescription(_field_0, _field_1) => mp::object_value([("variant",serde_json::Value::String("CheckDescription".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value([("des_id",match (_field_1).des_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })]))])})
+        Some(match self {
+            Self::ToolsPage(query) => managed_page::query("ToolsPage", ("page", query.page), ("page_size", query.page_size), query.keyword.as_deref()),
+            Self::List => mp::object_value([("variant",serde_json::Value::String("List".to_owned()))]), Self::Create(_field_0) => mp::object_value([("variant",serde_json::Value::String("Create".to_owned())), ("0",mp::object_value([("tool_id",mp::text(&(_field_0).tool_id)?), ("des_id",match (_field_0).des_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("name",mp::object_value([("byte_count",serde_json::json!((_field_0).name.len()))])), ("short_description",mp::object_value([("byte_count",serde_json::json!((_field_0).short_description.len()))])), ("full_description",match (_field_0).full_description.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("execution_target",match &(_field_0).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value([("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value([("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value([("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value([("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value([("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("parameter_schema",mp::json_summary(&(_field_0).parameter_schema)), ("result_schema",mp::json_summary(&(_field_0).result_schema)), ("input_mapping",mp::json_summary(&(_field_0).input_mapping)), ("output_mapping",mp::json_summary(&(_field_0).output_mapping)), ("max_inline_chars",serde_json::json!((_field_0).max_inline_chars)), ("response_fields",mp::json_summary(&serde_json::json!((_field_0).response_fields))), ("permission_code",match (_field_0).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value([("byte_count",serde_json::json!((_field_0).risk_level.len()))])), ("status",mp::text(&(_field_0).status)?)]))]), Self::Get(_field_0) => mp::object_value([("variant",serde_json::Value::String("Get".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))]))]), Self::Update(_field_0, _field_1) => mp::object_value([("variant",serde_json::Value::String("Update".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value([("name",mp::object_value([("byte_count",serde_json::json!((_field_1).name.len()))])), ("des_id",match (_field_1).des_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("short_description",mp::object_value([("byte_count",serde_json::json!((_field_1).short_description.len()))])), ("full_description",match (_field_1).full_description.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("execution_target",match &(_field_1).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value([("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value([("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value([("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value([("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value([("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("parameter_schema",mp::json_summary(&(_field_1).parameter_schema)), ("result_schema",mp::json_summary(&(_field_1).result_schema)), ("input_mapping",mp::json_summary(&(_field_1).input_mapping)), ("output_mapping",mp::json_summary(&(_field_1).output_mapping)), ("max_inline_chars",serde_json::json!((_field_1).max_inline_chars)), ("response_fields",mp::json_summary(&serde_json::json!((_field_1).response_fields))), ("permission_code",match (_field_1).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value([("byte_count",serde_json::json!((_field_1).risk_level.len()))])), ("status",mp::text(&(_field_1).status)?)]))]), Self::Delete(_field_0) => mp::object_value([("variant",serde_json::Value::String("Delete".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))]))]), Self::RefreshDescription(_field_0) => mp::object_value([("variant",serde_json::Value::String("RefreshDescription".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))]))]), Self::CheckDescription(_field_0, _field_1) => mp::object_value([("variant",serde_json::Value::String("CheckDescription".to_owned())), ("0",mp::object_value([("byte_count",serde_json::json!((_field_0).len()))])), ("1",mp::object_value([("des_id",match (_field_1).des_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })]))])})
     }
 
     const CONTRACT_ID: &'static str = "console-mcp-tools-input";
@@ -210,6 +216,7 @@ impl InterfaceContract for McpToolsInput {
 #[serde(untagged)]
 pub(crate) enum McpToolsOutput {
     Tools(Vec<McpToolResponse>),
+    ToolsPage(McpToolSummaryPageResponse),
     Tool(McpToolResponse),
     Check(McpDescriptionCheckResponse),
     NoContent,
@@ -219,6 +226,7 @@ impl InterfaceContract for McpToolsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            managed_page::count_schema("ToolsPage", ["item_count", "total", "page", "page_size"]),
             mp::object_schema([
                 ("variant", mp::tag_schema("Tools")),
                 (
@@ -347,7 +355,9 @@ impl InterfaceContract for McpToolsOutput {
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
-        Some(match self {Self::Tools(_field_0) => mp::object_value([("variant",serde_json::Value::String("Tools".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value([("id",mp::text(&(item).id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("tool_id",mp::text(&(item).tool_id)?), ("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))])), ("short_description",mp::object_value([("byte_count",serde_json::json!((item).short_description.len()))])), ("full_description",mp::object_value([("byte_count",serde_json::json!((item).full_description.len()))])), ("execution_target",match &(item).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value([("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value([("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value([("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value([("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value([("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(item).operation)?), ("parameter_schema",mp::json_summary(&(item).parameter_schema)), ("result_schema",mp::json_summary(&(item).result_schema)), ("input_mapping",mp::json_summary(&(item).input_mapping)), ("output_mapping",mp::json_summary(&(item).output_mapping)), ("max_inline_chars",serde_json::json!((item).max_inline_chars)), ("response_fields",mp::json_summary(&serde_json::json!((item).response_fields))), ("permission_code",match (item).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value([("byte_count",serde_json::json!((item).risk_level.len()))])), ("des_id",mp::text(&(item).des_id)?), ("des_id_required",serde_json::Value::Bool((item).des_id_required)), ("status",mp::text(&(item).status)?), ("availability_status",match &(item).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value([("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value([("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value([("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value([("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value([("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value([("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (item).availability_reason.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!((item).revision)), ("managed_by",match (item).managed_by.as_ref() { Some(item) => mp::object_value([("organization",mp::object_value([("byte_count",serde_json::json!((item).organization.len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?) })]), Self::Tool(_field_0) => mp::object_value([("variant",serde_json::Value::String("Tool".to_owned())), ("0",mp::object_value([("id",mp::text(&(_field_0).id)?), ("workspace_id",mp::text(&(_field_0).workspace_id)?), ("tool_id",mp::text(&(_field_0).tool_id)?), ("name",mp::object_value([("byte_count",serde_json::json!((_field_0).name.len()))])), ("short_description",mp::object_value([("byte_count",serde_json::json!((_field_0).short_description.len()))])), ("full_description",mp::object_value([("byte_count",serde_json::json!((_field_0).full_description.len()))])), ("execution_target",match &(_field_0).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value([("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value([("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value([("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value([("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value([("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(_field_0).operation)?), ("parameter_schema",mp::json_summary(&(_field_0).parameter_schema)), ("result_schema",mp::json_summary(&(_field_0).result_schema)), ("input_mapping",mp::json_summary(&(_field_0).input_mapping)), ("output_mapping",mp::json_summary(&(_field_0).output_mapping)), ("max_inline_chars",serde_json::json!((_field_0).max_inline_chars)), ("response_fields",mp::json_summary(&serde_json::json!((_field_0).response_fields))), ("permission_code",match (_field_0).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value([("byte_count",serde_json::json!((_field_0).risk_level.len()))])), ("des_id",mp::text(&(_field_0).des_id)?), ("des_id_required",serde_json::Value::Bool((_field_0).des_id_required)), ("status",mp::text(&(_field_0).status)?), ("availability_status",match &(_field_0).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value([("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value([("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value([("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value([("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value([("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value([("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (_field_0).availability_reason.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!((_field_0).revision)), ("managed_by",match (_field_0).managed_by.as_ref() { Some(item) => mp::object_value([("organization",mp::object_value([("byte_count",serde_json::json!((item).organization.len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))]), Self::Check(_field_0) => mp::object_value([("variant",serde_json::Value::String("Check".to_owned())), ("0",mp::object_value([("accepted",serde_json::Value::Bool((_field_0).accepted)), ("current_des_id",match (_field_0).current_des_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })]))]), Self::NoContent => mp::object_value([("variant",serde_json::Value::String("NoContent".to_owned()))])})
+        Some(match self {
+            Self::ToolsPage(page) => managed_page::project("ToolsPage", [("item_count", serde_json::json!(page.items.len())), ("total", serde_json::json!(page.total)), ("page", serde_json::json!(page.page)), ("page_size", serde_json::json!(page.page_size))]),
+            Self::Tools(_field_0) => mp::object_value([("variant",serde_json::Value::String("Tools".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value([("id",mp::text(&(item).id)?), ("workspace_id",mp::text(&(item).workspace_id)?), ("tool_id",mp::text(&(item).tool_id)?), ("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))])), ("short_description",mp::object_value([("byte_count",serde_json::json!((item).short_description.len()))])), ("full_description",mp::object_value([("byte_count",serde_json::json!((item).full_description.len()))])), ("execution_target",match &(item).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value([("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value([("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value([("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value([("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value([("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(item).operation)?), ("parameter_schema",mp::json_summary(&(item).parameter_schema)), ("result_schema",mp::json_summary(&(item).result_schema)), ("input_mapping",mp::json_summary(&(item).input_mapping)), ("output_mapping",mp::json_summary(&(item).output_mapping)), ("max_inline_chars",serde_json::json!((item).max_inline_chars)), ("response_fields",mp::json_summary(&serde_json::json!((item).response_fields))), ("permission_code",match (item).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value([("byte_count",serde_json::json!((item).risk_level.len()))])), ("des_id",mp::text(&(item).des_id)?), ("des_id_required",serde_json::Value::Bool((item).des_id_required)), ("status",mp::text(&(item).status)?), ("availability_status",match &(item).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value([("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value([("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value([("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value([("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value([("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value([("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (item).availability_reason.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!((item).revision)), ("managed_by",match (item).managed_by.as_ref() { Some(item) => mp::object_value([("organization",mp::object_value([("byte_count",serde_json::json!((item).organization.len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))).collect::<Option<Vec<_>>>()?) })]), Self::Tool(_field_0) => mp::object_value([("variant",serde_json::Value::String("Tool".to_owned())), ("0",mp::object_value([("id",mp::text(&(_field_0).id)?), ("workspace_id",mp::text(&(_field_0).workspace_id)?), ("tool_id",mp::text(&(_field_0).tool_id)?), ("name",mp::object_value([("byte_count",serde_json::json!((_field_0).name.len()))])), ("short_description",mp::object_value([("byte_count",serde_json::json!((_field_0).short_description.len()))])), ("full_description",mp::object_value([("byte_count",serde_json::json!((_field_0).full_description.len()))])), ("execution_target",match &(_field_0).execution_target {crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::InterfaceWrapper {interface_id: _field_interface_id, .. } => mp::object_value([("variant",serde_json::Value::String("InterfaceWrapper".to_owned())), ("interface_id",mp::text(_field_interface_id)?)]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::McpProxy {upstream_connection_id: _field_upstream_connection_id, remote_tool_name: _field_remote_tool_name, source_schema_hash: _field_source_schema_hash, .. } => mp::object_value([("variant",serde_json::Value::String("McpProxy".to_owned())), ("upstream_connection_id",mp::text(_field_upstream_connection_id)?), ("remote_tool_name",mp::object_value([("byte_count",serde_json::json!((_field_remote_tool_name).len()))])), ("source_schema_hash",mp::object_value([("byte_count",serde_json::json!((_field_source_schema_hash).len()))]))]), crate::routes::settings_group::mcp_management::dto::McpToolExecutionTargetDto::AssistantClient {capability_code: _field_capability_code, .. } => mp::object_value([("variant",serde_json::Value::String("AssistantClient".to_owned())), ("capability_code",mp::text(_field_capability_code)?)])}), ("operation",mp::text(&(_field_0).operation)?), ("parameter_schema",mp::json_summary(&(_field_0).parameter_schema)), ("result_schema",mp::json_summary(&(_field_0).result_schema)), ("input_mapping",mp::json_summary(&(_field_0).input_mapping)), ("output_mapping",mp::json_summary(&(_field_0).output_mapping)), ("max_inline_chars",serde_json::json!((_field_0).max_inline_chars)), ("response_fields",mp::json_summary(&serde_json::json!((_field_0).response_fields))), ("permission_code",match (_field_0).permission_code.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("risk_level",mp::object_value([("byte_count",serde_json::json!((_field_0).risk_level.len()))])), ("des_id",mp::text(&(_field_0).des_id)?), ("des_id_required",serde_json::Value::Bool((_field_0).des_id_required)), ("status",mp::text(&(_field_0).status)?), ("availability_status",match &(_field_0).availability_status {crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::Available => mp::object_value([("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::InterfaceMissing => mp::object_value([("variant",serde_json::Value::String("InterfaceMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamDisabled => mp::object_value([("variant",serde_json::Value::String("UpstreamDisabled".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::CredentialsMissing => mp::object_value([("variant",serde_json::Value::String("CredentialsMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::UpstreamToolMissing => mp::object_value([("variant",serde_json::Value::String("UpstreamToolMissing".to_owned()))]), crate::routes::settings_group::mcp_management::dto::McpToolAvailabilityStatusDto::MappingInvalid => mp::object_value([("variant",serde_json::Value::String("MappingInvalid".to_owned()))])}), ("availability_reason",match (_field_0).availability_reason.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("revision",serde_json::json!((_field_0).revision)), ("managed_by",match (_field_0).managed_by.as_ref() { Some(item) => mp::object_value([("organization",mp::object_value([("byte_count",serde_json::json!((item).organization.len()))])), ("bundle_id",mp::text(&(item).bundle_id)?), ("bundle_version",mp::text(&(item).bundle_version)?)]), None => serde_json::Value::Null })]))]), Self::Check(_field_0) => mp::object_value([("variant",serde_json::Value::String("Check".to_owned())), ("0",mp::object_value([("accepted",serde_json::Value::Bool((_field_0).accepted)), ("current_des_id",match (_field_0).current_des_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })]))]), Self::NoContent => mp::object_value([("variant",serde_json::Value::String("NoContent".to_owned()))])})
     }
 
     const CONTRACT_ID: &'static str = "console-mcp-tools-output";
@@ -366,17 +376,98 @@ impl McpToolsAdapter {
         let service = McpManagementService::new(self.0.store.for_actor(actor.clone()));
         match input {
             McpToolsInput::List => {
-                let snapshot = service.read_catalog_for_actor(actor).await?;
+                let records = service.list_tools_for_actor(actor).await?;
                 let operations =
                     interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?;
-                let mut tools = Vec::with_capacity(snapshot.tools.len());
-                for record in snapshot.tools {
-                    tools.push(
-                        to_tool_response_for_actor(&self.0.store, actor, record, &operations)
-                            .await?,
-                    );
+                let availabilities = tool_proxy_availabilities(
+                    &service,
+                    actor,
+                    records.iter().map(|record| &record.execution_target),
+                )
+                .await?;
+                Ok(McpToolsOutput::Tools(
+                    records
+                        .into_iter()
+                        .map(|record| to_tool_list_response(record, &operations, &availabilities))
+                        .collect(),
+                ))
+            }
+            McpToolsInput::ToolsPage(query) => {
+                let keyword = query
+                    .keyword
+                    .map(|keyword| keyword.trim().to_string())
+                    .filter(|keyword| !keyword.is_empty());
+                let mut operations = HashMap::new();
+                let keyword_interface_ids = if let Some(keyword) = &keyword {
+                    operations =
+                        interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?;
+                    let needle = keyword.to_lowercase();
+                    Some(
+                        operations
+                            .iter()
+                            .filter(|(_, operation)| operation.to_lowercase().contains(&needle))
+                            .map(|(interface_id, _)| interface_id.clone())
+                            .collect(),
+                    )
+                } else {
+                    None
+                };
+                let searched_operations = keyword.is_some();
+                let page = service
+                    .list_tools_page_for_actor(
+                        actor,
+                        &McpToolPageQuery {
+                            page: query.page.unwrap_or(1).max(1),
+                            page_size: query.page_size.unwrap_or(20).clamp(1, 100),
+                            keyword,
+                            keyword_interface_ids,
+                            execution_target_kind: query.execution_target_kind,
+                            interface_id: query.interface_id,
+                            risk_level: query.risk_level,
+                            status: query.status,
+                            des_id_required: query.des_id_required,
+                            tool_ids: query
+                                .tool_ids
+                                .map(|ids| {
+                                    ids.split(',')
+                                        .map(str::trim)
+                                        .filter(|id| !id.is_empty())
+                                        .map(str::to_owned)
+                                        .collect::<Vec<_>>()
+                                })
+                                .filter(|ids| !ids.is_empty()),
+                        },
+                    )
+                    .await?;
+                if !searched_operations
+                    && page.items.iter().any(|record| {
+                        matches!(
+                            record.execution_target,
+                            domain::McpToolExecutionTarget::InterfaceWrapper { .. }
+                        )
+                    })
+                {
+                    operations =
+                        interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?;
                 }
-                Ok(McpToolsOutput::Tools(tools))
+                let availabilities = tool_proxy_availabilities(
+                    &service,
+                    actor,
+                    page.items.iter().map(|record| &record.execution_target),
+                )
+                .await?;
+                Ok(McpToolsOutput::ToolsPage(McpToolSummaryPageResponse {
+                    items: page
+                        .items
+                        .into_iter()
+                        .map(|record| {
+                            to_tool_summary_response(record, &operations, &availabilities)
+                        })
+                        .collect(),
+                    total: page.total,
+                    page: page.page,
+                    page_size: page.page_size,
+                }))
             }
             McpToolsInput::Create(body) => {
                 let interface_id = interface_target_id(&body.execution_target)?;
@@ -398,10 +489,8 @@ impl McpToolsAdapter {
             }
             McpToolsInput::Get(tool_id) => {
                 let record = service.get_tool(actor.user_id, &tool_id).await?;
-                let operations =
-                    interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?;
                 Ok(McpToolsOutput::Tool(
-                    to_tool_response_for_actor(&self.0.store, actor, record, &operations).await?,
+                    to_single_tool_response(&self.0, actor, record, true).await?,
                 ))
             }
             McpToolsInput::Update(tool_id, body) => match &body.execution_target {
@@ -449,11 +538,8 @@ impl McpToolsAdapter {
                             },
                         )
                         .await?;
-                    let operations =
-                        interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?;
                     Ok(McpToolsOutput::Tool(
-                        to_tool_response_for_actor(&self.0.store, actor, record, &operations)
-                            .await?,
+                        to_single_tool_response(&self.0, actor, record, true).await?,
                     ))
                 }
                 McpToolExecutionTargetDto::AssistantClient { .. } => {
@@ -500,9 +586,9 @@ impl McpToolsAdapter {
                         },
                     )
                     .await?;
-                let operations =
-                    interface_catalog::mcp_interface_operation_map_with(&self.0, actor).await?;
-                Ok(McpToolsOutput::Tool(to_tool_response(record, &operations)))
+                Ok(McpToolsOutput::Tool(
+                    to_single_tool_response(&self.0, actor, record, false).await?,
+                ))
             }
             McpToolsInput::CheckDescription(tool_id, body) => {
                 let result = service
@@ -537,6 +623,13 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.mcp.tools.get.v1",
         method: "GET",
         path: "/api/console/mcp/tools",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.tools.view",
+        binding_id: "http.console.mcp.tools.page.get.v1",
+        method: "GET",
+        path: "/api/console/mcp/tools/page",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

@@ -2,8 +2,13 @@ import {
   type ConsoleMcpInstanceDirectory,
   type ReplaceConsoleMcpInstanceDirectoryBody,
   type ConsoleMcpInstance,
+  type ConsoleMcpInstancesQuery,
+  type ConsoleMcpInstancesPageQuery,
+  type ConsoleMcpInstancePage,
   type ConsoleMcpClientCredential,
   type ConsoleMcpGroup,
+  type ConsoleMcpToolsPageQuery,
+  type ConsoleMcpToolSummaryPage,
   type ConsoleMcpTool,
   type ConsoleMcpBundlePreview,
   type ConsoleMcpBundleImportReport,
@@ -17,6 +22,8 @@ import {
   type ConsoleMcpToolBinding,
   type ConsoleMcpInstanceDiscoveryPolicy,
   type ConsoleMcpCatalog,
+  type ConsoleMcpInterfaceCapabilitiesPageQuery,
+  type ConsoleMcpInterfaceCapabilityPage,
   type ConsoleMcpInterfaceCapability,
   type ConsoleMcpListItemSummary,
   type ConsoleMcpExportPackage,
@@ -75,6 +82,84 @@ export function fetchConsoleMcpCatalog(baseUrl?: string) {
   });
 }
 
+export function fetchConsoleMcpInstances(
+  options: ConsoleMcpInstancesQuery = {},
+  baseUrl?: string
+) {
+  const params = new URLSearchParams();
+  if (options.status) {
+    params.set('status', options.status);
+  }
+  const query = params.toString();
+  return apiFetch<ConsoleMcpInstance[]>({
+    path: `/api/console/mcp/instances${query ? `?${query}` : ''}`,
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpInstancesPage(
+  options: ConsoleMcpInstancesPageQuery = {},
+  baseUrl?: string
+) {
+  const params = new URLSearchParams();
+  if (options.page !== undefined) {
+    params.set('page', String(options.page));
+  }
+  if (options.page_size !== undefined) {
+    params.set('page_size', String(options.page_size));
+  }
+  if (options.status) {
+    params.set('status', options.status);
+  }
+  if (options.keyword?.trim()) {
+    params.set('keyword', options.keyword.trim());
+  }
+  const query = params.toString();
+  return apiFetch<ConsoleMcpInstancePage>({
+    path: `/api/console/mcp/instances/page${query ? `?${query}` : ''}`,
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpToolsPage(
+  options: ConsoleMcpToolsPageQuery = {},
+  baseUrl?: string
+) {
+  const params = new URLSearchParams();
+  if (options.page !== undefined) {
+    params.set('page', String(options.page));
+  }
+  if (options.page_size !== undefined) {
+    params.set('page_size', String(options.page_size));
+  }
+  if (options.keyword?.trim()) {
+    params.set('keyword', options.keyword.trim());
+  }
+  if (options.execution_target_kind) {
+    params.set('execution_target_kind', options.execution_target_kind);
+  }
+  if (options.interface_id) {
+    params.set('interface_id', options.interface_id);
+  }
+  if (options.risk_level) {
+    params.set('risk_level', options.risk_level);
+  }
+  if (options.status) {
+    params.set('status', options.status);
+  }
+  if (options.des_id_required !== undefined) {
+    params.set('des_id_required', String(options.des_id_required));
+  }
+  if (options.tool_ids && options.tool_ids.length > 0) {
+    params.set('tool_ids', options.tool_ids.join(','));
+  }
+  const query = params.toString();
+  return apiFetch<ConsoleMcpToolSummaryPage>({
+    path: `/api/console/mcp/tools/page${query ? `?${query}` : ''}`,
+    baseUrl
+  });
+}
+
 export function fetchConsoleMcpInterfaceCapabilities(
   options: { bindable_only?: boolean } = {},
   baseUrl?: string
@@ -86,6 +171,43 @@ export function fetchConsoleMcpInterfaceCapabilities(
   const query = params.toString();
   return apiFetch<ConsoleMcpInterfaceCapability[]>({
     path: `/api/console/mcp/interface-capabilities${query ? `?${query}` : ''}`,
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpInterfaceCapabilitiesPage(
+  options: ConsoleMcpInterfaceCapabilitiesPageQuery = {},
+  baseUrl?: string
+) {
+  const params = new URLSearchParams();
+  if (options.bindable_only !== undefined) {
+    params.set('bindable_only', String(options.bindable_only));
+  }
+  if (options.q?.trim()) {
+    params.set('q', options.q.trim());
+  }
+  if (options.method?.trim()) {
+    params.set('method', options.method.trim());
+  }
+  if (options.offset !== undefined) {
+    params.set('offset', String(options.offset));
+  }
+  if (options.limit !== undefined) {
+    params.set('limit', String(options.limit));
+  }
+  const query = params.toString();
+  return apiFetch<ConsoleMcpInterfaceCapabilityPage>({
+    path: `/api/console/mcp/interface-capabilities/page${query ? `?${query}` : ''}`,
+    baseUrl
+  });
+}
+
+export function fetchConsoleMcpInterfaceCapability(
+  interfaceId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpInterfaceCapability>({
+    path: `/api/console/mcp/interface-capabilities/${encodeURIComponent(interfaceId)}`,
     baseUrl
   });
 }
@@ -801,6 +923,9 @@ export function executeConsoleMcpProxyToolDebug(
 
 export {
   type ConsoleMcpInstance,
+  type ConsoleMcpInstancesQuery,
+  type ConsoleMcpInstancesPageQuery,
+  type ConsoleMcpInstancePage,
   type WebMcpExposure,
   type ConsoleMcpManagedBundleSource,
   type ConsoleMcpLlmToolRegistration,
@@ -815,6 +940,9 @@ export {
   type ConsoleMcpProxyInputMapping,
   type ConsoleMcpProxyOutputMappingEntry,
   type ConsoleMcpProxyOutputMapping,
+  type ConsoleMcpToolSummary,
+  type ConsoleMcpToolsPageQuery,
+  type ConsoleMcpToolSummaryPage,
   type ConsoleMcpTool,
   type ConsoleMcpBundleManifest,
   type ConsoleMcpBundleVersionStatus,
@@ -837,6 +965,9 @@ export {
   type ConsoleMcpParameterType,
   type ConsoleMcpParameterDescriptor,
   type ConsoleMcpCatalog,
+  type ConsoleMcpInterfaceCapabilitySummary,
+  type ConsoleMcpInterfaceCapabilitiesPageQuery,
+  type ConsoleMcpInterfaceCapabilityPage,
   type ConsoleMcpInterfaceCapability,
   type ConsoleMcpListItemSummary,
   type ConsoleMcpExportPackage,
