@@ -100,6 +100,13 @@ async function mount(
   });
   return view;
 }
+// File rows arrive after the selected table enables its records query. Wait for
+// that query and its rendered row before inspecting a single preview cell.
+async function findPreviewCell(filename: string) {
+  await waitFor(() => expect(client.fetchConsoleFileRecords).toHaveBeenCalled());
+  const link = await screen.findByText(filename, { selector: 'a[href]' });
+  return within(within(link.closest('tr')!).getAllByRole('cell')[0]);
+}
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
@@ -311,16 +318,11 @@ describe('FileTableView', () => {
         total: 1
       });
       await mount();
-      const filename = await screen.findByRole('link', {
-        name: record.filename
-      });
-      const previewCell = within(filename.closest('tr')!).getAllByRole(
-        'cell'
-      )[0];
+      const previewCell = await findPreviewCell(record.filename);
       expect(
-        within(previewCell).getByRole('link', { name: record.url })
+        previewCell.getByRole('link', { name: record.url })
       ).toHaveAttribute('href', record.url);
-      expect(within(previewCell).queryByRole('img')).not.toBeInTheDocument();
+      expect(previewCell.queryByRole('img')).not.toBeInTheDocument();
     }
   );
 
@@ -330,13 +332,12 @@ describe('FileTableView', () => {
       total: 1
     });
     await mount();
-    const thumbnail = await screen.findByRole('img', { name: record.filename });
-    const cell = thumbnail.closest('td')!;
-    await error(thumbnail);
-    expect(
-      await within(cell).findByRole('link', { name: record.url })
-    ).toHaveAttribute('href', record.url);
-    expect(within(cell).queryByRole('img')).not.toBeInTheDocument();
+    const cell = await findPreviewCell(record.filename);
+    await error(cell.getByRole('img', { name: record.filename }));
+    expect(await cell.findByRole('link', { name: record.url })).toHaveAttribute(
+      'href', record.url
+    );
+    expect(cell.queryByRole('img')).not.toBeInTheDocument();
   });
 
   test('shows two-decimal binary size and exact bytes on hover', async () => {
@@ -364,7 +365,8 @@ describe('FileTableView', () => {
       total: 2
     });
     await mount();
-    const thumbnail = await screen.findByRole('img', { name: 'picture.png' });
+    const cell = await findPreviewCell(imageRecord.filename);
+    const thumbnail = cell.getByRole('img', { name: imageRecord.filename });
     expect(thumbnail).toHaveAttribute('src', imageRecord.preview_url);
     expect(thumbnail).toHaveAttribute('loading', 'lazy');
     expect(
