@@ -4,6 +4,7 @@ import {
   consoleNavigationApi,
   dataModelsApi,
   hostInfrastructureApi,
+  personalAccessTokensApi,
   renderApp,
   settingsConsoleNavigation,
   systemRuntimeApi
@@ -20,6 +21,15 @@ describe('SettingsPage', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReturnValue(
       pendingNavigation
     );
+    // The URL changes before the lazy API-key panel commits its queries.
+    const panelRequested = new Promise<void>((resolve) => {
+      personalAccessTokensApi.fetchSettingsPersonalAccessTokens.mockImplementationOnce(
+        async () => {
+          resolve();
+          return [];
+        }
+      );
+    });
     authenticateWithPermissions(['user.view.all']);
 
     renderApp('/settings/docs');
@@ -51,6 +61,7 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(window.location.pathname).toBe('/settings/api-key-authentication');
     });
+    await panelRequested;
     expect(screen.getByTestId('section-page-layout')).toHaveClass(
       'section-page-layout--viewport'
     );
