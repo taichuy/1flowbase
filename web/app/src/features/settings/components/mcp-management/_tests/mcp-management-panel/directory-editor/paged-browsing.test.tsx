@@ -8,7 +8,7 @@ import {
 async function openDirectory() {
   await click(screen.getByRole('button', { name: '目录编辑' }));
   await waitForRequests();
-  return within(screen.getByRole('dialog', { name: '目录编辑' }));
+  return screen.getByRole('dialog', { name: '目录编辑' });
 }
 
 describe('MCP directory and table browsing', () => {
@@ -23,7 +23,7 @@ describe('MCP directory and table browsing', () => {
         }
       }
     });
-    const dialog = await openDirectory();
+    const dialog = within(await openDirectory());
     expect(api.fetchSettingsMcpToolsPage).toHaveBeenCalledExactlyOnceWith({
       page: 1, page_size: 1, tool_ids: ['search_customer']
     });
@@ -65,7 +65,7 @@ describe('MCP directory and table browsing', () => {
   test('directory read/write without tools.view shows the permission reason, not an empty tool list', async () => {
     await renderPanelWithMountedTool();
     grantDirectoryPermissions(['mcp.instances.view', 'mcp.directory.view', 'mcp.directory.replace']);
-    const dialog = await openDirectory();
+    const dialog = within(await openDirectory());
     expect(dialog.getByText(/mcp\.tools\.view/)).toBeVisible();
     expect(dialog.getByRole('button', { name: '挂载 Tool' })).toBeDisabled();
     expect(dialog.getByRole('button', { name: '新建分组' })).toBeEnabled();
@@ -74,7 +74,7 @@ describe('MCP directory and table browsing', () => {
 
   test('a failed tool lookup displays the server error and retry fetches the same page', async () => {
     await renderPanelWithMountedTool({ includeBinding: false });
-    const dialog = await openDirectory();
+    const dialog = within(await openDirectory());
     api.fetchSettingsMcpToolsPage.mockRejectedValueOnce(new Error('403: tool access denied'));
     await click(dialog.getByRole('button', { name: '挂载 Tool' }));
     await mouseDown(dialog.getByRole('combobox', { name: '选择 Tool' }));
@@ -88,7 +88,7 @@ describe('MCP directory and table browsing', () => {
   test('a failed bound summary read retries the bound IDs, without opening either picker', async () => {
     await renderPanelWithMountedTool();
     api.fetchSettingsMcpToolsPage.mockRejectedValueOnce(new Error('Summary read failed'));
-    const dialog = await openDirectory();
+    const dialog = within(await openDirectory());
     const error = await dialog.findByText('Summary read failed');
     expect(error).toBeVisible();
     await click(dialog.getByRole('button', { name: /重\s*试/ }));
