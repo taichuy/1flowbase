@@ -77,7 +77,10 @@ describe('frontstage page tree logic', () => {
       {
         id: 'page-first',
         title: 'First page',
-        kind: 'page'
+        kind: 'page',
+        get children(): FrontStageTreeNode[] {
+          throw new Error('An explicit route must not inspect descendants');
+        }
       }
     ];
 
