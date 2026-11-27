@@ -3,7 +3,6 @@
   "evidenceSets": [
     [{"file":"web/app/src/shared/ui/data-table/DataTableColumnSettings.tsx","sha256":"70af72f3d172a63caa92dc8865a706845d99320df3a1aef2ae25d2854a7b964f"},{"file":"web/app/src/shared/ui/data-table/_tests/DataTable.test.tsx","sha256":"380649aff7ae6a924d0653b3237926a983d22e681098c954f5ea1238f3f12e95"}],
     [{"file":"web/app/src/features/applications/components/logs/ApplicationRunsTable.tsx","sha256":"d0a7641919b0de40ba1865a8b7af6a56eef0488b8bd98715e594f08fceef31da"},{"file":"web/app/src/shared/ui/data-table/DataTable.tsx","sha256":"c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"},{"file":"web/app/src/shared/ui/data-table/DataTableMobileList.tsx","sha256":"1216a4c6e5c9e5274b174d91c791027d424ee5483768a438f2ff666a4d04f05c"},{"file":"web/app/src/shared/ui/data-table/_tests/DataTable.test.tsx","sha256":"380649aff7ae6a924d0653b3237926a983d22e681098c954f5ea1238f3f12e95"}],
-    [{"file":"web/app/src/features/applications/components/logs/ApplicationRunsTable.tsx","sha256":"d0a7641919b0de40ba1865a8b7af6a56eef0488b8bd98715e594f08fceef31da"},{"file":"web/app/src/shared/ui/data-table/DataTable.tsx","sha256":"c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"},{"file":"web/app/src/shared/ui/data-table/DataTableMobileList.tsx","sha256":"1216a4c6e5c9e5274b174d91c791027d424ee5483768a438f2ff666a4d04f05c"},{"file":"web/app/src/shared/ui/data-table/_tests/DataTable.test.tsx","sha256":"380649aff7ae6a924d0653b3237926a983d22e681098c954f5ea1238f3f12e95"}],
     [{"file":"web/app/src/shared/ui/data-table/data-table-state.ts","sha256":"54313417bbb963f0f62e7319e6d79ac56e51ca6b5172c03dc2941f060e4aba33"},{"file":"web/app/src/shared/ui/data-table/_tests/DataTable.test.tsx","sha256":"380649aff7ae6a924d0653b3237926a983d22e681098c954f5ea1238f3f12e95"}]
   ],
   "reviews": [
@@ -12,21 +11,21 @@
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "70af72f3d172a63caa92dc8865a706845d99320df3a1aef2ae25d2854a7b964f",
       "reason": "On a column toggle the filter selects membership across all columns (not only search results); map projects keys in schema order. The small column schema is not the row data. DataTable.test checks hidden selections, the last visible column, and ordered defaults.",
-      "evidenceSet": 3
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/shared/ui/data-table/DataTableColumnSettings.tsx",
       "rule": "react-doctor/prefer-html-dialog",
       "sourceSha256": "70af72f3d172a63caa92dc8865a706845d99320df3a1aef2ae25d2854a7b964f",
       "reason": "This labelled dialog is nonmodal AntD Popover content, not a modal focus trap. The Popover owns visibility; Escape closes it and returns focus to the trigger, as asserted by the column settings test.",
-      "evidenceSet": 3
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/shared/ui/data-table/DataTableColumnSettings.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
       "sourceSha256": "70af72f3d172a63caa92dc8865a706845d99320df3a1aef2ae25d2854a7b964f",
       "reason": "The role labels a nonmodal Popover panel. Replacing it with a native dialog introduces another open/close lifecycle; the existing role, accessible name, expanded trigger and Escape focus return are exercised together.",
-      "evidenceSet": 3
+      "evidenceSet": 2
     },
     {
       "file": "web/app/src/shared/ui/data-table/DataTableLayout.tsx",
@@ -40,14 +39,14 @@
       "rule": "react-doctor/no-render-in-render",
       "sourceSha256": "1216a4c6e5c9e5274b174d91c791027d424ee5483768a438f2ff666a4d04f05c",
       "reason": "web/app/src/shared/ui/data-table/DataTableMobileList.tsx:173（react-doctor/no-render-in-render）：命中点是普通 render helper 的直接函数调用，返回现有组件/原生 JSX element；不是 `<LocalComponent />` 形式的新函数组件类型。React 根据返回元素的 type/key 对账，不会因为 helper 的调用本身重挂载。循环行保留既有 key；真实的 index-key 问题另记 F7。 web/app/src/shared/ui/data-table/DataTableMobileList.tsx:182（react-doctor/no-render-in-render）：命中点是普通 render helper 的直接函数调用，返回现有组件/原生 JSX element；不是 `<LocalComponent />` 形式的新函数组件类型。React 根据返回元素的 type/key 对账，不会因为 helper 的调用本身重挂载。循环行保留既有 key；真实的 index-key 问题另记 F7。 web/app/src/shared/ui/data-table/DataTableMobileList.tsx:190（react-doctor/no-render-in-render）：命中点是普通 render helper 的直接函数调用，返回现有组件/原生 JSX element；不是 `<LocalComponent />` 形式的新函数组件类型。React 根据返回元素的 type/key 对账，不会因为 helper 的调用本身重挂载。循环行保留既有 key；真实的 index-key 问题另记 F7。 P21b reassessed 2026-11-17: DataTableMobileList adds page-scroll mode, skipping region height measurement/virtual-height behavior only in that mode. Existing renderValue/row/empty helpers are ordinary calls returning stable element types, not render-local Hook components. Column settings remains a labelled nonmodal AntD Popover with Escape and trigger-focus return; the focus-trapping diagnostic incorrectly assumes a modal. DataTableLayout tests change overflow actions to the two-inline-action contract while retaining filter/form/expanded assertions. Column projection/storage-key ownership is unchanged. Native status/output claim stays held.",
-      "evidenceSet": 2
+      "evidenceSet": 1
     },
     {
       "file": "web/app/src/shared/ui/data-table/DataTableMobileList.tsx",
       "rule": "react-doctor/prefer-module-scope-pure-function",
       "sourceSha256": "1216a4c6e5c9e5274b174d91c791027d424ee5483768a438f2ff666a4d04f05c",
       "reason": "web/app/src/shared/ui/data-table/DataTableMobileList.tsx:77（react-doctor/prefer-module-scope-pure-function）：renderValue 在 DataTableMobileList 按 column.render/dataIndex 取当前 item，普通调用结果放入 JSX；并未把 helper identity 传给 memo child。提到模块需要搬运泛型但不会修复任何 row identity，现有 row key 独立管理。 P21b reassessed 2026-11-17: DataTableMobileList adds page-scroll mode, skipping region height measurement/virtual-height behavior only in that mode. Existing renderValue/row/empty helpers are ordinary calls returning stable element types, not render-local Hook components. Column settings remains a labelled nonmodal AntD Popover with Escape and trigger-focus return; the focus-trapping diagnostic incorrectly assumes a modal. DataTableLayout tests change overflow actions to the two-inline-action contract while retaining filter/form/expanded assertions. Column projection/storage-key ownership is unchanged. Native status/output claim stays held.",
-      "evidenceSet": 2
+      "evidenceSet": 1
     },
     {
       "file": "web/app/src/shared/ui/data-table/DataTableMobileList.tsx",
