@@ -148,7 +148,6 @@ pub trait ManagedCompositionPort:
     async fn wait_for_shutdown(&self, budget: std::time::Duration) -> Result<()>;
     async fn cleanup_after_shutdown(&self);
     async fn current_snapshots(&self) -> BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>;
-    async fn refresh_boot_snapshots(self: Arc<Self>) -> Result<()>;
     fn start_reclamation(self: Arc<Self>);
     fn notify_reclamation(&self);
     async fn attach_lifecycle_source_observer(

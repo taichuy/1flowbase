@@ -28,7 +28,10 @@ impl ProviderRuntimePort for NoProvider {
     ) -> anyhow::Result<()> {
         Ok(())
     }
-    async fn ensure_loaded(&self, _: &domain::LocalPluginInstallationRecord) -> anyhow::Result<()> {
+    async fn ensure_loaded(
+        &self,
+        _: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         anyhow::bail!("unexpected provider")
     }
     async fn validate_provider(

@@ -8,25 +8,25 @@ use extension_contracts::provider_contract::{
     ProviderTransportSessionCommand, ProviderTransportSessionReceipt, ProviderUsageWindowsResult,
 };
 use extension_contracts::{
-    DataModelTemplateDescriptor, DataSourceCatalogEntry, DataSourceConfigInput,
-    DataSourceCreateRecordInput, DataSourceCreateRecordOutput, DataSourceDeleteRecordInput,
-    DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput,
-    DataSourceExecuteModelOperationInput, DataSourceExecuteSqlInput, DataSourceGetRecordInput,
-    DataSourceGetRecordOutput, DataSourceImportSnapshotInput, DataSourceImportSnapshotOutput,
-    DataSourceListRecordsInput, DataSourceListRecordsOutput, DataSourcePreviewReadInput,
-    DataSourcePreviewReadOutput, DataSourceResourceDescriptor, DataSourceUpdateRecordInput,
-    DataSourceUpdateRecordOutput, EgressDescriptor, ForwardProxyLease, NativeSqlExecutionOutput,
+    DataSourceCatalogEntry, DataSourceConfigInput, DataSourceCreateRecordInput,
+    DataSourceCreateRecordOutput, DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput,
+    DataSourceDescribeResourceInput, DataSourceExecuteModelOperationInput,
+    DataSourceExecuteSqlInput, DataSourceGetRecordInput, DataSourceGetRecordOutput,
+    DataSourceImportSnapshotInput, DataSourceImportSnapshotOutput, DataSourceListRecordsInput,
+    DataSourceListRecordsOutput, DataSourcePreviewReadInput, DataSourcePreviewReadOutput,
+    DataSourceResourceDescriptor, DataSourceUpdateRecordInput, DataSourceUpdateRecordOutput,
+    EgressDescriptor, ForwardProxyLease, NativeSqlExecutionOutput,
 };
 use serde_json::Value;
 
 use crate::runtime_backend::{
-    CapabilityRuntimePort, DataSourceRuntimePort, NetworkEgressRuntimePort, ProviderRuntimePort,
-    RuntimeBackend, RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSlot,
-    RuntimeBackendSnapshot, RuntimeCancelOutcome, RuntimeCapabilityExecutionOutcome,
-    RuntimeExecutionOutcome, RuntimeExecutionPort, RuntimeExecutionRequest,
-    RuntimeNetworkEgressActivation, RuntimeObservationPort, RuntimePackageActivation,
-    RuntimeProviderDistributionRequest, RuntimeRegistrySnapshot, RuntimeRequestId,
-    RuntimeStreamSinks,
+    CapabilityRuntimePort, DataSourceRuntimePort, LoadedDataSourceActivation,
+    LoadedRuntimeArtifactIdentity, NetworkEgressRuntimePort, ProviderRuntimePort, RuntimeBackend,
+    RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSlot, RuntimeBackendSnapshot,
+    RuntimeCancelOutcome, RuntimeCapabilityExecutionOutcome, RuntimeExecutionOutcome,
+    RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeNetworkEgressActivation,
+    RuntimeObservationPort, RuntimePackageActivation, RuntimeProviderDistributionRequest,
+    RuntimeRegistrySnapshot, RuntimeRequestId, RuntimeStreamSinks,
 };
 
 struct CompleteFakeBackend;
@@ -36,8 +36,10 @@ impl RuntimeExecutionPort for CompleteFakeBackend {
     async fn activate_provider_distribution_rule(
         &self,
         _request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        Ok(())
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError> {
+        Err(RuntimeBackendError::UnsupportedOperation(
+            "activate_provider_distribution_rule",
+        ))
     }
 
     async fn deactivate_provider_distribution_rule(
@@ -100,8 +102,10 @@ impl ProviderRuntimePort for CompleteFakeBackend {
     async fn activate_provider(
         &self,
         _request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        Ok(())
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError> {
+        Err(RuntimeBackendError::UnsupportedOperation(
+            "activate_provider",
+        ))
     }
 
     async fn deactivate_provider(&self, _plugin_id: &str) -> Result<(), RuntimeBackendError> {
@@ -207,8 +211,10 @@ impl DataSourceRuntimePort for CompleteFakeBackend {
     async fn activate_data_source(
         &self,
         _request: RuntimePackageActivation,
-    ) -> Result<Vec<DataModelTemplateDescriptor>, RuntimeBackendError> {
-        Ok(Vec::new())
+    ) -> Result<LoadedDataSourceActivation, RuntimeBackendError> {
+        Err(RuntimeBackendError::UnsupportedOperation(
+            "activate_data_source",
+        ))
     }
 
     async fn deactivate_data_source(&self, _plugin_id: &str) -> Result<(), RuntimeBackendError> {
@@ -375,8 +381,10 @@ impl CapabilityRuntimePort for CompleteFakeBackend {
     async fn activate_capability(
         &self,
         _request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        Ok(())
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError> {
+        Err(RuntimeBackendError::UnsupportedOperation(
+            "activate_capability",
+        ))
     }
 
     async fn deactivate_capability(&self, _plugin_id: &str) -> Result<(), RuntimeBackendError> {
@@ -433,8 +441,10 @@ impl NetworkEgressRuntimePort for CompleteFakeBackend {
     async fn network_egress_activate(
         &self,
         _request: RuntimeNetworkEgressActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        Ok(())
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError> {
+        Err(RuntimeBackendError::UnsupportedOperation(
+            "network_egress_activate",
+        ))
     }
 
     async fn network_egress_sync(

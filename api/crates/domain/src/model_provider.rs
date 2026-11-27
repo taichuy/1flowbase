@@ -256,6 +256,30 @@ pub struct PluginArtifactInstanceRecord {
 /// The tombstone path is intentionally separate from an artifact's executable paths: after an
 /// uninstall commits, the artifact record must remain `missing` even when physical deletion needs
 /// another attempt.
+/// Warnings retain Ready inventory status but prevent activation or cutover.
+pub fn has_local_artifact_warning(last_error: Option<&str>) -> bool {
+    matches!(
+        last_error,
+        Some("checksum_mismatch" | "checksum_missing" | "manifest_fingerprint_mismatch")
+    )
+}
+
+/// Identity of the manifest parsed by a runtime host, not its pre-load inventory record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedRuntimeArtifactIdentity {
+    pub manifest_fingerprint: String,
+    pub plugin_version: String,
+    pub marker: Option<RuntimeArtifactMarkerIdentity>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct RuntimeArtifactMarkerIdentity {
+    pub plugin_id: String,
+    pub version: String,
+    pub checksum: Option<String>,
+    pub manifest_fingerprint: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginArtifactCleanupRecord {
     pub id: Uuid,

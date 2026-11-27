@@ -102,26 +102,6 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
             .collect())
     }
 
-    async fn reassign_instances_to_installation(
-        &self,
-        input: &ReassignModelProviderInstancesInput,
-    ) -> Result<Vec<ModelProviderInstanceRecord>> {
-        let mut instances = self.instances.write().await;
-        let mut migrated = Vec::new();
-        for instance in instances.values_mut() {
-            if instance.workspace_id == input.workspace_id
-                && instance.provider_code == input.provider_code
-            {
-                instance.installation_id = input.target_installation_id;
-                instance.protocol = input.target_protocol.clone();
-                instance.updated_by = input.updated_by;
-                instance.updated_at = OffsetDateTime::now_utc();
-                migrated.push(instance.clone());
-            }
-        }
-        Ok(migrated)
-    }
-
     async fn upsert_catalog_cache(
         &self,
         input: &UpsertModelProviderCatalogCacheInput,

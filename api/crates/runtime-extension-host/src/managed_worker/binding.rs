@@ -46,8 +46,10 @@ impl LoadedManagedBinding {
             status = "started",
             "managed executable verification"
         );
-        let bytes = match std::fs::read(&self.runtime_executable) {
-            Ok(bytes) => bytes,
+        let (fingerprint, bytes) = match std::fs::File::open(&self.runtime_executable)
+            .and_then(extension_contracts::ManagedArtifactFingerprint::from_reader)
+        {
+            Ok(digest) => digest,
             Err(_) => {
                 tracing::debug!(
                     contribution_id = self.contribution.contribution_id.as_str(),
@@ -58,11 +60,10 @@ impl LoadedManagedBinding {
                 return Err(super::invalid("frozen managed executable is unavailable"));
             }
         };
-        let matches = extension_contracts::ManagedArtifactFingerprint::from_bytes(&bytes)
-            == self.executable_fingerprint;
+        let matches = fingerprint == self.executable_fingerprint;
         tracing::debug!(
             contribution_id = self.contribution.contribution_id.as_str(),
-            bytes = bytes.len(),
+            bytes,
             elapsed_us = started.elapsed().as_micros() as u64,
             status = if matches {
                 "verified"

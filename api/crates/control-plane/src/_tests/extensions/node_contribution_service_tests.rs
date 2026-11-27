@@ -313,7 +313,10 @@ impl control_plane::ports::PluginContributionAuthorityRepository
 
     async fn lock_contribution_authority_batch(
         &self,
+        _workspaces: &[Uuid],
         _: &[(Uuid, Uuid)],
+        _verify_all_active_scopes: bool,
+        _node: Option<control_plane_contracts::ports::ManagedArtifactVerification<'_>>,
     ) -> Result<Box<dyn control_plane::ports::ContributionAuthorityLease>> {
         panic!("unexpected authority batch in legacy frontend fixture")
     }
@@ -468,6 +471,17 @@ impl PluginRepository for MemoryNodeContributionRepository {
         let mut state = self.frontend.write().await;
         state.read("assignments".into())?;
         Ok(state.assignments.clone())
+    }
+
+    async fn retire_unreferenced_installation(
+        &self,
+        _input: &control_plane_contracts::ports::UpdatePluginDesiredStateInput,
+    ) -> anyhow::Result<Option<domain::PluginInstallationRecord>> {
+        panic!("unexpected retire_unreferenced_installation")
+    }
+
+    async fn list_referenced_installation_ids(&self) -> anyhow::Result<Vec<Uuid>> {
+        panic!("unexpected list_referenced_installation_ids")
     }
 
     async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {

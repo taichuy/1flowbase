@@ -14,6 +14,7 @@ use extension_package_runtime::{
 
 #[derive(Debug, Clone)]
 pub struct LoadedProviderPackage {
+    pub identity: LoadedRuntimeArtifactIdentity,
     #[cfg(test)]
     pub package_root: PathBuf,
     pub runtime_executable: PathBuf,
@@ -22,6 +23,7 @@ pub struct LoadedProviderPackage {
 
 #[derive(Debug, Clone)]
 pub struct LoadedDataSourcePackage {
+    pub identity: LoadedRuntimeArtifactIdentity,
     #[cfg(test)]
     #[expect(
         dead_code,
@@ -34,11 +36,78 @@ pub struct LoadedDataSourcePackage {
 
 #[derive(Debug, Clone)]
 pub struct LoadedProviderDistributionPackage {
+    pub identity: LoadedRuntimeArtifactIdentity,
     pub runtime_executable: PathBuf,
     pub manifest: PluginManifestV1,
 }
 
 pub struct PackageLoader;
+
+use runtime_core::runtime_backend::{LoadedRuntimeArtifactIdentity, RuntimeArtifactMarkerIdentity};
+
+const ARTIFACT_MARKER_FILE: &str = ".1flowbase-artifact.json";
+
+fn artifact_marker(package_root: &Path) -> FrameworkResult<Option<RuntimeArtifactMarkerIdentity>> {
+    let path = package_root.join(ARTIFACT_MARKER_FILE);
+    match fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|error| PluginFrameworkError::serialization(Some(&path), error.to_string())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(PluginFrameworkError::io(Some(&path), error.to_string())),
+    }
+}
+
+pub(crate) fn artifact_identity(
+    package_root: &Path,
+    manifest: &PluginManifestV1,
+    manifest_fingerprint: String,
+) -> FrameworkResult<LoadedRuntimeArtifactIdentity> {
+    Ok(LoadedRuntimeArtifactIdentity {
+        manifest_fingerprint,
+        plugin_version: manifest.version.clone(),
+        marker: artifact_marker(package_root)?,
+    })
+}
+
+fn verify_manifest_fingerprint(actual: &str, expected: Option<&str>) -> FrameworkResult<()> {
+    if expected.is_some_and(|expected| expected != actual) {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "runtime manifest fingerprint does not match the bound installation",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn cached_identity_matches(
+    package_root: &Path,
+    identity: &LoadedRuntimeArtifactIdentity,
+    expected: Option<&str>,
+) -> FrameworkResult<bool> {
+    let path = package_root.join("manifest.yaml");
+    let raw = fs::read(&path)
+        .map_err(|error| PluginFrameworkError::io(Some(&path), error.to_string()))?;
+    let actual = extension_package_runtime::canonical_manifest_fingerprint(&raw);
+    verify_manifest_fingerprint(&actual, expected)?;
+    Ok(
+        actual == identity.manifest_fingerprint
+            && artifact_marker(package_root)? == identity.marker,
+    )
+}
+
+pub(crate) fn verify_package_activation(
+    plugin_id: &str,
+    expected_plugin_id: &str,
+    identity: &LoadedRuntimeArtifactIdentity,
+    expected_fingerprint: Option<&str>,
+) -> FrameworkResult<()> {
+    if plugin_id != expected_plugin_id {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "loaded package id {plugin_id} does not match requested {expected_plugin_id}"
+        )));
+    }
+    verify_manifest_fingerprint(&identity.manifest_fingerprint, expected_fingerprint)
+}
 
 impl PackageLoader {
     pub(crate) fn load_managed(
@@ -63,6 +132,16 @@ impl PackageLoader {
         if manifest.versioned_plugin_id()? != request.plugin_id {
             return Err(PluginFrameworkError::invalid_provider_package(
                 "managed artifact plugin identity does not match activation",
+            ));
+        }
+        if artifact_marker(&package_root)?.is_some_and(|marker| {
+            marker.plugin_id != request.plugin_id
+                || marker.version != manifest.version
+                || marker.manifest_fingerprint.as_deref()
+                    != Some(request.identity.artifact_fingerprint().as_str())
+        }) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "managed artifact marker identity does not match activation",
             ));
         }
         let managed = manifest.managed.as_ref().ok_or_else(|| {
@@ -101,17 +180,18 @@ impl PackageLoader {
                 "managed execution entry must be a file inside the installed artifact",
             ));
         }
+        let (executable_fingerprint, _) = fs::File::open(&runtime_executable)
+            .and_then(ManagedArtifactFingerprint::from_reader)
+            .map_err(|error| {
+                PluginFrameworkError::io(Some(&runtime_executable), error.to_string())
+            })?;
         Ok(crate::managed_worker::LoadedManagedBinding {
             plugin_id: request.plugin_id.clone(),
             publisher_namespace: manifest.publisher_namespace.clone(),
             plugin_code: manifest.plugin_code()?.to_string(),
             plugin_version: manifest.version.clone(),
             protocol: binding.runtime.protocol.clone(),
-            executable_fingerprint: ManagedArtifactFingerprint::from_bytes(
-                &fs::read(&runtime_executable).map_err(|error| {
-                    PluginFrameworkError::io(Some(&runtime_executable), error.to_string())
-                })?,
-            ),
+            executable_fingerprint,
             runtime_executable,
             execution_mode: binding.execution_mode,
             limits: binding.runtime.limits.clone(),
@@ -183,6 +263,11 @@ impl PackageLoader {
             )));
         }
         Ok(LoadedProviderDistributionPackage {
+            identity: artifact_identity(
+                &package_root,
+                &manifest,
+                extension_package_runtime::canonical_manifest_fingerprint(manifest_raw.as_bytes()),
+            )?,
             runtime_executable,
             manifest,
         })
@@ -230,6 +315,11 @@ impl PackageLoader {
         }
 
         Ok(LoadedProviderPackage {
+            identity: artifact_identity(
+                &package_root,
+                &package.manifest,
+                package.manifest_fingerprint.clone(),
+            )?,
             #[cfg(test)]
             package_root,
             runtime_executable,
@@ -281,6 +371,11 @@ impl PackageLoader {
         }
 
         Ok(LoadedDataSourcePackage {
+            identity: artifact_identity(
+                &package_root,
+                &package.manifest,
+                package.manifest_fingerprint.clone(),
+            )?,
             #[cfg(test)]
             package_root,
             runtime_executable,
@@ -343,7 +438,11 @@ impl PackageLoader {
         }
 
         Ok(LoadedCapabilityPackage {
-            #[cfg(test)]
+            identity: artifact_identity(
+                &package_root,
+                &manifest,
+                extension_package_runtime::canonical_manifest_fingerprint(manifest_raw.as_bytes()),
+            )?,
             package_root,
             runtime_executable,
             manifest,
@@ -353,11 +452,7 @@ impl PackageLoader {
 
 #[derive(Debug, Clone)]
 pub struct LoadedCapabilityPackage {
-    #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "retained only for package loader fixture identity assertions"
-    )]
+    pub identity: LoadedRuntimeArtifactIdentity,
     pub package_root: PathBuf,
     pub runtime_executable: PathBuf,
     pub manifest: PluginManifestV1,

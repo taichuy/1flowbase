@@ -126,10 +126,10 @@ pub use mcp_management::{
     MCP_ASSISTANT_CLIENT_CAPABILITY_CODES,
 };
 pub use model_provider::{
-    LocalPluginInstallationRecord, ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord,
-    ModelFailoverQueueSnapshotRecord, ModelFailoverQueueTemplateRecord,
-    ModelProviderCatalogCacheRecord, ModelProviderCatalogEntryRecord,
-    ModelProviderCatalogRefreshStatus, ModelProviderCatalogSource,
+    has_local_artifact_warning, LoadedRuntimeArtifactIdentity, LocalPluginInstallationRecord,
+    ModelCatalogSyncRunRecord, ModelFailoverQueueItemRecord, ModelFailoverQueueSnapshotRecord,
+    ModelFailoverQueueTemplateRecord, ModelProviderCatalogCacheRecord,
+    ModelProviderCatalogEntryRecord, ModelProviderCatalogRefreshStatus, ModelProviderCatalogSource,
     ModelProviderCatalogSourceRecord, ModelProviderConfiguredModel, ModelProviderDiscoveryMode,
     ModelProviderDistributionConfigValue, ModelProviderDistributionRule,
     ModelProviderInstanceRecord, ModelProviderInstanceStatus, ModelProviderMainInstanceRecord,
@@ -140,7 +140,8 @@ pub use model_provider::{
     PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
     PluginPackageCatalogProjectionRecord, PluginPackageCatalogProjectionStatus,
     PluginRuntimeStatus, PluginTaskKind, PluginTaskRecord, PluginTaskStatus,
-    PluginVerificationStatus, DEFAULT_MODEL_PRICING_MODEL_ID, DEFAULT_MODEL_PRICING_PROVIDER_CODE,
+    PluginVerificationStatus, RuntimeArtifactMarkerIdentity, DEFAULT_MODEL_PRICING_MODEL_ID,
+    DEFAULT_MODEL_PRICING_PROVIDER_CODE,
 };
 pub use modeling::{
     DataModelAdvisorFinding, DataModelAdvisorSeverity, DataModelOwnerKind, DataModelProtection,

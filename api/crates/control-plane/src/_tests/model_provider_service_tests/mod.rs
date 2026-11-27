@@ -24,12 +24,11 @@ use crate::{
         AuthRepository, CreateModelProviderInstanceInput, CreateModelProviderPreviewSessionInput,
         CreatePluginAssignmentInput, CreatePluginTaskInput, ModelProviderRepository,
         PatchModelProviderSecretInput, PluginRepository, ProviderRuntimeInvocationOutput,
-        ProviderRuntimePort, ReassignModelProviderInstancesInput, RoleConsolePolicyReader,
-        UpdateModelProviderInstanceInput, UpdatePluginDesiredStateInput,
-        UpdatePluginTaskStatusInput, UpdateProfileInput, UpsertModelProviderCatalogCacheInput,
-        UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
-        UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
-        UpsertPluginPackageCatalogProjectionInput,
+        ProviderRuntimePort, RoleConsolePolicyReader, UpdateModelProviderInstanceInput,
+        UpdatePluginDesiredStateInput, UpdatePluginTaskStatusInput, UpdateProfileInput,
+        UpsertModelProviderCatalogCacheInput, UpsertModelProviderMainInstanceInput,
+        UpsertModelProviderSecretInput, UpsertPluginArtifactInstanceInput,
+        UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
     },
 };
 use domain::{
@@ -714,6 +713,17 @@ impl PluginRepository for MemoryModelProviderRepository {
             .collect())
     }
 
+    async fn retire_unreferenced_installation(
+        &self,
+        _input: &control_plane_contracts::ports::UpdatePluginDesiredStateInput,
+    ) -> anyhow::Result<Option<domain::PluginInstallationRecord>> {
+        panic!("unexpected retire_unreferenced_installation")
+    }
+
+    async fn list_referenced_installation_ids(&self) -> anyhow::Result<Vec<Uuid>> {
+        panic!("unexpected list_referenced_installation_ids")
+    }
+
     async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
         let mut installation_ids = self
             .assignments
@@ -821,12 +831,15 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
         Ok(())
     }
 
-    async fn ensure_loaded(&self, _installation: &LocalPluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(
+        &self,
+        _installation: &LocalPluginInstallationRecord,
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         self.operation_trace.write().await.push("ensure_loaded");
         if *self.ensure_loaded_error.read().await {
             anyhow::bail!("ensure loaded failed for test");
         }
-        Ok(())
+        Ok(None)
     }
 
     async fn validate_provider(

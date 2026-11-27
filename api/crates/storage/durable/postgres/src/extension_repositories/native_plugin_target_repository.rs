@@ -1,13 +1,26 @@
 //! Native target selection has one durable owner; node runtime observations never select it.
+use std::{io::ErrorKind, path::Path};
+
 use anyhow::{bail, Result};
-use control_plane_contracts::{ports::UpdatePluginDesiredStateInput, ControlPlaneContractError};
+use control_plane_contracts::{
+    ports::{
+        derive_contract_availability_status, plugin_artifact_status, NativePluginStartupOutcome,
+        UpdatePluginDesiredStateInput, VerifiedNativePluginArtifact,
+    },
+    ControlPlaneContractError,
+};
 use domain::{
     NativePluginTarget, PluginDesiredState, PluginInstallationRecord, PluginRuntimeStatus,
+    RuntimeArtifactMarkerIdentity,
 };
 use sqlx::{PgConnection, Row};
 use uuid::Uuid;
 
-use crate::{plugin_repository::map_installation, PgControlPlaneStore};
+use crate::{
+    mappers::plugin_mapper::{parse_artifact_instance_status, parse_desired_state},
+    plugin_repository::{lock_node_artifact_slot, map_artifact_instance, map_installation},
+    PgControlPlaneStore,
+};
 
 fn target(row: sqlx::postgres::PgRow) -> NativePluginTarget {
     NativePluginTarget {
@@ -176,27 +189,183 @@ pub(crate) async fn complete_startup(
     store: &PgControlPlaneStore,
     expected: &NativePluginTarget,
     node_id: &str,
-    status: PluginRuntimeStatus,
-    last_error: Option<&str>,
+    outcome: NativePluginStartupOutcome<'_>,
 ) -> Result<()> {
-    if !matches!(
-        status,
-        PluginRuntimeStatus::Active | PluginRuntimeStatus::LoadFailed
-    ) {
-        bail!("invalid native startup completion status");
-    }
     let mut tx = store.pool().begin().await?;
     lock_current_target(&mut tx, expected).await?;
-    let active = status == PluginRuntimeStatus::Active;
-    let updated = sqlx::query("update extension_artifact_instances set runtime_status=$3,artifact_status=case when $3='active' then 'ready' else 'load_failed' end,availability_status=$4,last_error=$5,checked_at=now() where node_id=$1 and installation_id=$2")
-        .bind(node_id).bind(expected.installation_id).bind(status.as_str())
-        .bind(if active { "available" } else { "load_failed" }).bind(last_error).execute(&mut *tx).await?;
+    let (status, artifact_status, availability, fingerprint, last_error) = match outcome {
+        NativePluginStartupOutcome::Active(verified) => {
+            // Take the installation row before the node slot, as other lifecycle writers do.
+            let (plugin_id, source_kind, expected_checksum): (String, String, Option<String>) =
+                sqlx::query_as("select plugin_id, source_kind, expected_checksum from extension_installations where id=$1 and plugin_id is not null for no key update")
+                    .bind(expected.installation_id).fetch_one(&mut *tx).await?;
+            lock_node_artifact_slot(&mut tx, node_id, expected.installation_id).await?;
+            let existing = sqlx::query("select * from extension_artifact_instances where node_id=$1 and installation_id=$2 for update")
+                .bind(node_id).bind(expected.installation_id).fetch_optional(&mut *tx).await?
+                .map(map_artifact_instance).transpose()?;
+            existing
+                .filter(|existing| {
+                    matches!(
+                        existing.artifact_status,
+                        domain::PluginArtifactInstanceStatus::Ready
+                            | domain::PluginArtifactInstanceStatus::LoadFailed
+                    ) && !domain::has_local_artifact_warning(existing.last_error.as_deref())
+                        && existing.local_path.as_deref() == Some(verified.local_path.as_str())
+                        && existing.local_version.as_deref()
+                            == Some(verified.local_version.as_str())
+                        && existing.local_checksum == verified.local_checksum
+                        && existing
+                            .manifest_fingerprint
+                            .as_ref()
+                            .is_none_or(|fp| fp == &verified.manifest_fingerprint)
+                })
+                .ok_or(ControlPlaneContractError::Conflict(
+                    "native_plugin_artifact_changed",
+                ))?;
+            let marker_required = source_kind != "filesystem_dropin";
+            if !verify_locked_native_artifact_on_disk(
+                &plugin_id,
+                expected_checksum.as_deref(),
+                marker_required,
+                verified,
+            )
+            .await
+            {
+                return Err(
+                    ControlPlaneContractError::Conflict("native_plugin_artifact_changed").into(),
+                );
+            }
+            sqlx::query("update extension_installations set desired_state='active_requested',updated_at=now() where id=$1")
+                .bind(expected.installation_id).execute(&mut *tx).await?;
+            (
+                "active",
+                "ready",
+                "available",
+                Some(verified.manifest_fingerprint.as_str()),
+                None,
+            )
+        }
+        NativePluginStartupOutcome::LoadFailed(error) => {
+            lock_node_artifact_slot(&mut tx, node_id, expected.installation_id).await?;
+            (
+                "load_failed",
+                "load_failed",
+                "load_failed",
+                None,
+                Some(error),
+            )
+        }
+    };
+    let updated = sqlx::query("update extension_artifact_instances set runtime_status=$3,artifact_status=$4,availability_status=$5,manifest_fingerprint=coalesce($6,manifest_fingerprint),last_error=$7,checked_at=greatest(now(), checked_at + interval '1 microsecond') where node_id=$1 and installation_id=$2")
+        .bind(node_id).bind(expected.installation_id).bind(status).bind(artifact_status).bind(availability)
+        .bind(fingerprint).bind(last_error).execute(&mut *tx).await?;
     if updated.rows_affected() != 1 {
         bail!("native startup artifact is absent on this node");
     }
-    if active {
-        sqlx::query("update extension_installations set desired_state='active_requested',updated_at=now() where id=$1")
-            .bind(expected.installation_id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Revalidate the prepared package under the target, node slot and artifact row locks.
+async fn verify_locked_native_artifact_on_disk(
+    plugin_id: &str,
+    expected_checksum: Option<&str>,
+    marker_required: bool,
+    verified: &VerifiedNativePluginArtifact,
+) -> bool {
+    let root = Path::new(&verified.local_path);
+    let Ok(raw) = tokio::fs::read_to_string(root.join("manifest.yaml")).await else {
+        return false;
+    };
+    let Some(entry) = (verified.verify_manifest)(&raw, plugin_id, verified) else {
+        return false;
+    };
+    let Ok(contribution) = tokio::fs::read_to_string(root.join(entry)).await else {
+        return false;
+    };
+    if !(verified.contribution_is_valid)(&contribution) {
+        return false;
+    }
+    match tokio::fs::read(root.join(".1flowbase-artifact.json")).await {
+        Ok(bytes) => {
+            serde_json::from_slice::<RuntimeArtifactMarkerIdentity>(&bytes).is_ok_and(|marker| {
+                marker.plugin_id == plugin_id
+                    && marker.version == verified.local_version
+                    && marker.checksum.as_deref() == expected_checksum
+                    && marker.checksum == verified.local_checksum
+                    && marker
+                        .manifest_fingerprint
+                        .as_deref()
+                        .map_or(!marker_required, |fp| fp == verified.manifest_fingerprint)
+            })
+        }
+        Err(error) => error.kind() == ErrorKind::NotFound && !marker_required,
+    }
+}
+
+impl PgControlPlaneStore {
+    /// Startup only: retire this node's active observations with no admitted boot attempt.
+    pub async fn reset_unloaded_native_startup_artifacts(
+        &self,
+        node_id: &str,
+        boot_targets: &[&NativePluginTarget],
+    ) -> Result<()> {
+        reset_unloaded_startup_artifacts(self, node_id, boot_targets).await
+    }
+}
+
+async fn reset_unloaded_startup_artifacts(
+    store: &PgControlPlaneStore,
+    node_id: &str,
+    boot_targets: &[&NativePluginTarget],
+) -> Result<()> {
+    let mut tx = store.pool().begin().await?;
+    let active = sqlx::query(
+        "select i.*, i.artifact_id as provider_code, i.artifact_version as plugin_version, i.receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility
+         from extension_installations i join extension_artifact_instances a on a.installation_id=i.id
+         where a.node_id=$1 and i.category='host-extensions' and i.plugin_id is not null and a.runtime_status='active'
+         order by i.scope_id,i.organization,i.artifact_id,i.id",
+    ).bind(node_id).fetch_all(&mut *tx).await?;
+    for row in active {
+        let i = map_installation(row)?;
+        lock_family(&mut tx, &i).await?;
+        // A prepared candidate is exempt only if its enabled target is still current.
+        if selected(&mut tx, &i).await?.is_some_and(|live| {
+            live.enabled && live.installation_id == i.id && boot_targets.contains(&&live)
+        }) {
+            continue;
+        }
+        let Some(desired) = sqlx::query_scalar::<_, String>(
+            "select desired_state from extension_installations where id=$1 for share",
+        )
+        .bind(i.id)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            continue;
+        };
+        lock_node_artifact_slot(&mut tx, node_id, i.id).await?;
+        let Some(artifact) = sqlx::query_scalar::<_, String>(
+            "select artifact_status from extension_artifact_instances
+             where node_id=$1 and installation_id=$2 and runtime_status='active' for update",
+        )
+        .bind(node_id)
+        .bind(i.id)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            continue;
+        };
+        let availability = derive_contract_availability_status(
+            parse_desired_state(&desired)?,
+            plugin_artifact_status(parse_artifact_instance_status(&artifact)?),
+            PluginRuntimeStatus::Inactive,
+        );
+        sqlx::query(
+            "update extension_artifact_instances set runtime_status='inactive', availability_status=$3,
+             checked_at=greatest(now(), checked_at + interval '1 microsecond')
+             where node_id=$1 and installation_id=$2",
+        ).bind(node_id).bind(i.id).bind(availability.as_str()).execute(&mut *tx).await?;
     }
     tx.commit().await?;
     Ok(())

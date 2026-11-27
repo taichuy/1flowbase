@@ -35,6 +35,7 @@ pub struct DataSourceDefinition {
 pub struct DataSourcePackage {
     pub root: PathBuf,
     pub manifest: PluginManifestV1,
+    pub manifest_fingerprint: String,
     pub definition: DataSourceDefinition,
 }
 
@@ -88,6 +89,7 @@ impl DataSourcePackage {
         Ok(Self {
             root,
             manifest,
+            manifest_fingerprint: crate::canonical_manifest_fingerprint(manifest_raw.as_bytes()),
             definition: DataSourceDefinition {
                 source_code: raw_definition.source_code,
                 display_name: raw_definition

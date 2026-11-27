@@ -55,6 +55,8 @@ pub struct PluginInstallationAdmission {
 /// finish or restore filesystem staging before releasing it. Dropping closes any held lease.
 #[async_trait]
 pub trait PluginInstallationLease: Send {
+    /// Observe the existing version before its node artifact is replaced, using the lease.
+    async fn node_runtime_is_active(&mut self, node_id: &str) -> anyhow::Result<bool>;
     async fn commit(
         &mut self,
         input: &CommitPluginInstallationInput,
@@ -272,6 +274,22 @@ pub trait OfficialPluginSourcePort: Send + Sync {
     fn trusted_public_keys(&self) -> Vec<extension_contracts::TrustedPublicKey>;
 }
 
+#[derive(Debug)]
+pub struct VerifiedNativePluginArtifact {
+    pub local_path: String,
+    pub local_version: String,
+    pub local_checksum: Option<String>,
+    pub manifest_fingerprint: String,
+    /// Reparse raw manifest bytes and return the entry only if the prepared identity matches.
+    pub verify_manifest: fn(&str, &str, &VerifiedNativePluginArtifact) -> Option<String>,
+    pub contribution_is_valid: fn(&str) -> bool,
+}
+
+pub enum NativePluginStartupOutcome<'a> {
+    Active(&'a VerifiedNativePluginArtifact),
+    LoadFailed(&'a str),
+}
+
 #[async_trait]
 pub trait PluginRepository: Send + Sync {
     async fn apply_managed_plugin_settings_templates(
@@ -307,8 +325,7 @@ pub trait PluginRepository: Send + Sync {
         &self,
         _target: &domain::NativePluginTarget,
         _node_id: &str,
-        _status: domain::PluginRuntimeStatus,
-        _last_error: Option<&str>,
+        _outcome: NativePluginStartupOutcome<'_>,
     ) -> anyhow::Result<()> {
         anyhow::bail!("native startup completion is not supported")
     }
@@ -406,6 +423,251 @@ pub trait PluginRepository: Send + Sync {
         &self,
         input: &UpsertPluginArtifactInstanceInput,
     ) -> anyhow::Result<domain::PluginArtifactInstanceRecord>;
+    /// Reconcile scanned facts only if the node artifact still matches the pre-scan observation.
+    /// `None` means the caller must reread and rescan. Concurrent stores must implement the
+    /// comparison and write atomically; the default is for non-concurrent implementations.
+    async fn refresh_artifact_instance(
+        &self,
+        input: &RefreshPluginArtifactInstanceInput,
+    ) -> anyhow::Result<Option<domain::PluginArtifactInstanceRecord>> {
+        let installation = self.get_installation(input.installation_id).await?.ok_or(
+            crate::ControlPlaneContractError::NotFound("plugin_installation"),
+        )?;
+        let existing = self
+            .get_artifact_instance(&input.node_id, input.installation_id)
+            .await?;
+        if existing != input.observed_artifact {
+            return Ok(None);
+        }
+        let is_host = installation.category == domain::ExtensionCategory::HostExtensions;
+        let manifest_fingerprint = input.manifest_fingerprint.clone().or_else(|| {
+            existing
+                .as_ref()
+                .and_then(|r| r.manifest_fingerprint.clone())
+        });
+        let is_managed_bus = installation.contract_version == "1flowbase.extension-bus/v1";
+        let preserve_runtime = !input.reset_runtime_status
+            && (installation.desired_state != domain::PluginDesiredState::Disabled
+                || is_host
+                || is_managed_bus);
+        let runtime_status = existing
+            .as_ref()
+            .filter(|row| {
+                preserve_runtime
+                    && !domain::has_local_artifact_warning(row.last_error.as_deref())
+                    && row.artifact_status.is_ready()
+                    && input.artifact_status.is_ready()
+                    && row.local_version == input.local_version
+                    && row.local_checksum == input.local_checksum
+                    && row.local_path == input.local_path
+                    && row.manifest_fingerprint == manifest_fingerprint
+                    && input.last_error.is_none()
+            })
+            .map(|row| row.runtime_status)
+            .unwrap_or(domain::PluginRuntimeStatus::Inactive);
+        let availability_status = derive_contract_availability_status(
+            installation.desired_state,
+            plugin_artifact_status(input.artifact_status),
+            runtime_status,
+        );
+        let effective_last_error = if input.last_error.is_some() {
+            input.last_error.clone()
+        } else if runtime_status == domain::PluginRuntimeStatus::LoadFailed {
+            existing.as_ref().and_then(|r| r.last_error.clone())
+        } else {
+            None
+        };
+        if let Some(record) = existing.as_ref().filter(|record| {
+            !input.touch_checked_at
+                && record.artifact_status == input.artifact_status
+                && record.runtime_status == runtime_status
+                && record.availability_status == availability_status
+                && record.local_version == input.local_version
+                && record.local_checksum == input.local_checksum
+                && record.local_path == input.local_path
+                && record.manifest_fingerprint == manifest_fingerprint
+                && record.last_error == effective_last_error
+        }) {
+            return Ok(Some(record.clone()));
+        }
+        self.upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: input.node_id.clone(),
+            installation_id: input.installation_id,
+            local_version: input.local_version.clone(),
+            local_checksum: input.local_checksum.clone(),
+            local_path: input.local_path.clone(),
+            package_path: existing.as_ref().and_then(|r| r.package_path.clone()),
+            manifest_fingerprint,
+            artifact_status: input.artifact_status,
+            runtime_status,
+            availability_status,
+            checked_at: existing.as_ref().map_or(input.checked_at, |record| {
+                input
+                    .checked_at
+                    .max(record.checked_at + time::Duration::microseconds(1))
+            }),
+            last_error: effective_last_error,
+            is_current: existing.as_ref().is_none_or(|r| r.is_current),
+        })
+        .await
+        .map(Some)
+    }
+    /// Atomically record a runtime status transition against the live installation desired state
+    /// and live node artifact row.
+    async fn record_artifact_runtime_status(
+        &self,
+        input: &RecordPluginRuntimeStatusInput,
+    ) -> anyhow::Result<domain::PluginArtifactInstanceRecord> {
+        if input.runtime_status == domain::PluginRuntimeStatus::Active {
+            anyhow::bail!("use try_mark_active_artifact_instance to mark runtime active");
+        }
+        let installation = self.get_installation(input.installation_id).await?.ok_or(
+            crate::ControlPlaneContractError::NotFound("plugin_installation"),
+        )?;
+        let existing = self
+            .get_artifact_instance(&input.node_id, input.installation_id)
+            .await?;
+        let is_host = installation.category == domain::ExtensionCategory::HostExtensions;
+        let effective_runtime = if installation.desired_state
+            == domain::PluginDesiredState::Disabled
+            && !is_host
+            && input.runtime_status == domain::PluginRuntimeStatus::LoadFailed
+        {
+            domain::PluginRuntimeStatus::Inactive
+        } else {
+            input.runtime_status
+        };
+        let effective_error = if effective_runtime == domain::PluginRuntimeStatus::Inactive
+            && input.runtime_status == domain::PluginRuntimeStatus::LoadFailed
+        {
+            None
+        } else {
+            input.last_error.clone()
+        };
+        let (artifact_status, availability_status) = derive_runtime_write_artifact_status(
+            installation.desired_state,
+            &installation.contract_version,
+            effective_runtime,
+            existing.as_ref().map(|r| r.artifact_status),
+        );
+        let last_error = effective_error.or_else(|| {
+            existing
+                .as_ref()
+                .and_then(|row| row.last_error.as_deref())
+                .filter(|error| domain::has_local_artifact_warning(Some(error)))
+                .map(str::to_owned)
+        });
+        let (
+            local_version,
+            local_checksum,
+            local_path,
+            package_path,
+            manifest_fingerprint,
+            is_current,
+        ) = existing
+            .map(|r| {
+                (
+                    r.local_version,
+                    r.local_checksum,
+                    r.local_path,
+                    r.package_path,
+                    r.manifest_fingerprint,
+                    r.is_current,
+                )
+            })
+            .unwrap_or_else(|| {
+                (
+                    Some(installation.plugin_version.clone()),
+                    installation.expected_checksum.clone(),
+                    None,
+                    None,
+                    None,
+                    false,
+                )
+            });
+        self.upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: input.node_id.clone(),
+            installation_id: input.installation_id,
+            local_version,
+            local_checksum,
+            local_path,
+            package_path,
+            manifest_fingerprint,
+            artifact_status,
+            runtime_status: effective_runtime,
+            availability_status,
+            checked_at: input.checked_at,
+            last_error,
+            is_current,
+        })
+        .await
+    }
+    /// Commit activation only for the exact ready artifact that was loaded.
+    async fn try_mark_active_artifact_instance(
+        &self,
+        input: &ActivatePluginArtifactInstanceInput,
+    ) -> anyhow::Result<ActivatePluginArtifactOutcome> {
+        use domain::PluginRuntimeStatus::{Active, Inactive};
+        let installation = self.get_installation(input.installation_id).await?.ok_or(
+            crate::ControlPlaneContractError::NotFound("plugin_installation"),
+        )?;
+        let disabled = installation.desired_state == domain::PluginDesiredState::Disabled
+            && installation.category != domain::ExtensionCategory::HostExtensions;
+        let Some(existing) = self
+            .get_artifact_instance(&input.node_id, input.installation_id)
+            .await?
+        else {
+            return Ok(if disabled {
+                ActivatePluginArtifactOutcome::Disabled
+            } else {
+                ActivatePluginArtifactOutcome::ArtifactInvalidated
+            });
+        };
+        // Like the durable adapter, reject stale row identity and installation checksum drift.
+        // Final disk verification requires the durable adapter's node slot lock.
+        let matches = !disabled
+            && input.matches_ready_artifact(&existing)
+            && installation
+                .expected_checksum
+                .as_ref()
+                .is_none_or(|expected| existing.local_checksum.as_ref() == Some(expected));
+        let runtime_status = if matches { Active } else { Inactive };
+        let availability_status = derive_contract_availability_status(
+            installation.desired_state,
+            plugin_artifact_status(existing.artifact_status),
+            runtime_status,
+        );
+        if matches
+            || existing.runtime_status != Inactive
+            || (disabled && existing.availability_status != availability_status)
+        {
+            let artifact = self
+                .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+                    node_id: existing.node_id,
+                    installation_id: existing.installation_id,
+                    local_version: existing.local_version,
+                    local_checksum: existing.local_checksum,
+                    local_path: existing.local_path,
+                    package_path: existing.package_path,
+                    manifest_fingerprint: existing.manifest_fingerprint,
+                    artifact_status: existing.artifact_status,
+                    runtime_status,
+                    availability_status,
+                    checked_at: input.checked_at,
+                    last_error: if matches { None } else { existing.last_error },
+                    is_current: existing.is_current,
+                })
+                .await?;
+            if matches {
+                return Ok(ActivatePluginArtifactOutcome::Activated(artifact));
+            }
+        }
+        Ok(if disabled {
+            ActivatePluginArtifactOutcome::Disabled
+        } else {
+            ActivatePluginArtifactOutcome::ArtifactInvalidated
+        })
+    }
     async fn select_network_egress_current(
         &self,
         _node_id: &str,
@@ -459,6 +721,39 @@ pub trait PluginRepository: Send + Sync {
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::PluginAssignmentRecord>>;
     async fn list_assigned_installation_ids(&self) -> anyhow::Result<Vec<Uuid>>;
+    /// Installations with a live consumer in any workspace. Historical import provenance is
+    /// excluded, as are expired model-provider previews.
+    async fn list_referenced_installation_ids(&self) -> anyhow::Result<Vec<Uuid>>;
+    async fn installation_has_live_references(
+        &self,
+        installation_id: Uuid,
+    ) -> anyhow::Result<bool> {
+        Ok(self
+            .list_referenced_installation_ids()
+            .await?
+            .contains(&installation_id))
+    }
+    /// Disable an active installation only while it is still unreferenced under the write fence.
+    async fn retire_unreferenced_installation(
+        &self,
+        input: &UpdatePluginDesiredStateInput,
+    ) -> anyhow::Result<Option<domain::PluginInstallationRecord>>;
+    /// Undo a failed switch's temporary enable while the target is still unreferenced,
+    /// even if no sibling is currently serving.
+    async fn rollback_unreferenced_installation(
+        &self,
+        _input: &UpdatePluginDesiredStateInput,
+    ) -> anyhow::Result<Option<domain::PluginInstallationRecord>> {
+        anyhow::bail!("plugin activation rollback is not supported")
+    }
+    /// Atomically verify target readiness, migrate workspace provider instances + catalog caches,
+    /// update the workspace assignment, and retire the previous version when unreferenced.
+    async fn commit_provider_version_switch(
+        &self,
+        _input: &CommitProviderVersionSwitchInput,
+    ) -> anyhow::Result<ProviderVersionSwitchOutcome> {
+        anyhow::bail!("provider version switch is not supported")
+    }
     async fn create_task(
         &self,
         input: &CreatePluginTaskInput,
@@ -665,4 +960,219 @@ pub struct PluginSettingsTemplateInput {
     pub contribution_code: String,
     pub source: String,
     pub language: domain::UiCodeTemplateLanguage,
+}
+
+/// Read the workspace-UI declaration from the canonical, validated installed manifest metadata.
+/// Storage and the assignment policy share this projection without depending on package intake.
+pub fn has_managed_workspace_ui(installation: &domain::PluginInstallationRecord) -> bool {
+    installation.contract_version == "1flowbase.extension-bus/v1"
+        && installation.metadata_json["managed"]["execution_bindings"]
+            .as_array()
+            .is_some_and(|bindings| {
+                bindings.iter().any(|binding| {
+                    binding["execution_mode"] == "declarative_only"
+                        && binding["payload"]["kind"] == "frontend_block"
+                        && binding["payload"]["contribution_code"].is_string()
+                })
+            })
+}
+
+/// Required package-owner parser. Returns the fingerprint only for a valid installed manifest.
+/// The repository reads the raw bytes and invokes this parser inside the final node slot lock.
+pub type ValidateInstalledPluginManifest =
+    fn(&domain::PluginInstallationRecord, &str) -> Option<String>;
+
+#[derive(Debug, Clone)]
+pub struct CommitProviderVersionSwitchInput {
+    pub node_id: String,
+    pub workspace_id: Uuid,
+    pub provider_code: String,
+    pub current_installation_id: Uuid,
+    pub target_installation_id: Uuid,
+    pub target_local_version: Option<String>,
+    pub target_local_checksum: Option<String>,
+    pub target_local_path: String,
+    pub target_manifest_fingerprint: Option<String>,
+    pub validate_manifest: ValidateInstalledPluginManifest,
+    pub target_protocol: String,
+    pub model_discovery_mode: domain::ModelProviderDiscoveryMode,
+    pub catalog_source: domain::ModelProviderCatalogSource,
+    pub actor_user_id: Uuid,
+}
+
+impl CommitProviderVersionSwitchInput {
+    pub fn matches_active_artifact(&self, artifact: &domain::PluginArtifactInstanceRecord) -> bool {
+        artifact.runtime_status == domain::PluginRuntimeStatus::Active
+            && matches_ready_artifact(
+                artifact,
+                &self.target_local_version,
+                &self.target_local_checksum,
+                &self.target_local_path,
+                &self.target_manifest_fingerprint,
+            )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProviderVersionSwitchOutcome {
+    pub migrated_instance_count: usize,
+    pub retired_previous: Option<domain::PluginInstallationRecord>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RefreshPluginArtifactInstanceInput {
+    pub node_id: String,
+    pub installation_id: Uuid,
+    /// Stored row before scanning disk, or `None` when it did not yet exist.
+    pub observed_artifact: Option<domain::PluginArtifactInstanceRecord>,
+    /// Bump the row clock after an explicit refresh even if all derived fields match.
+    pub touch_checked_at: bool,
+    pub local_version: Option<String>,
+    pub local_checksum: Option<String>,
+    pub local_path: Option<String>,
+    pub manifest_fingerprint: Option<String>,
+    pub artifact_status: domain::PluginArtifactInstanceStatus,
+    pub last_error: Option<String>,
+    pub reset_runtime_status: bool,
+    pub checked_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordPluginRuntimeStatusInput {
+    pub node_id: String,
+    pub installation_id: Uuid,
+    pub runtime_status: domain::PluginRuntimeStatus,
+    pub last_error: Option<String>,
+    pub checked_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActivatePluginArtifactInstanceInput {
+    pub node_id: String,
+    pub installation_id: Uuid,
+    pub expected_local_version: Option<String>,
+    pub expected_local_checksum: Option<String>,
+    pub expected_local_path: String,
+    pub expected_manifest_fingerprint: Option<String>,
+    pub validate_manifest: ValidateInstalledPluginManifest,
+    pub checked_at: OffsetDateTime,
+}
+
+impl ActivatePluginArtifactInstanceInput {
+    pub fn matches_ready_artifact(&self, artifact: &domain::PluginArtifactInstanceRecord) -> bool {
+        matches_ready_artifact(
+            artifact,
+            &self.expected_local_version,
+            &self.expected_local_checksum,
+            &self.expected_local_path,
+            &self.expected_manifest_fingerprint,
+        )
+    }
+}
+
+fn matches_ready_artifact(
+    artifact: &domain::PluginArtifactInstanceRecord,
+    local_version: &Option<String>,
+    local_checksum: &Option<String>,
+    local_path: &str,
+    manifest_fingerprint: &Option<String>,
+) -> bool {
+    artifact.artifact_status.is_ready()
+        && !domain::has_local_artifact_warning(artifact.last_error.as_deref())
+        && artifact.local_version == *local_version
+        && artifact.local_checksum == *local_checksum
+        && artifact.local_path.as_deref() == Some(local_path)
+        && artifact.manifest_fingerprint == *manifest_fingerprint
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Return the committed artifact by value without a heap allocation"
+)]
+pub enum ActivatePluginArtifactOutcome {
+    Activated(domain::PluginArtifactInstanceRecord),
+    Disabled,
+    ArtifactInvalidated,
+}
+
+/// Record runtime facts without promoting or replacing unverified disk facts.
+pub fn derive_runtime_write_artifact_status(
+    desired_state: domain::PluginDesiredState,
+    contract_version: &str,
+    effective_runtime: domain::PluginRuntimeStatus,
+    existing_status: Option<domain::PluginArtifactInstanceStatus>,
+) -> (
+    domain::PluginArtifactInstanceStatus,
+    domain::PluginAvailabilityStatus,
+) {
+    use domain::{PluginArtifactInstanceStatus as Instance, PluginRuntimeStatus as Runtime};
+    let non_managed_load_failed = effective_runtime == Runtime::LoadFailed
+        && contract_version != "1flowbase.extension-bus/v1";
+    let artifact_status = match existing_status {
+        Some(Instance::Ready) | None if non_managed_load_failed => Instance::LoadFailed,
+        Some(status) => status,
+        None => Instance::Missing,
+    };
+    let contract_artifact_status = match (effective_runtime, artifact_status) {
+        (Runtime::LoadFailed, Instance::Ready | Instance::LoadFailed) => {
+            domain::PluginArtifactStatus::Ready
+        }
+        _ => plugin_artifact_status(artifact_status),
+    };
+    let availability_status = derive_contract_availability_status(
+        desired_state,
+        contract_artifact_status,
+        effective_runtime,
+    );
+    (artifact_status, availability_status)
+}
+
+pub fn plugin_artifact_status(
+    status: domain::PluginArtifactInstanceStatus,
+) -> domain::PluginArtifactStatus {
+    use domain::PluginArtifactInstanceStatus as Instance;
+    use domain::PluginArtifactStatus as Artifact;
+    match status {
+        Instance::Ready => Artifact::Ready,
+        Instance::Missing | Instance::Outdated => Artifact::Missing,
+        Instance::Mismatched | Instance::LoadFailed => Artifact::InstallIncomplete,
+        Instance::Corrupted => Artifact::Corrupted,
+    }
+}
+
+pub fn derive_contract_availability_status(
+    desired_state: domain::PluginDesiredState,
+    artifact_status: domain::PluginArtifactStatus,
+    runtime_status: domain::PluginRuntimeStatus,
+) -> domain::PluginAvailabilityStatus {
+    match desired_state {
+        domain::PluginDesiredState::Disabled => domain::PluginAvailabilityStatus::Disabled,
+        domain::PluginDesiredState::PendingRestart => {
+            if artifact_status == domain::PluginArtifactStatus::Ready {
+                domain::PluginAvailabilityStatus::PendingRestart
+            } else {
+                domain::PluginAvailabilityStatus::ArtifactMissing
+            }
+        }
+        domain::PluginDesiredState::ActiveRequested => match artifact_status {
+            domain::PluginArtifactStatus::Missing => {
+                domain::PluginAvailabilityStatus::ArtifactMissing
+            }
+            domain::PluginArtifactStatus::Staged
+            | domain::PluginArtifactStatus::InstallIncomplete
+            | domain::PluginArtifactStatus::Corrupted => {
+                domain::PluginAvailabilityStatus::InstallIncomplete
+            }
+            domain::PluginArtifactStatus::Ready => match runtime_status {
+                domain::PluginRuntimeStatus::Active => domain::PluginAvailabilityStatus::Available,
+                domain::PluginRuntimeStatus::LoadFailed => {
+                    domain::PluginAvailabilityStatus::LoadFailed
+                }
+                domain::PluginRuntimeStatus::Inactive => {
+                    domain::PluginAvailabilityStatus::InstallIncomplete
+                }
+            },
+        },
+    }
 }

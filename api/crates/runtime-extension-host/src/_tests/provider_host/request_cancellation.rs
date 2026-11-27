@@ -92,6 +92,7 @@ impl Fixture {
             .unwrap(),
         );
         host.activate_provider(RuntimePackageActivation {
+            expected_manifest_fingerprint: None,
             plugin_id: "fixture_provider@0.1.0".into(),
             artifact: RuntimeArtifactReference::new("fixture").unwrap(),
             source_identity: None,

@@ -431,7 +431,11 @@ async fn ac_001_ac_002_upgrade_latest_installs_and_loads_existing_global_target_
             .await,
         target.id
     );
-    assert_eq!(runtime.loaded_installations().await, vec![target.id]);
+    // The initial enable loads the new target; cutover then revalidates its host identity.
+    assert_eq!(
+        runtime.loaded_installations().await,
+        vec![target.id, target.id]
+    );
     let artifact = repository
         .get_artifact_instance("current-node", target.id)
         .await
@@ -997,7 +1001,14 @@ async fn ac_2153_version_switch_publishes_all_workspace_demand_and_retains_artif
         assert_eq!(new.2, if query_fails { None } else { Some(true) });
         assert_eq!(old.1, new.1);
         assert!(old.1 > 0);
-        assert!(runtime.unloaded_installations().await.is_empty());
+        assert_eq!(
+            runtime.unloaded_installations().await,
+            if other_workspace_selects_old {
+                vec![]
+            } else {
+                vec![previous]
+            }
+        );
         assert!(repository
             .get_installation(previous)
             .await
@@ -1011,3 +1022,127 @@ mod family_uninstall;
 
 #[path = "family/current_selection.rs"]
 mod current_selection;
+
+#[tokio::test]
+async fn version_switch_retires_only_after_last_workspace_and_can_roll_back() {
+    let repo_a = MemoryPluginManagementRepository::new(actor_with_permissions(
+        Uuid::now_v7(),
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let mut repo_b = repo_a.clone();
+    repo_b.actor = actor_with_permissions(
+        Uuid::now_v7(),
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    );
+    let root = std::env::temp_dir().join(format!("plugin-retirement-{}", Uuid::now_v7()));
+    let runtime = MemoryProviderRuntime::default();
+    let service = |repo: &MemoryPluginManagementRepository| {
+        PluginManagementService::new(
+            repo.clone(),
+            runtime.clone(),
+            Arc::new(MemoryOfficialPluginSource::default()),
+            &root,
+        )
+    };
+    let code = "fixture_provider";
+    let old =
+        seed_test_installation(&repo_a, &root, code, "1.0.0", PluginDesiredState::Disabled).await;
+    let new =
+        seed_test_installation(&repo_a, &root, code, "2.0.0", PluginDesiredState::Disabled).await;
+    service(&repo_a)
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: repo_a.actor.user_id,
+            installation_id: old,
+        })
+        .await
+        .unwrap();
+    for repo in [&repo_a, &repo_b] {
+        service(repo)
+            .assign_plugin(AssignPluginCommand {
+                actor_user_id: repo.actor.user_id,
+                installation_id: old,
+            })
+            .await
+            .unwrap();
+    }
+    let switch = |repo: &MemoryPluginManagementRepository, installation_id| {
+        (
+            service(repo),
+            SwitchPluginVersionCommand {
+                actor_user_id: repo.actor.user_id,
+                provider_code: code.into(),
+                target_installation_id: installation_id,
+            },
+        )
+    };
+    let state = |id| {
+        let (repo_a, root) = (&repo_a, &root);
+        async move {
+            let desired = repo_a
+                .get_installation(id)
+                .await
+                .unwrap()
+                .unwrap()
+                .desired_state;
+            let artifact = repo_a
+                .get_artifact_instance(&format!("local:{}", root.display()), id)
+                .await
+                .unwrap()
+                .unwrap();
+            (
+                desired,
+                artifact.runtime_status,
+                artifact.availability_status,
+            )
+        }
+    };
+    let active = (
+        PluginDesiredState::ActiveRequested,
+        PluginRuntimeStatus::Active,
+        PluginAvailabilityStatus::Available,
+    );
+    let disabled = (
+        PluginDesiredState::Disabled,
+        PluginRuntimeStatus::Inactive,
+        PluginAvailabilityStatus::Disabled,
+    );
+    let (svc, input) = switch(&repo_a, new);
+    svc.switch_version(input).await.unwrap();
+    assert_eq!(state(old).await, active);
+    assert!(runtime.unloaded_installations().await.is_empty());
+    let (svc, input) = switch(&repo_b, new);
+    svc.switch_version(input).await.unwrap();
+    assert_eq!(state(old).await, disabled);
+    assert_eq!(runtime.unloaded_installations().await, vec![old]);
+    let families = service(&repo_b)
+        .list_families(
+            repo_b.actor.user_id,
+            PluginCatalogFilter::default(),
+            requested_locales(),
+        )
+        .await
+        .unwrap();
+    let family = families
+        .entries
+        .iter()
+        .find(|entry| entry.provider_code == code)
+        .unwrap();
+    assert_eq!(
+        family
+            .installed_versions
+            .iter()
+            .map(|v| v.installation_id)
+            .collect::<std::collections::HashSet<_>>(),
+        [old, new].into()
+    );
+    let (svc, input) = switch(&repo_a, old);
+    svc.switch_version(input).await.unwrap();
+    assert_eq!(state(old).await, active);
+    assert_eq!(state(new).await, active);
+    let (svc, input) = switch(&repo_b, old);
+    svc.switch_version(input).await.unwrap();
+    assert_eq!(state(old).await, active);
+    assert_eq!(state(new).await, disabled);
+    assert_eq!(runtime.unloaded_installations().await, vec![old, new]);
+    fs::remove_dir_all(root).unwrap();
+}

@@ -43,3 +43,21 @@ mod plugin_ephemeral_contract_tests;
 
 #[path = "managed_contributions/execution_gate_contract_tests.rs"]
 mod execution_gate_contract_tests;
+
+#[test]
+fn managed_fingerprint_reader_matches_bytes() {
+    use crate::ManagedArtifactFingerprint;
+    for bytes in [
+        vec![],
+        vec![1, 0, 2],
+        (0..200 * 1024).map(|i| (i % 251) as u8).collect(),
+    ] {
+        assert_eq!(
+            ManagedArtifactFingerprint::from_reader(&bytes[..]).unwrap(),
+            (
+                ManagedArtifactFingerprint::from_bytes(&bytes),
+                bytes.len() as u64
+            )
+        );
+    }
+}

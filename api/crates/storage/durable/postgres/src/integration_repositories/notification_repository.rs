@@ -426,9 +426,14 @@ impl NotificationRepository for PgControlPlaneStore {
                     r.workspace_id,
                 )
                 .await?;
-                let assigned: bool = sqlx::query_scalar("select exists(select 1 from plugin_assignments where workspace_id=$1 and installation_id=$2)")
+                let (desired_state, _) = crate::plugin_repository::lock_plugin_reference_target(
+                    &mut transaction,
+                    installation_id,
+                )
+                .await?;
+                let assigned: bool = sqlx::query_scalar("select exists(select 1 from plugin_assignments where workspace_id=$1 and installation_id=$2 for share)")
                     .bind(r.workspace_id).bind(installation_id).fetch_one(&mut *transaction).await?;
-                if !assigned {
+                if !assigned || desired_state == "disabled" {
                     return Err(Error::Conflict("type_unavailable").into());
                 }
             }

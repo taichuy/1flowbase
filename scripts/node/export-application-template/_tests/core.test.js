@@ -102,3 +102,68 @@ test('v2 translation export is retained in the package and increments the immuta
   assert.deepEqual(pkg.i18n_entries, [{ key: 'Reports', locale: 'zh_Hans', translation: '报表' }]);
   assert.equal((await exportApplicationTemplate({ target: f.target }, f.dependencies)).changed, false);
 });
+
+test('localized page template export rejects missing bilingual translations for sidebar pages, tooltips, tabs, blocks, and block t() literals while exempting slug topbar groups', async (t) => {
+  const f = fixture(t);
+  let exportedPkg = {
+    schema_version: '1flowbase.portable-template/v2',
+    pages: [
+      { id: 'group-1', kind: 'group', placement: 'topbar', slug: 'route', title: 'route', tooltip: '', tabs: [] },
+      {
+        id: 'page-1',
+        parent_id: 'group-1',
+        kind: 'page',
+        placement: 'sidebar',
+        slug: null,
+        title: 'AI chat history',
+        tooltip: 'View Agent Flow run logs',
+        tabs: [{
+          id: 'tab-1',
+          title: 'Default',
+          is_default: true,
+          blocks: [{
+            block_id: 'block-1',
+            title: 'Agent Flow logs',
+            runtime_descriptor: {
+              source_code: "export default function B({ ctx }) { return ctx.i18n.t('Select file table'); }\n// ctx.i18n.t('Ignored comment key')"
+            }
+          }]
+        }]
+      }
+    ],
+    applications: [],
+    data_models: [],
+    plugins: [],
+    mcp_bundle: { manifest: { exported_at: 'first' } },
+    i18n_entries: [
+      { key: 'AI chat history', locale: 'zh_Hans', translation: 'AI 聊天记录' },
+      { key: 'AI chat history', locale: 'en_US', translation: 'AI chat history' }
+    ]
+  };
+  const deps = {
+    ...f.dependencies,
+    fetchImpl: async (url) => {
+      if (url.endsWith('/health')) return { ok: true, json: async () => ({ version: '0.6.3' }) };
+      return { ok: true, json: async () => ({ data: structuredClone(exportedPkg) }) };
+    }
+  };
+  const selection = { page_ids: ['group-1'], i18n_keys: ['AI chat history'] };
+  await assert.rejects(
+    exportApplicationTemplate({ ...f.initial, selection }, deps),
+    /missing template i18n translations.*View Agent Flow run logs.*Default.*Agent Flow logs.*Select file table/s
+  );
+
+  for (const [key, zh] of [
+    ['View Agent Flow run logs', '查看 Agent Flow 运行日志'],
+    ['Default', '默认'],
+    ['Agent Flow logs', 'Agent Flow 日志'],
+    ['Select file table', '选择文件表']
+  ]) {
+    exportedPkg.i18n_entries.push(
+      { key, locale: 'zh_Hans', translation: zh },
+      { key, locale: 'en_US', translation: key }
+    );
+  }
+  const ok = await exportApplicationTemplate({ ...f.initial, selection }, deps);
+  assert.equal(ok.release_version, 1);
+});

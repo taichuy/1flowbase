@@ -1,6 +1,7 @@
 use control_plane_contracts::ports::{
     CreatePluginAssignmentInput, NodeContributionRegistryInput, NodeContributionRepository,
-    PluginRepository, ReplaceInstallationNodeContributionsInput, UpsertPluginInstallationInput,
+    PluginRepository, ReplaceInstallationNodeContributionsInput, UpdatePluginDesiredStateInput,
+    UpsertPluginInstallationInput,
 };
 use domain::{NodeContributionDependencyStatus, PluginDesiredState, PluginVerificationStatus};
 use serde_json::json;
@@ -208,7 +209,7 @@ fn bind_contribution_input_to_installation(
 async fn node_contribution_repository_resolves_workspace_dependency_statuses() {
     let (store, workspace, actor) = seed_store().await;
     let ready = insert_installation(&store, actor.id, "ready_plugin", "0.2.0", true).await;
-    let disabled = insert_installation(&store, actor.id, "disabled_plugin", "0.1.0", false).await;
+    let disabled = insert_installation(&store, actor.id, "disabled_plugin", "0.1.0", true).await;
     let missing = insert_installation(&store, actor.id, "missing_plugin", "0.3.0", true).await;
     let replaced_v1 = insert_installation_with_plugin_id(
         &store,
@@ -270,6 +271,17 @@ async fn node_contribution_repository_resolves_workspace_dependency_statuses() {
             installation_id: disabled.id,
             workspace_id: workspace.id,
             provider_code: disabled.provider_code.clone(),
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    // The disabled state retains a selection made while this version was active.
+    PluginRepository::update_desired_state(
+        &store,
+        &UpdatePluginDesiredStateInput {
+            installation_id: disabled.id,
+            desired_state: PluginDesiredState::Disabled,
             actor_user_id: actor.id,
         },
     )

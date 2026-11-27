@@ -1,4 +1,5 @@
 use super::*;
+use control_plane_contracts::ports::ActivatePluginArtifactOutcome;
 
 impl<R, H> PluginManagementService<R, H>
 where
@@ -72,7 +73,8 @@ where
                 },
             };
             // Declare the lease first: staging guards restore synchronously before it drops.
-            let lease = self.repository.begin_plugin_installation(&admission).await?;
+            let mut lease = self.repository.begin_plugin_installation(&admission).await?;
+            let was_active_on_node = lease.node_runtime_is_active(&self.node_id).await?;
             let staged_package = source_metadata
                 .package_bytes
                 .as_deref()
@@ -454,29 +456,12 @@ where
                 | RoutedPluginPackageKind::ManagedContributions) {
                 audit?;
             }
-            Ok((installation, true))
+            Ok((installation, was_active_on_node))
         }
         .await;
 
         match installation_result {
-            Ok((installation, artifact_committed)) => {
-                if !artifact_committed {
-                    if let Err(error) = self.record_ready_current_node_artifact(&installation).await
-                    {
-                        let _ = self
-                            .transition_task(
-                                &running_task,
-                                domain::PluginTaskStatus::Failed,
-                                Some(error.to_string()),
-                                json!({
-                                    "installation_id": installation.id,
-                                    "provider_code": installation.provider_code,
-                                }),
-                            )
-                            .await;
-                        return Err(error);
-                    }
-                }
+            Ok((installation, was_active_on_node)) => {
                 if matches!(
                     installation.desired_state,
                     domain::PluginDesiredState::ActiveRequested
@@ -484,18 +469,37 @@ where
                     && !is_system_managed_service(&installation)
                 {
                     let reactivation = async {
+                        let runtime_lock = crate::plugin_management::node_installation_runtime_lock(
+                            &self.node_id,
+                            installation.id,
+                        );
+                        let _lifecycle_guard = runtime_lock.lock().await;
                         let local_installation = self
                             .ready_current_node_installation(installation.id)
                             .await?;
                         match self.runtime.activate_plugin(&local_installation).await {
-                            Ok(()) => {
-                                self.mark_current_node_runtime_status(
+                            Ok(loaded) => {
+                                let error = match self
+                                    .try_mark_current_node_runtime_active(
+                                        &local_installation,
+                                        loaded.as_ref(),
+                                    )
+                                    .await?
+                                {
+                                    ActivatePluginArtifactOutcome::Activated(_) => return Ok(()),
+                                    ActivatePluginArtifactOutcome::Disabled => {
+                                        ControlPlaneError::Conflict("plugin_installation_disabled")
+                                    }
+                                    ActivatePluginArtifactOutcome::ArtifactInvalidated => {
+                                        ControlPlaneError::PluginUnavailable
+                                    }
+                                };
+                                self.deactivate_rejected_activation(
                                     &installation,
-                                    domain::PluginRuntimeStatus::Active,
-                                    None,
+                                    was_active_on_node,
                                 )
                                 .await?;
-                                Ok(())
+                                Err(error.into())
                             }
                             Err(error) => {
                                 self.mark_current_node_runtime_status(

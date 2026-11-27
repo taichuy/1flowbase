@@ -2,7 +2,7 @@ use control_plane_contracts::ports::{
     CreateModelCatalogSyncRunInput, CreateModelFailoverQueueItemInput,
     CreateModelFailoverQueueSnapshotInput, CreateModelFailoverQueueTemplateInput,
     CreateModelProviderCatalogSourceInput, CreateModelProviderInstanceInput,
-    ModelProviderRepository, PatchModelProviderSecretInput, ReassignModelProviderInstancesInput,
+    CreatePluginAssignmentInput, ModelProviderRepository, PatchModelProviderSecretInput,
     UpdateModelProviderInstanceInput, UpsertModelProviderCatalogCacheInput,
     UpsertModelProviderCatalogEntryInput, UpsertModelProviderMainInstanceInput,
     UpsertModelProviderSecretInput, UpsertPluginInstallationInput,
@@ -113,6 +113,18 @@ async fn seed_store() -> (
             signing_key_id: None,
             metadata_json: json!({}),
             is_system_reserved: false,
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+
+    control_plane_contracts::ports::PluginRepository::create_assignment(
+        &store,
+        &CreatePluginAssignmentInput {
+            installation_id,
+            workspace_id: workspace.id,
+            provider_code: "fixture_provider".into(),
             actor_user_id: actor.id,
         },
     )

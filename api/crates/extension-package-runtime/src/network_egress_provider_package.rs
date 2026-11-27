@@ -19,6 +19,7 @@ use crate::{
 pub struct NetworkEgressProviderPackage {
     pub root: PathBuf,
     pub manifest: PluginManifestV1,
+    pub manifest_fingerprint: String,
     pub provider: NetworkEgressProviderDefinition,
 }
 
@@ -65,6 +66,7 @@ impl NetworkEgressProviderPackage {
         Ok(Self {
             root,
             manifest,
+            manifest_fingerprint: crate::canonical_manifest_fingerprint(manifest_raw.as_bytes()),
             provider,
         })
     }

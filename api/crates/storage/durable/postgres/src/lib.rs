@@ -102,6 +102,9 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 #[cfg(test)]
 mod _tests;
 
+#[path = "extension_repositories/managed_authority_artifacts.rs"]
+mod managed_authority_artifacts;
+
 #[path = "extension_repositories/plugin_contribution_authority_repository.rs"]
 mod plugin_contribution_authority_repository;
 

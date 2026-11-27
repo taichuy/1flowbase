@@ -843,3 +843,24 @@ async fn root_2014_r3_probe_reference_worker_roundtrip() {
         workers.unmount(&handle).unwrap().dispose().await.unwrap();
     }
 }
+
+#[test]
+fn frozen_executable_rejects_one_changed_byte_and_missing_file() {
+    let fixture = WorkerFixture::new();
+    let binding = fixture.binding(&before("identify"), "identify");
+    binding.verify_executable().unwrap();
+    let mut bytes = std::fs::read(&fixture.executable).unwrap();
+    bytes[64 * 1024] ^= 1;
+    std::fs::write(&fixture.executable, bytes).unwrap();
+    assert!(binding
+        .verify_executable()
+        .unwrap_err()
+        .to_string()
+        .contains("frozen managed executable bytes changed"));
+    std::fs::remove_file(&fixture.executable).unwrap();
+    assert!(binding
+        .verify_executable()
+        .unwrap_err()
+        .to_string()
+        .contains("frozen managed executable is unavailable"));
+}

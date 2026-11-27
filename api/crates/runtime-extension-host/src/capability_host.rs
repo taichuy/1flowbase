@@ -1,33 +1,17 @@
 use std::{collections::HashMap, sync::Arc};
 
 use extension_package_runtime::error::{FrameworkResult, PluginFrameworkError};
+use runtime_core::runtime_backend::LoadedRuntimeArtifactIdentity;
 use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::{
     capability_stdio::{call_executable, CapabilityStdioMethod, CapabilityStdioRequest},
-    package_loader::{LoadedCapabilityPackage, PackageLoader},
+    package_loader::{
+        cached_identity_matches, verify_package_activation, LoadedCapabilityPackage, PackageLoader,
+    },
     plugin_scope::PluginScope,
 };
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LoadedCapabilitySummary {
-    pub plugin_id: String,
-    pub plugin_version: String,
-    pub execution_mode: String,
-    pub node_contribution_count: usize,
-}
-
-impl LoadedCapabilitySummary {
-    fn from_loaded(loaded: &LoadedCapabilityPackage) -> Self {
-        Self {
-            plugin_id: loaded.identifier(),
-            plugin_version: loaded.manifest.version.clone(),
-            execution_mode: loaded.manifest.execution_mode.as_str().to_string(),
-            node_contribution_count: loaded.manifest.node_contributions.len(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CapabilityValueOutput {
@@ -60,10 +44,6 @@ impl CapabilityHost {
         Ok(())
     }
 
-    pub fn is_loaded(&self, plugin_id: &str) -> bool {
-        self.loaded_packages.contains_key(plugin_id) && self.scopes.contains_key(plugin_id)
-    }
-
     pub async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {
         let scope = self.scopes.remove(plugin_id);
         if let Some(scope) = scope {
@@ -73,27 +53,37 @@ impl CapabilityHost {
         Ok(())
     }
 
-    pub async fn load(
+    pub(crate) async fn load_if_needed(
         &mut self,
-        package_root: impl AsRef<std::path::Path>,
-    ) -> FrameworkResult<LoadedCapabilitySummary> {
-        let loaded = PackageLoader::load_capability(package_root)?;
-        let summary = LoadedCapabilitySummary::from_loaded(&loaded);
-        self.replace_loaded(summary.plugin_id.clone(), loaded)
-            .await?;
-        Ok(summary)
-    }
-
-    pub async fn load_legacy_installed(
-        &mut self,
-        package_root: impl AsRef<std::path::Path>,
-        eligibility: &extension_package_runtime::LegacyInstalledManifestEligibility,
-    ) -> FrameworkResult<LoadedCapabilitySummary> {
-        let loaded = PackageLoader::load_legacy_installed_capability(package_root, eligibility)?;
-        let summary = LoadedCapabilitySummary::from_loaded(&loaded);
-        self.replace_loaded(summary.plugin_id.clone(), loaded)
-            .await?;
-        Ok(summary)
+        package_root: &std::path::Path,
+        plugin_id: &str,
+        expected_fingerprint: Option<&str>,
+        legacy_eligibility: Option<&extension_package_runtime::LegacyInstalledManifestEligibility>,
+    ) -> FrameworkResult<LoadedRuntimeArtifactIdentity> {
+        let package_root = std::fs::canonicalize(package_root)
+            .map_err(|error| PluginFrameworkError::io(Some(package_root), error.to_string()))?;
+        if let Some(loaded) = self.loaded_packages.get(plugin_id) {
+            if loaded.package_root == package_root
+                && cached_identity_matches(&package_root, &loaded.identity, expected_fingerprint)?
+            {
+                return Ok(loaded.identity.clone());
+            }
+        }
+        let loaded = match legacy_eligibility {
+            Some(eligibility) => {
+                PackageLoader::load_legacy_installed_capability(&package_root, eligibility)?
+            }
+            None => PackageLoader::load_capability(&package_root)?,
+        };
+        verify_package_activation(
+            &loaded.identifier(),
+            plugin_id,
+            &loaded.identity,
+            expected_fingerprint,
+        )?;
+        let identity = loaded.identity.clone();
+        self.replace_loaded(plugin_id.to_owned(), loaded).await?;
+        Ok(identity)
     }
 
     #[cfg(test)]

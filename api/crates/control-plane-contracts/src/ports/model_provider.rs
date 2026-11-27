@@ -125,15 +125,6 @@ pub struct CreateModelFailoverQueueSnapshotInput {
 }
 
 #[derive(Debug, Clone)]
-pub struct ReassignModelProviderInstancesInput {
-    pub workspace_id: Uuid,
-    pub provider_code: String,
-    pub target_installation_id: Uuid,
-    pub target_protocol: String,
-    pub updated_by: Uuid,
-}
-
-#[derive(Debug, Clone)]
 pub struct UpsertModelProviderSecretInput {
     pub provider_instance_id: Uuid,
     pub plaintext_secret_json: serde_json::Value,
@@ -200,10 +191,6 @@ pub trait ModelProviderRepository: Send + Sync {
     async fn list_instances_by_provider_code(
         &self,
         provider_code: &str,
-    ) -> anyhow::Result<Vec<domain::ModelProviderInstanceRecord>>;
-    async fn reassign_instances_to_installation(
-        &self,
-        input: &ReassignModelProviderInstancesInput,
     ) -> anyhow::Result<Vec<domain::ModelProviderInstanceRecord>>;
     async fn upsert_catalog_cache(
         &self,

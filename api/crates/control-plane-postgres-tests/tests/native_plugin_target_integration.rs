@@ -28,7 +28,10 @@ impl ProviderRuntimePort for RestartOnlyRuntime {
         Ok(())
     }
 
-    async fn ensure_loaded(&self, _: &LocalPluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(
+        &self,
+        _: &LocalPluginInstallationRecord,
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         anyhow::bail!("native selection must not load code")
     }
     async fn deactivate_plugin(&self, _: &domain::PluginInstallationRecord) -> Result<()> {
@@ -174,6 +177,29 @@ impl Fixture {
             .await
             .unwrap();
     }
+    async fn complete_startup(&self, target: &domain::NativePluginTarget) -> Result<()> {
+        let artifact = self
+            .store
+            .get_artifact_instance("native-node", target.installation_id)
+            .await?
+            .unwrap();
+        let verified = VerifiedNativePluginArtifact {
+            verify_manifest: control_plane::host_extension::verify_native_startup_manifest,
+            contribution_is_valid:
+                control_plane::host_extension::native_startup_contribution_is_valid,
+            local_path: artifact.local_path.unwrap(),
+            local_version: artifact.local_version.unwrap(),
+            local_checksum: artifact.local_checksum,
+            manifest_fingerprint: artifact.manifest_fingerprint.unwrap(),
+        };
+        self.store
+            .complete_native_plugin_startup(
+                target,
+                "native-node",
+                NativePluginStartupOutcome::Active(&verified),
+            )
+            .await
+    }
     async fn target(&self) -> domain::NativePluginTarget {
         self.store
             .list_native_plugin_targets()
@@ -198,10 +224,7 @@ async fn root_2014_ac_013_native_selection_unique_exact_target() {
         .is_empty());
     f.enable(v1.id).await;
     let first = f.target().await;
-    f.store
-        .complete_native_plugin_startup(&first, "native-node", PluginRuntimeStatus::Active, None)
-        .await
-        .unwrap();
+    f.complete_startup(&first).await.unwrap();
     f.service
         .disable_plugin(DisablePluginCommand {
             actor_user_id: f.actor,
@@ -296,11 +319,7 @@ async fn root_2014_ac_013_concurrent_native_selection_rejects_stale_revision() {
     let rows = f.store.list_native_plugin_targets().await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].selection_revision, stale.selection_revision + 2);
-    let error = f
-        .store
-        .complete_native_plugin_startup(&stale, "native-node", PluginRuntimeStatus::Active, None)
-        .await
-        .unwrap_err();
+    let error = f.complete_startup(&stale).await.unwrap_err();
     assert!(error.to_string().contains("native_plugin_target_changed"));
     assert_eq!(f.target().await, rows[0]);
     assert_eq!(
@@ -313,11 +332,63 @@ async fn root_2014_ac_013_concurrent_native_selection_rejects_stale_revision() {
         PluginRuntimeStatus::Inactive
     );
     assert_eq!(f.store.list_installations().await.unwrap().len(), 2);
-    f.store
-        .complete_native_plugin_startup(&rows[0], "native-node", PluginRuntimeStatus::Active, None)
-        .await
-        .unwrap();
+    f.complete_startup(&rows[0]).await.unwrap();
 }
 
 #[path = "native_plugin_target_integration/_tests/plugin_component_install.rs"]
 mod plugin_component_install;
+
+#[tokio::test]
+async fn native_repository_startup_rejects_missing_marker_without_expected_identity() {
+    let f = Fixture::new().await;
+    let installed = f.install("1.0.0").await;
+    f.enable(installed.id).await;
+    let target = f.target().await;
+    let artifact = f
+        .store
+        .get_artifact_instance("native-node", installed.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let path = PathBuf::from(artifact.local_path.as_deref().unwrap());
+    let verified = VerifiedNativePluginArtifact {
+        verify_manifest: control_plane::host_extension::verify_native_startup_manifest,
+        contribution_is_valid: control_plane::host_extension::native_startup_contribution_is_valid,
+        local_path: artifact.local_path.unwrap(),
+        local_version: artifact.local_version.unwrap(),
+        local_checksum: None,
+        manifest_fingerprint: artifact.manifest_fingerprint.unwrap(),
+    };
+    sqlx::query("update extension_installations set expected_checksum=null where id=$1")
+        .bind(installed.id)
+        .execute(f.store.pool())
+        .await
+        .unwrap();
+    sqlx::query("update extension_artifact_instances set local_checksum=null, manifest_fingerprint=null where installation_id=$1")
+        .bind(installed.id).execute(f.store.pool()).await.unwrap();
+    tokio::fs::remove_file(path.join(".1flowbase-artifact.json"))
+        .await
+        .unwrap();
+    let error = f
+        .store
+        .complete_native_plugin_startup(
+            &target,
+            "native-node",
+            NativePluginStartupOutcome::Active(&verified),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("native_plugin_artifact_changed"),
+        "{error:#}"
+    );
+    assert_ne!(
+        f.store
+            .get_artifact_instance("native-node", installed.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .runtime_status,
+        domain::PluginRuntimeStatus::Active
+    );
+}

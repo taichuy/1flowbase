@@ -36,7 +36,10 @@ impl runtime_core::runtime_backend::RuntimeExecutionPort for OwnedProviderFixtur
     async fn activate_provider_distribution_rule(
         &self,
         _: runtime_core::runtime_backend::RuntimePackageActivation,
-    ) -> std::result::Result<(), runtime_core::runtime_backend::RuntimeBackendError> {
+    ) -> std::result::Result<
+        domain::LoadedRuntimeArtifactIdentity,
+        runtime_core::runtime_backend::RuntimeBackendError,
+    > {
         unreachable!()
     }
     async fn deactivate_provider_distribution_rule(

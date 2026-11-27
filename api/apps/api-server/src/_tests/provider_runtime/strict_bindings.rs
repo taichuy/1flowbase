@@ -312,3 +312,321 @@ async fn data_source_runtime_intakes_and_dispatches_checked_external_template() 
         ))
     ));
 }
+
+#[tokio::test]
+async fn postgres_activation_rejects_manifest_replaced_after_scan_even_with_updated_marker() {
+    use control_plane::plugin_management::{
+        try_mark_current_node_plugin_runtime_active, InstallPluginCommand, PluginManagementService,
+    };
+    use control_plane_contracts::ports::PluginRepository;
+
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let actor = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let package = TempProviderPackage::new();
+    write_stateful_slot_provider_package(&package, &package.path().join("spawned"));
+    let services = Arc::new(ApiRuntimeServices::new(model_provider_extension_graph()).unwrap());
+    let runtime = ApiProviderRuntime::new(services.clone());
+    let management = PluginManagementService::new(
+        state.store.clone(),
+        runtime.clone(),
+        state.official_plugin_source.clone(),
+        &state.provider_install_root,
+    )
+    .with_node_id(&state.api_node_id);
+    let installed = management
+        .install_plugin(InstallPluginCommand {
+            actor_user_id: actor,
+            package_root: package.path().display().to_string(),
+        })
+        .await
+        .unwrap();
+    let id = installed.installation.id;
+    let artifact = installed.local_artifact;
+    assert!(artifact.artifact_status.is_ready());
+    assert!(artifact.last_error.is_none());
+    assert_eq!(artifact.runtime_status, PluginRuntimeStatus::Inactive);
+    let path = Path::new(artifact.local_path.as_deref().unwrap());
+    let manifest = path.join("manifest.yaml");
+    let original = fs::read_to_string(&manifest).unwrap();
+    let mut raw = original.clone();
+    raw.push_str("\n# replaced after the inventory scan\n");
+    fs::write(&manifest, &raw).unwrap();
+    let actual = plugin_framework::compute_manifest_fingerprint(&manifest)
+        .await
+        .unwrap();
+    assert_ne!(
+        artifact.manifest_fingerprint.as_deref(),
+        Some(actual.as_str())
+    );
+    let marker = path.join(".1flowbase-artifact.json");
+    let original_marker = fs::read(&marker).unwrap();
+    let mut marker_json: serde_json::Value = serde_json::from_slice(&original_marker).unwrap();
+    marker_json["manifest_fingerprint"] = actual.into();
+    fs::write(&marker, serde_json::to_vec(&marker_json).unwrap()).unwrap();
+
+    // Request activation without an inventory refresh, just as an on-demand provider load does.
+    sqlx::query(
+        "update extension_installations set desired_state = 'active_requested' where id = $1",
+    )
+    .bind(id)
+    .execute(state.store.pool())
+    .await
+    .unwrap();
+    let local = state
+        .store
+        .get_local_installation(&state.api_node_id, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        local.artifact.manifest_fingerprint,
+        artifact.manifest_fingerprint
+    );
+    if let Ok(loaded) = ProviderRuntimePort::ensure_loaded(&runtime, &local).await {
+        let outcome = try_mark_current_node_plugin_runtime_active(
+            &state.store,
+            &state.api_node_id,
+            &local,
+            loaded.as_ref(),
+        )
+        .await
+        .unwrap();
+        panic!("host loaded unverified manifest; activation outcome: {outcome:?}");
+    }
+    let stored = state
+        .store
+        .get_artifact_instance(&state.api_node_id, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.manifest_fingerprint, artifact.manifest_fingerprint);
+    assert_ne!(
+        stored.runtime_status,
+        PluginRuntimeStatus::Active,
+        "unexpected active runtime"
+    );
+    let host = services.runtime_backend().snapshot().await.unwrap();
+    assert_eq!(
+        host.registries.providers, 0,
+        "host retained an unverified manifest"
+    );
+
+    fs::write(&manifest, original).unwrap();
+    fs::write(&marker, original_marker).unwrap();
+    let loaded = ProviderRuntimePort::ensure_loaded(&runtime, &local)
+        .await
+        .unwrap()
+        .expect("real host returns the parsed artifact identity");
+    assert_eq!(
+        Some(loaded.manifest_fingerprint.as_str()),
+        artifact.manifest_fingerprint.as_deref()
+    );
+    assert_eq!(loaded.plugin_version, installed.installation.plugin_version);
+    assert_eq!(
+        loaded.marker.as_ref().unwrap().checksum,
+        artifact.local_checksum
+    );
+    assert!(matches!(
+        try_mark_current_node_plugin_runtime_active(
+            &state.store,
+            &state.api_node_id,
+            &local,
+            Some(&loaded)
+        )
+        .await
+        .unwrap(),
+        control_plane_contracts::ports::ActivatePluginArtifactOutcome::Activated(_)
+    ));
+
+    fs::write(&manifest, raw).unwrap();
+    assert!(
+        ProviderRuntimePort::ensure_loaded(&runtime, &local)
+            .await
+            .is_err(),
+        "a matching source cache key must not hide manifest changes"
+    );
+    ProviderRuntimePort::deactivate_plugin(&runtime, &installed.installation)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn symmetric_f3_switch_revalidates_cached_active_target_after_final_scan() {
+    use control_plane::plugin_management::{
+        AssignPluginCommand, EnablePluginCommand, InstallPluginCommand, PluginManagementService,
+        SwitchPluginVersionCommand,
+    };
+    use control_plane_contracts::ports::{
+        AuthRepository, CreatePluginAssignmentInput, PluginRepository,
+    };
+
+    let (state, database_url) = crate::_tests::support::test_api_state_with_database_pool_capacity(
+        std::num::NonZeroU32::new(3).unwrap(),
+    )
+    .await;
+    let actor = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let workspace = state
+        .store
+        .load_actor_context_for_user(actor)
+        .await
+        .unwrap()
+        .current_workspace_id;
+    let other = crate::_tests::support::seed_workspace(&database_url, "already on v2").await;
+    let services = Arc::new(ApiRuntimeServices::new(model_provider_extension_graph()).unwrap());
+    let runtime = ApiProviderRuntime::new(services);
+    let management = PluginManagementService::new(
+        state.store.clone(),
+        runtime.clone(),
+        state.official_plugin_source.clone(),
+        &state.provider_install_root,
+    )
+    .with_node_id(&state.api_node_id)
+    .for_plugin_console_operation(
+        domain::ConsolePolicyGroup::other("other.plugins").unwrap(),
+        "plugins.families.switch",
+    );
+    let install = |version: &'static str| {
+        let management = &management;
+        async move {
+            let package = TempProviderPackage::new();
+            write_stateful_slot_provider_package(&package, &package.path().join("spawned"));
+            let manifest = package.path().join("manifest.yaml");
+            let raw = tokio::fs::read_to_string(&manifest)
+                .await
+                .unwrap()
+                .replace(
+                    "fixture_provider@0.1.0",
+                    &format!("fixture_provider@{version}"),
+                )
+                .replace("\nversion: 0.1.0\n", &format!("\nversion: {version}\n"));
+            tokio::fs::write(&manifest, raw).await.unwrap();
+            management
+                .install_plugin(InstallPluginCommand {
+                    actor_user_id: actor,
+                    package_root: package.path().display().to_string(),
+                })
+                .await
+                .unwrap()
+        }
+    };
+    let first = install("0.1.0").await.installation;
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: actor,
+            installation_id: first.id,
+        })
+        .await
+        .unwrap();
+    management
+        .assign_plugin(AssignPluginCommand {
+            actor_user_id: actor,
+            installation_id: first.id,
+        })
+        .await
+        .unwrap();
+    let second = install("0.2.0").await.installation;
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: actor,
+            installation_id: second.id,
+        })
+        .await
+        .unwrap();
+    state
+        .store
+        .create_assignment(&CreatePluginAssignmentInput {
+            installation_id: second.id,
+            workspace_id: other,
+            provider_code: second.provider_code.clone(),
+            actor_user_id: actor,
+        })
+        .await
+        .unwrap();
+    let local = state
+        .store
+        .get_local_installation(&state.api_node_id, second.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(local.desired_state, PluginDesiredState::ActiveRequested);
+    assert_eq!(local.artifact.runtime_status, PluginRuntimeStatus::Active);
+    let marker =
+        Path::new(local.artifact.local_path.as_deref().unwrap()).join(".1flowbase-artifact.json");
+    let original_marker = tokio::fs::read(&marker).await.unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&original_marker).unwrap();
+    value["checksum"] = "sha256:tampered".into();
+
+    // Hold the second refresh after its disk scan, so even the ready-target scan sees the
+    // original marker. A DB-only assertion at version-switch commit would now pass.
+    sqlx::raw_sql(r#"
+        create table switch_scan_count (installation_id uuid primary key, n integer not null);
+        create function pause_after_target_scan() returns trigger language plpgsql as $$
+        declare scans integer;
+        begin
+            update switch_scan_count set n = n + 1 where installation_id = old.installation_id returning n into scans;
+            if scans = 2 then perform pg_advisory_xact_lock(224311); end if;
+            return new;
+        end $$;
+        create trigger pause_after_target_scan before update of checked_at on extension_artifact_instances
+        for each row execute function pause_after_target_scan();
+    "#).execute(state.store.pool()).await.unwrap();
+    sqlx::query("insert into switch_scan_count values ($1, 0)")
+        .bind(second.id)
+        .execute(state.store.pool())
+        .await
+        .unwrap();
+    let mut blocker = state.store.pool().begin().await.unwrap();
+    let blocker_pid: i32 = sqlx::query_scalar("select pg_backend_pid()")
+        .fetch_one(&mut *blocker)
+        .await
+        .unwrap();
+    sqlx::query("select pg_advisory_xact_lock(224311)")
+        .execute(&mut *blocker)
+        .await
+        .unwrap();
+    let switched = management.switch_version(SwitchPluginVersionCommand {
+        actor_user_id: actor,
+        provider_code: first.provider_code.clone(),
+        target_installation_id: second.id,
+    });
+    let tamper = async {
+        let waited = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let blocked: bool = sqlx::query_scalar("select exists(select 1 from pg_locks where not granted and locktype = 'advisory' and $1 = any(pg_blocking_pids(pid)))")
+                    .bind(blocker_pid).fetch_one(state.store.pool()).await.unwrap();
+                if blocked { break; }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await;
+        if waited.is_ok() {
+            tokio::fs::write(&marker, serde_json::to_vec(&value).unwrap())
+                .await
+                .unwrap();
+        }
+        blocker.rollback().await.unwrap();
+        waited.unwrap();
+    };
+    let (result, ()) = tokio::join!(switched, tamper);
+    tokio::fs::write(marker, original_marker).await.unwrap();
+    result.expect_err("switch reused the active row without checking the host's cached identity");
+    assert_eq!(
+        state.store.list_assignments(workspace).await.unwrap()[0].installation_id,
+        first.id
+    );
+    assert_eq!(
+        state.store.list_assignments(other).await.unwrap()[0].installation_id,
+        second.id
+    );
+    ProviderRuntimePort::deactivate_plugin(&runtime, &first)
+        .await
+        .unwrap();
+    ProviderRuntimePort::deactivate_plugin(&runtime, &second)
+        .await
+        .unwrap();
+}

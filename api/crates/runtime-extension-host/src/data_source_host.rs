@@ -15,37 +15,21 @@ use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     DataModelTemplateDescriptor,
 };
+use runtime_core::runtime_backend::LoadedRuntimeArtifactIdentity;
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
     data_source_stdio::call_executable,
-    package_loader::{LoadedDataSourcePackage, PackageLoader},
+    package_loader::{
+        cached_identity_matches, verify_package_activation, LoadedDataSourcePackage, PackageLoader,
+    },
     plugin_scope::PluginScope,
 };
 
 fn serialize_input<T: Serialize>(input: T) -> FrameworkResult<Value> {
     serde_json::to_value(input)
         .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LoadedDataSourceSummary {
-    pub plugin_id: String,
-    pub source_code: String,
-    pub plugin_version: String,
-    pub execution_mode: String,
-}
-
-impl LoadedDataSourceSummary {
-    fn from_loaded(loaded: &LoadedDataSourcePackage) -> Self {
-        Self {
-            plugin_id: loaded.package.identifier(),
-            source_code: loaded.package.definition.source_code.clone(),
-            plugin_version: loaded.package.manifest.version.clone(),
-            execution_mode: loaded.package.manifest.execution_mode.as_str().to_string(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,8 +50,6 @@ pub struct DataSourceDescriptorOutput {
 #[derive(Debug, Default)]
 pub struct DataSourceHost {
     loaded_packages: HashMap<String, LoadedDataSourcePackage>,
-    legacy_manifest_eligibilities:
-        HashMap<String, extension_package_runtime::LegacyInstalledManifestEligibility>,
     scopes: HashMap<String, Arc<PluginScope>>,
     next_generation: HashMap<String, u64>,
 }
@@ -85,64 +67,46 @@ impl DataSourceHost {
         Ok(())
     }
 
-    pub fn is_loaded(&self, plugin_id: &str) -> bool {
-        self.loaded_packages.contains_key(plugin_id) && self.scopes.contains_key(plugin_id)
-    }
-
     pub async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {
         let scope = self.scopes.remove(plugin_id);
         if let Some(scope) = scope {
             scope.dispose().await?;
         }
         self.loaded_packages.remove(plugin_id);
-        self.legacy_manifest_eligibilities.remove(plugin_id);
         Ok(())
     }
 
-    pub async fn load(
+    pub(crate) async fn load_if_needed(
         &mut self,
-        package_root: impl AsRef<std::path::Path>,
-    ) -> FrameworkResult<LoadedDataSourceSummary> {
-        let loaded = PackageLoader::load_data_source(package_root)?;
-        let summary = LoadedDataSourceSummary::from_loaded(&loaded);
-        self.replace_loaded(summary.plugin_id.clone(), loaded, None)
-            .await?;
-        Ok(summary)
-    }
-
-    pub async fn load_legacy_installed(
-        &mut self,
-        package_root: impl AsRef<std::path::Path>,
-        eligibility: &extension_package_runtime::LegacyInstalledManifestEligibility,
-    ) -> FrameworkResult<LoadedDataSourceSummary> {
-        let loaded = PackageLoader::load_legacy_installed_data_source(package_root, eligibility)?;
-        let summary = LoadedDataSourceSummary::from_loaded(&loaded);
-        self.replace_loaded(summary.plugin_id.clone(), loaded, Some(eligibility.clone()))
-            .await?;
-        Ok(summary)
-    }
-
-    #[cfg(test)]
-    #[expect(
-        dead_code,
-        reason = "internal test convenience path; production activation loads a frozen artifact"
-    )]
-    pub async fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedDataSourceSummary> {
-        let package_root = self.loaded_package(plugin_id)?.package_root.clone();
-        let loaded = match self.legacy_manifest_eligibilities.get(plugin_id) {
+        package_root: &std::path::Path,
+        plugin_id: &str,
+        expected_fingerprint: Option<&str>,
+        legacy_eligibility: Option<&extension_package_runtime::LegacyInstalledManifestEligibility>,
+    ) -> FrameworkResult<LoadedRuntimeArtifactIdentity> {
+        let package_root = std::fs::canonicalize(package_root)
+            .map_err(|error| PluginFrameworkError::io(Some(package_root), error.to_string()))?;
+        if let Some(loaded) = self.loaded_packages.get(plugin_id) {
+            if loaded.package.root == package_root
+                && cached_identity_matches(&package_root, &loaded.identity, expected_fingerprint)?
+            {
+                return Ok(loaded.identity.clone());
+            }
+        }
+        let loaded = match legacy_eligibility {
             Some(eligibility) => {
                 PackageLoader::load_legacy_installed_data_source(&package_root, eligibility)?
             }
             None => PackageLoader::load_data_source(&package_root)?,
         };
-        let summary = LoadedDataSourceSummary::from_loaded(&loaded);
-        self.replace_loaded(
-            summary.plugin_id.clone(),
-            loaded,
-            self.legacy_manifest_eligibilities.get(plugin_id).cloned(),
-        )
-        .await?;
-        Ok(summary)
+        verify_package_activation(
+            &loaded.package.identifier(),
+            plugin_id,
+            &loaded.identity,
+            expected_fingerprint,
+        )?;
+        let identity = loaded.identity.clone();
+        self.replace_loaded(plugin_id.to_owned(), loaded).await?;
+        Ok(identity)
     }
 
     pub fn data_model_templates(
@@ -621,18 +585,13 @@ impl DataSourceHost {
         &mut self,
         plugin_id: String,
         loaded: LoadedDataSourcePackage,
-        legacy_eligibility: Option<extension_package_runtime::LegacyInstalledManifestEligibility>,
     ) -> FrameworkResult<()> {
         self.unload(&plugin_id).await?;
         let next_generation = self.next_generation.entry(plugin_id.clone()).or_insert(0);
         *next_generation = next_generation.saturating_add(1);
         self.scopes
             .insert(plugin_id.clone(), PluginScope::mounted(*next_generation));
-        self.loaded_packages.insert(plugin_id.clone(), loaded);
-        if let Some(legacy_eligibility) = legacy_eligibility {
-            self.legacy_manifest_eligibilities
-                .insert(plugin_id, legacy_eligibility);
-        }
+        self.loaded_packages.insert(plugin_id, loaded);
         Ok(())
     }
 

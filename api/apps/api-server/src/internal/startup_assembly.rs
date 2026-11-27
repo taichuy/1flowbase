@@ -509,14 +509,18 @@ pub(super) async fn app_and_runtime_host_from_config(
         &state,
         compiled_console_plan.route_assembly.clone(),
     )?;
-    managed_composition.refresh_boot_snapshots().await?;
-    extension_boot_snapshot.set_pinned_managed_snapshots(managed_composition.current_snapshots().await)?;
-    let event_catalog = crate::event_center::persistence::snapshot(
-        &state, &managed_composition.current_snapshots().await,
-    ).await?;
-    control_plane_contracts::ports::EventCatalogRepository::synchronize_event_catalog(
-        &state.store, &event_catalog,
-    ).await?;
+    let state_for_events = Arc::clone(&state);
+    let boot_snapshot_pin = Arc::clone(&extension_boot_snapshot);
+    managed_composition
+        .refresh_boot_snapshots_with_event_catalog_and_pin(
+            move |snapshots| {
+                Box::pin(async move {
+                    crate::event_center::persistence::snapshot(&state_for_events, &snapshots).await
+                })
+            },
+            move |published| boot_snapshot_pin.set_pinned_managed_snapshots(published.clone()),
+        )
+        .await?;
 
     let builtin_mcp_interfaces =
         openapi_interface::build_openapi_capability_catalog(&state, bootstrap_result.workspace_id)

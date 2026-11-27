@@ -1,13 +1,333 @@
-use super::*;
+use super::{
+    locked_artifact::{lock_artifact_installation, verify_locked_node_artifact_on_disk},
+    *,
+};
+use crate::mappers::plugin_mapper::parse_desired_state;
+use control_plane_contracts::ports::{
+    derive_contract_availability_status, derive_runtime_write_artifact_status,
+    plugin_artifact_status,
+};
+use domain::{PluginDesiredState, PluginRuntimeStatus};
 
 impl PgControlPlaneStore {
+    pub(super) async fn refresh_artifact_instance_impl(
+        &self,
+        input: &RefreshPluginArtifactInstanceInput,
+    ) -> Result<Option<domain::PluginArtifactInstanceRecord>> {
+        let mut transaction = self.pool().begin().await?;
+        let before = lock_managed_artifact_write(&mut transaction, input.installation_id).await?;
+        let (desired_raw, category_raw, contract_version): (String, String, String) = sqlx::query_as(
+            "select desired_state, category, contract_version from extension_installations where id=$1 and plugin_id is not null for share",
+        )
+        .bind(input.installation_id)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        let desired_state = parse_desired_state(&desired_raw)?;
+        let is_host = category_raw == domain::ExtensionCategory::HostExtensions.as_str();
+        let existing =
+            lock_node_artifact(&mut transaction, &input.node_id, input.installation_id).await?;
+        if existing != input.observed_artifact {
+            return Ok(None);
+        }
+        let manifest_fingerprint = input.manifest_fingerprint.clone().or_else(|| {
+            existing
+                .as_ref()
+                .and_then(|r| r.manifest_fingerprint.clone())
+        });
+        let is_managed_bus = contract_version == "1flowbase.extension-bus/v1";
+        let preserve_runtime = !input.reset_runtime_status
+            && (desired_state != domain::PluginDesiredState::Disabled || is_host || is_managed_bus);
+        let runtime_status = existing
+            .as_ref()
+            .filter(|row| {
+                preserve_runtime
+                    && !domain::has_local_artifact_warning(row.last_error.as_deref())
+                    && row.artifact_status.is_ready()
+                    && input.artifact_status.is_ready()
+                    && row.local_version == input.local_version
+                    && row.local_checksum == input.local_checksum
+                    && row.local_path == input.local_path
+                    && row.manifest_fingerprint == manifest_fingerprint
+                    && input.last_error.is_none()
+            })
+            .map(|row| row.runtime_status)
+            .unwrap_or(domain::PluginRuntimeStatus::Inactive);
+        let availability_status = derive_contract_availability_status(
+            desired_state,
+            plugin_artifact_status(input.artifact_status),
+            runtime_status,
+        );
+        let effective_last_error = if input.last_error.is_some() {
+            input.last_error.clone()
+        } else if runtime_status == domain::PluginRuntimeStatus::LoadFailed {
+            existing.as_ref().and_then(|r| r.last_error.clone())
+        } else {
+            None
+        };
+        if let Some(record) = existing.as_ref().filter(|record| {
+            !input.touch_checked_at
+                && record.artifact_status == input.artifact_status
+                && record.runtime_status == runtime_status
+                && record.availability_status == availability_status
+                && record.local_version == input.local_version
+                && record.local_checksum == input.local_checksum
+                && record.local_path == input.local_path
+                && record.manifest_fingerprint == manifest_fingerprint
+                && record.last_error == effective_last_error
+        }) {
+            return Ok(Some(record.clone()));
+        }
+        let write = UpsertPluginArtifactInstanceInput {
+            node_id: input.node_id.clone(),
+            installation_id: input.installation_id,
+            local_version: input.local_version.clone(),
+            local_checksum: input.local_checksum.clone(),
+            local_path: input.local_path.clone(),
+            package_path: existing.as_ref().and_then(|r| r.package_path.clone()),
+            manifest_fingerprint,
+            artifact_status: input.artifact_status,
+            runtime_status,
+            availability_status,
+            checked_at: input.checked_at,
+            last_error: effective_last_error,
+            is_current: existing.as_ref().is_none_or(|r| r.is_current),
+        };
+        let Some(artifact) =
+            write_derived_node_artifact(&mut transaction, &write, existing.is_some()).await?
+        else {
+            // A writer bypassed the slot lock. The caller must read and scan again.
+            return Ok(None);
+        };
+        if let Some(before) = before {
+            let after = managed_dependency_facts(&mut transaction).await?;
+            before.guard_write(
+                &after,
+                input.installation_id,
+                input.artifact_status.is_ready(),
+            )?;
+        }
+        transaction.commit().await?;
+        Ok(Some(artifact))
+    }
+
+    pub(super) async fn record_artifact_runtime_status_impl(
+        &self,
+        input: &RecordPluginRuntimeStatusInput,
+    ) -> Result<domain::PluginArtifactInstanceRecord> {
+        if input.runtime_status == PluginRuntimeStatus::Active {
+            bail!("use try_mark_active_artifact_instance to mark runtime active");
+        }
+        let mut transaction = self.pool().begin().await?;
+        let before = lock_managed_artifact_write(&mut transaction, input.installation_id).await?;
+        let (desired_raw, category_raw, contract_version, plugin_version, expected_checksum): (
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+        ) = sqlx::query_as(
+            "select desired_state, category, contract_version, artifact_version, expected_checksum from extension_installations where id=$1 and plugin_id is not null for share",
+        )
+        .bind(input.installation_id)
+        .fetch_optional(&mut *transaction)
+        .await?
+        .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+        let desired_state = parse_desired_state(&desired_raw)?;
+        let is_host = category_raw == domain::ExtensionCategory::HostExtensions.as_str();
+        let effective_runtime = if desired_state == domain::PluginDesiredState::Disabled
+            && !is_host
+            && input.runtime_status == domain::PluginRuntimeStatus::LoadFailed
+        {
+            domain::PluginRuntimeStatus::Inactive
+        } else {
+            input.runtime_status
+        };
+        let effective_error = if effective_runtime == domain::PluginRuntimeStatus::Inactive
+            && input.runtime_status == domain::PluginRuntimeStatus::LoadFailed
+        {
+            None
+        } else {
+            input.last_error.clone()
+        };
+        let mut existing =
+            lock_node_artifact(&mut transaction, &input.node_id, input.installation_id).await?;
+        let artifact = loop {
+            let (artifact_status, availability_status) = derive_runtime_write_artifact_status(
+                desired_state,
+                &contract_version,
+                effective_runtime,
+                existing.as_ref().map(|r| r.artifact_status),
+            );
+            let last_error = effective_error.clone().or_else(|| {
+                existing
+                    .as_ref()
+                    .and_then(|row| row.last_error.as_deref())
+                    .filter(|error| domain::has_local_artifact_warning(Some(error)))
+                    .map(str::to_owned)
+            });
+            let updating = existing.is_some();
+            let (
+                local_version,
+                local_checksum,
+                local_path,
+                package_path,
+                manifest_fingerprint,
+                is_current,
+            ) = existing
+                .map(|r| {
+                    (
+                        r.local_version,
+                        r.local_checksum,
+                        r.local_path,
+                        r.package_path,
+                        r.manifest_fingerprint,
+                        r.is_current,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    (
+                        Some(plugin_version.clone()),
+                        expected_checksum.clone(),
+                        None,
+                        None,
+                        None,
+                        false,
+                    )
+                });
+            let write = UpsertPluginArtifactInstanceInput {
+                node_id: input.node_id.clone(),
+                installation_id: input.installation_id,
+                local_version,
+                local_checksum,
+                local_path,
+                package_path,
+                manifest_fingerprint,
+                artifact_status,
+                runtime_status: effective_runtime,
+                availability_status,
+                checked_at: input.checked_at,
+                last_error,
+                is_current,
+            };
+            if let Some(artifact) =
+                write_derived_node_artifact(&mut transaction, &write, updating).await?
+            {
+                break artifact;
+            }
+            existing =
+                lock_node_artifact(&mut transaction, &input.node_id, input.installation_id).await?;
+            // Never apply a status written against a missing row to a newly active artifact.
+            if let Some(active) = existing
+                .as_ref()
+                .filter(|r| r.runtime_status == PluginRuntimeStatus::Active)
+            {
+                return Ok(active.clone());
+            }
+        };
+        if let Some(before) = before {
+            let after = managed_dependency_facts(&mut transaction).await?;
+            before.guard_write(
+                &after,
+                input.installation_id,
+                artifact.artifact_status.is_ready(),
+            )?;
+        }
+        transaction.commit().await?;
+        Ok(artifact)
+    }
+
+    pub(super) async fn try_mark_active_artifact_instance_impl(
+        &self,
+        input: &ActivatePluginArtifactInstanceInput,
+    ) -> Result<ActivatePluginArtifactOutcome> {
+        use ActivatePluginArtifactOutcome::{Activated, ArtifactInvalidated, Disabled};
+        use PluginRuntimeStatus::{Active, Inactive};
+        let mut transaction = self.pool().begin().await?;
+        let before = lock_managed_artifact_write(&mut transaction, input.installation_id).await?;
+        let installation =
+            lock_artifact_installation(&mut transaction, input.installation_id).await?;
+        let desired_state = installation.desired_state;
+        let disabled = desired_state == PluginDesiredState::Disabled
+            && installation.category != domain::ExtensionCategory::HostExtensions;
+        let rejected = if disabled {
+            Disabled
+        } else {
+            ArtifactInvalidated
+        };
+        let Some(existing) =
+            lock_node_artifact(&mut transaction, &input.node_id, input.installation_id).await?
+        else {
+            return Ok(rejected);
+        };
+        let matches = !disabled
+            && input.matches_ready_artifact(&existing)
+            && verify_locked_node_artifact_on_disk(
+                &installation,
+                &existing,
+                input.validate_manifest,
+            )
+            .await;
+        let runtime_status = if matches { Active } else { Inactive };
+        let availability_status = derive_contract_availability_status(
+            desired_state,
+            plugin_artifact_status(existing.artifact_status),
+            runtime_status,
+        );
+        if !matches
+            && existing.runtime_status == Inactive
+            && (!disabled || existing.availability_status == availability_status)
+        {
+            return Ok(rejected);
+        }
+        let row = sqlx::query(
+            r#"
+            update extension_artifact_instances
+            set runtime_status=$3, availability_status=$4,
+                last_error=case when $5 then null else last_error end, checked_at=greatest($6, checked_at + interval '1 microsecond')
+            where node_id=$1 and installation_id=$2
+            returning node_id, installation_id, local_version, local_checksum, local_path,
+                      package_path, manifest_fingerprint, artifact_status, runtime_status,
+                      availability_status, checked_at, last_error, is_current
+            "#,
+        )
+        .bind(&input.node_id)
+        .bind(input.installation_id)
+        .bind(runtime_status.as_str())
+        .bind(availability_status.as_str())
+        .bind(matches)
+        .bind(input.checked_at)
+        .fetch_one(&mut *transaction)
+        .await?;
+        let artifact = map_artifact_instance(row)?;
+        if let Some(before) = before {
+            let after = managed_dependency_facts(&mut transaction).await?;
+            before.guard_write(
+                &after,
+                input.installation_id,
+                existing.artifact_status.is_ready(),
+            )?;
+        }
+        transaction.commit().await?;
+        if matches {
+            Ok(Activated(artifact))
+        } else {
+            Ok(rejected)
+        }
+    }
+
     pub(super) async fn upsert_artifact_instance_impl(
         &self,
         input: &UpsertPluginArtifactInstanceInput,
     ) -> Result<domain::PluginArtifactInstanceRecord> {
         let mut transaction = self.pool().begin().await?;
-        super::lock_managed_desired_state_scopes(&mut transaction, input.installation_id).await?;
-        let before = managed_dependency_facts(&mut transaction).await?;
+        let before = lock_managed_artifact_write(&mut transaction, input.installation_id).await?;
+        // Lock the installation before the slot, including on the insert path (FK check).
+        sqlx::query("select id from extension_installations where id = $1 for share")
+            .bind(input.installation_id)
+            .execute(&mut *transaction)
+            .await?;
+        lock_node_artifact_slot(&mut transaction, &input.node_id, input.installation_id).await?;
         let row = sqlx::query(
             r#"
             insert into extension_artifact_instances (
@@ -38,7 +358,7 @@ impl PgControlPlaneStore {
                 artifact_status = excluded.artifact_status,
                 runtime_status = excluded.runtime_status,
                 availability_status = excluded.availability_status,
-                checked_at = excluded.checked_at,
+                checked_at = greatest(excluded.checked_at, extension_artifact_instances.checked_at + interval '1 microsecond'),
                 last_error = excluded.last_error,
                 is_current = excluded.is_current
             returning
@@ -74,12 +394,14 @@ impl PgControlPlaneStore {
         .await?;
 
         let artifact = map_artifact_instance(row)?;
-        let after = managed_dependency_facts(&mut transaction).await?;
-        before.guard_write(
-            &after,
-            input.installation_id,
-            input.artifact_status.is_ready(),
-        )?;
+        if let Some(before) = before {
+            let after = managed_dependency_facts(&mut transaction).await?;
+            before.guard_write(
+                &after,
+                input.installation_id,
+                input.artifact_status.is_ready(),
+            )?;
+        }
         transaction.commit().await?;
         Ok(artifact)
     }
@@ -124,7 +446,7 @@ impl PgControlPlaneStore {
         sqlx::query(
             r#"
             update extension_artifact_instances artifact
-            set is_current = false, checked_at = now()
+            set is_current = false, checked_at = greatest(now(), artifact.checked_at + interval '1 microsecond')
             from extension_installations installation
             where installation.id = artifact.installation_id
               and artifact.node_id = $1
@@ -144,7 +466,7 @@ impl PgControlPlaneStore {
         let artifact = sqlx::query(
             r#"
             update extension_artifact_instances
-            set is_current = true, checked_at = now()
+            set is_current = true, checked_at = greatest(now(), checked_at + interval '1 microsecond')
             where node_id = $1 and installation_id = $2
             returning node_id, installation_id, local_version, local_checksum, local_path,
                 package_path, manifest_fingerprint, artifact_status, runtime_status,
@@ -164,19 +486,23 @@ impl PgControlPlaneStore {
         input: &CommitPluginFamilyUninstallInput,
     ) -> Result<()> {
         let mut transaction = self.pool().begin().await?;
-        lock_managed_dependency_scope(&mut transaction).await?;
         let removed: Vec<_> = input
             .artifact_instances
             .iter()
             .map(|artifact| artifact.installation_id)
             .collect();
-        let sorted: std::collections::BTreeSet<_> = removed.iter().copied().collect();
-        for installation_id in sorted {
-            super::lock_managed_desired_state_scopes(&mut transaction, installation_id).await?;
-        }
+        super::lock_managed_desired_state_scopes_many(&mut transaction, &removed).await?;
         managed_dependency_facts(&mut transaction)
             .await?
             .guard_removal(&removed, None, None)?;
+        let slots: std::collections::BTreeSet<_> = input
+            .artifact_instances
+            .iter()
+            .map(|artifact| (artifact.installation_id, artifact.node_id.as_str()))
+            .collect();
+        for (installation_id, node_id) in slots {
+            lock_node_artifact_slot(&mut transaction, node_id, installation_id).await?;
+        }
         for artifact in &input.artifact_instances {
             sqlx::query(
                 r#"
@@ -208,7 +534,7 @@ impl PgControlPlaneStore {
                     artifact_status = excluded.artifact_status,
                     runtime_status = excluded.runtime_status,
                     availability_status = excluded.availability_status,
-                    checked_at = excluded.checked_at,
+                    checked_at = greatest(excluded.checked_at, extension_artifact_instances.checked_at + interval '1 microsecond'),
                     last_error = excluded.last_error,
                     is_current = excluded.is_current
                 "#,
@@ -774,7 +1100,7 @@ impl ManagedDependencyFacts {
         }
         Ok(())
     }
-    pub(super) fn guard_removal(
+    pub(crate) fn guard_removal(
         &self,
         removed: &[Uuid],
         replacement: Option<Uuid>,
@@ -921,6 +1247,131 @@ pub(crate) async fn validate_managed_dependency_switch(
 #[cfg(test)]
 #[path = "_tests/dependencies.rs"]
 mod dependency_tests;
+
+async fn lock_managed_artifact_write(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    installation_id: Uuid,
+) -> Result<Option<ManagedDependencyFacts>> {
+    let is_managed: bool = sqlx::query_scalar(
+            "select exists(select 1 from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1')",
+        )
+        .bind(installation_id)
+        .fetch_one(&mut **transaction)
+        .await?;
+    Ok(if is_managed {
+        super::lock_managed_desired_state_scopes(transaction, installation_id).await?;
+        Some(managed_dependency_facts(transaction).await?)
+    } else {
+        None
+    })
+}
+
+pub(crate) async fn lock_node_artifact_slot(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    node_id: &str,
+    installation_id: Uuid,
+) -> Result<()> {
+    sqlx::query(
+        "select pg_advisory_xact_lock(hashtextextended('node-artifact:' || $1 || ':' || $2::text, 201406))",
+    )
+    .bind(node_id)
+    .bind(installation_id.to_string())
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+pub(crate) async fn lock_node_artifact_slot_shared(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    node_id: &str,
+    installation_id: Uuid,
+) -> Result<()> {
+    sqlx::query(
+        "select pg_advisory_xact_lock_shared(hashtextextended('node-artifact:' || $1 || ':' || $2::text, 201406))",
+    )
+    .bind(node_id)
+    .bind(installation_id.to_string())
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+// UPDATE is only valid after reading an existing row FOR UPDATE. Only the first
+// INSERT can return None, indicating a writer bypassed the advisory slot lock.
+async fn write_derived_node_artifact(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    input: &UpsertPluginArtifactInstanceInput,
+    updating: bool,
+) -> Result<Option<domain::PluginArtifactInstanceRecord>> {
+    let statement = if updating {
+        r#"
+        update extension_artifact_instances set
+            local_version = $3, local_checksum = $4, local_path = $5, package_path = $6,
+            manifest_fingerprint = $7, artifact_status = $8, runtime_status = $9,
+            availability_status = $10, checked_at = greatest($11, checked_at + interval '1 microsecond'),
+            last_error = $12, is_current = $13
+        where node_id = $1 and installation_id = $2 returning *
+        "#
+    } else {
+        r#"
+        insert into extension_artifact_instances (
+            node_id, installation_id, local_version, local_checksum, local_path,
+            package_path, manifest_fingerprint, artifact_status, runtime_status,
+            availability_status, checked_at, last_error, is_current
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        on conflict (node_id, installation_id) do nothing returning *
+        "#
+    };
+    let query = sqlx::query(statement)
+        .bind(&input.node_id)
+        .bind(input.installation_id)
+        .bind(input.local_version.as_deref())
+        .bind(input.local_checksum.as_deref())
+        .bind(input.local_path.as_deref())
+        .bind(input.package_path.as_deref())
+        .bind(input.manifest_fingerprint.as_deref())
+        .bind(input.artifact_status.as_str())
+        .bind(input.runtime_status.as_str())
+        .bind(input.availability_status.as_str())
+        .bind(input.checked_at)
+        .bind(input.last_error.as_deref())
+        .bind(input.is_current);
+    if updating {
+        Ok(Some(map_artifact_instance(
+            query.fetch_one(&mut **transaction).await?,
+        )?))
+    } else {
+        query
+            .fetch_optional(&mut **transaction)
+            .await?
+            .map(map_artifact_instance)
+            .transpose()
+    }
+}
+
+async fn lock_node_artifact(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    node_id: &str,
+    installation_id: Uuid,
+) -> Result<Option<domain::PluginArtifactInstanceRecord>> {
+    lock_node_artifact_slot(transaction, node_id, installation_id).await?;
+    let existing_row = sqlx::query(
+        r#"
+            select
+                node_id, installation_id, local_version, local_checksum, local_path,
+                package_path, manifest_fingerprint, artifact_status, runtime_status,
+                availability_status, checked_at, last_error, is_current
+            from extension_artifact_instances
+            where node_id = $1 and installation_id = $2
+            for update
+            "#,
+    )
+    .bind(node_id)
+    .bind(installation_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    existing_row.map(map_artifact_instance).transpose()
+}
 
 #[cfg(test)]
 #[path = "_tests/dependency_transactions.rs"]

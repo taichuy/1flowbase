@@ -152,6 +152,8 @@ API 进程在 Linux/glibc 下每 60 秒检查一次 RSS；超过 1 GiB 时调用
 
 开发启动允许 API `.env`、shell 环境、service override 依次覆盖默认值。容器可用 `docker run -e MALLOC_ARENA_MAX=...`，或在 Compose 的 `api.environment` 中显式覆盖；仅向 Compose 插值用的 `.env` 添加字段不会自动传入容器。设为 `0` 可恢复 glibc 自身的 arena 上限策略。直接运行二进制或 `cargo run` 时，需自行在进程启动前设置环境；应用启动后再加载 dotenv 不能可靠配置已初始化的分配器。
 
+Linux GNU API 进程的全局 jemalloc 使用 `_RJEM_MALLOC_CONF`。API 镜像默认使用 `thp:never,background_thread:true`；三个 Compose 入口均可通过 `API_JEMALLOC_CONF` 覆盖。宿主启动插件 worker 时只剥离 `_RJEM_MALLOC_CONF`，不改变 worker 的其他环境变量。
+
 ### 部署 External npm Pack
 
 扩展依赖由 [`taichuy/1flowbase-web-external-npm`](https://github.com/taichuy/1flowbase-web-external-npm) 在本地或 CI 预构建。服务器不运行 npm，也不保存扩展包历史：

@@ -12,6 +12,11 @@ ROOT_PASSWORD="${FLOWBASE_ROOT_PASSWORD:-}"
 PROVIDER_SECRET="${FLOWBASE_PROVIDER_SECRET:-}"
 WEB_PORT="${FLOWBASE_WEB_PORT:-}"
 COOKIE_SECURE="${FLOWBASE_COOKIE_SECURE:-${API_COOKIE_SECURE:-}}"
+ALLOWED_ORIGINS="${FLOWBASE_ALLOWED_ORIGINS:-${API_ALLOWED_ORIGINS:-}}"
+COOKIE_SECURE_EXPLICIT=0
+if [ -n "$COOKIE_SECURE" ]; then
+  COOKIE_SECURE_EXPLICIT=1
+fi
 DATABASE_MODE="${FLOWBASE_DATABASE_MODE:-}"
 EXTERNAL_POSTGRES_HOST="${FLOWBASE_EXTERNAL_POSTGRES_HOST:-}"
 EXTERNAL_POSTGRES_PORT="${FLOWBASE_EXTERNAL_POSTGRES_PORT:-}"
@@ -103,6 +108,7 @@ print_env_summary() {
     BOOTSTRAP_ROOT_ACCOUNT \
     BOOTSTRAP_ROOT_PASSWORD \
     API_PROVIDER_SECRET_MASTER_KEY \
+    API_ALLOWED_ORIGINS \
     API_COOKIE_SECURE \
     API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL \
     API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED
@@ -248,6 +254,22 @@ provider_secret_master_key_is_placeholder() {
   esac
 }
 
+generate_random_hex() {
+  bytes="$1"
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex "$bytes"
+    return
+  fi
+
+  if [ -r /dev/urandom ] && command -v od >/dev/null 2>&1; then
+    od -An -N"$bytes" -tx1 /dev/urandom | tr -d ' \n'
+    printf '\n'
+    return
+  fi
+
+  return 1
+}
+
 generate_provider_secret_master_key() {
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32
@@ -261,6 +283,33 @@ generate_provider_secret_master_key() {
   fi
 
   fail "Could not generate API_PROVIDER_SECRET_MASTER_KEY. Install openssl or set FLOWBASE_PROVIDER_SECRET / --provider-secret."
+}
+
+postgres_password_is_placeholder() {
+  value="$(printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  case "$value" in
+    ""|change-me-db-password)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+ensure_postgres_password() {
+  [ "${FRESH_ENV_CREATED:-0}" -eq 1 ] || return 0
+  mode="$(normalize_database_mode DATABASE_MODE "$(read_env_value DATABASE_MODE ./docker/.env)")"
+  [ "$mode" = "internal" ] || return 0
+  ! postgres_data_exists || return 0
+
+  current_value="$(read_env_value POSTGRES_PASSWORD ./docker/.env)"
+  if postgres_password_is_placeholder "$current_value"; then
+    generated_value="$(generate_random_hex 24 || true)"
+    [ -n "$generated_value" ] || fail "Could not generate POSTGRES_PASSWORD. Install openssl or set FLOWBASE_DB_PASSWORD / --db-password."
+    set_env_value POSTGRES_PASSWORD "$generated_value" ./docker/.env
+    echo "Generated POSTGRES_PASSWORD in docker/.env."
+  fi
 }
 
 ensure_provider_secret_master_key() {
@@ -355,6 +404,9 @@ prompt_true_false_env_value() {
   input="$(read_from_tty)"
   if [ -n "$input" ]; then
     normalized_value="$(normalize_true_false_value "$key" "$input")"
+    if [ "$key" = "API_COOKIE_SECURE" ]; then
+      COOKIE_SECURE_EXPLICIT=1
+    fi
     set_env_value "$key" "$normalized_value" ./docker/.env
     echo "Updated ${key} in docker/.env."
   else
@@ -602,9 +654,77 @@ local_flowbase_latest_images_exist() {
 prompt_pull_images() {
   if local_flowbase_latest_images_exist ./docker/.env; then
     prompt_yes_no "Local latest Docker images were found. Update Docker images?" "no"
+  elif [ "${FRESH_ENV_CREATED:-0}" -eq 1 ]; then
+    prompt_yes_no "Pull Docker images?" "yes"
   else
     prompt_yes_no "Pull Docker images?" "no"
   fi
+}
+
+http_probe_ok() {
+  probe_url="$1"
+  if command -v curl >/dev/null 2>&1; then
+    curl --noproxy '*' -fsS --max-time 2 "$probe_url" >/dev/null 2>&1
+    return "$?"
+  fi
+  if command -v wget >/dev/null 2>&1; then
+    wget --no-proxy -qO- -T 2 "$probe_url" >/dev/null 2>&1
+    return "$?"
+  fi
+  return 1
+}
+
+check_api_container_not_crashed() {
+  api_container_id="$1"
+  state="$(docker inspect --format '{{.State.Status}}:{{.State.RestartCount}}:{{.State.ExitCode}}' "$api_container_id" 2>/dev/null || true)"
+  [ -n "$state" ] || return 0
+  status_part="${state%%:*}"
+  rest_part="${state#*:}"
+  restart_count="${rest_part%%:*}"
+  case "$status_part" in
+    restarting|exited|dead)
+      docker logs --tail 50 "$api_container_id" >&2 || true
+      fail "1flowbase API container failed during startup (${state})."
+      ;;
+  esac
+  case "$restart_count" in
+    ""|0|*[!0-9]*)
+      ;;
+    *)
+      docker logs --tail 50 "$api_container_id" >&2 || true
+      fail "1flowbase API container restarted unexpectedly during startup (${state})."
+      ;;
+  esac
+}
+
+wait_for_service_startup() {
+  db_mode="$1"
+  port="$2"
+  wait_seconds="${FLOWBASE_STARTUP_WAIT_SECONDS:-90}"
+  case "$wait_seconds" in
+    ""|*[!0-9]*) wait_seconds=90 ;;
+  esac
+  [ "$wait_seconds" -gt 0 ] || return 0
+
+  if [ "$db_mode" = "external" ]; then
+    api_container_id="$(compose -f docker-compose.external-db.yaml ps -q api 2>/dev/null | head -n 1 || true)"
+  else
+    api_container_id="$(compose ps -q api 2>/dev/null | head -n 1 || true)"
+  fi
+  [ -n "$api_container_id" ] || return 0
+
+  elapsed=0
+  while [ "$elapsed" -lt "$wait_seconds" ]; do
+    check_api_container_not_crashed "$api_container_id"
+    if http_probe_ok "http://127.0.0.1:${port}/health"; then
+      echo "Verified 1flowbase health at http://127.0.0.1:${port}/health."
+      return 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  check_api_container_not_crashed "$api_container_id"
 }
 
 manifest_supports_platform() {
@@ -660,6 +780,7 @@ Options:
   --root-password VALUE     Pre-fill BOOTSTRAP_ROOT_PASSWORD before the interactive prompt.
   --provider-secret VALUE   Pre-fill API_PROVIDER_SECRET_MASTER_KEY before the interactive prompt.
   --web-port VALUE          Pre-fill WEB_PORT before the interactive prompt.
+  --allowed-origins VALUE   Pre-fill API_ALLOWED_ORIGINS before the interactive prompt.
   --cookie-secure VALUE     Pre-fill API_COOKIE_SECURE as true or false.
   --database-mode VALUE     Use internal or external PostgreSQL. Defaults to internal.
   --external-postgres-host VALUE
@@ -693,6 +814,7 @@ Environment variables with the same effect:
   FLOWBASE_ROOT_PASSWORD
   FLOWBASE_PROVIDER_SECRET
   FLOWBASE_WEB_PORT
+  FLOWBASE_ALLOWED_ORIGINS
   FLOWBASE_COOKIE_SECURE
   FLOWBASE_DATABASE_MODE
   FLOWBASE_EXTERNAL_POSTGRES_HOST
@@ -754,12 +876,22 @@ while [ "$#" -gt 0 ]; do
       WEB_PORT="${1#*=}"
       shift
       ;;
+    --allowed-origins)
+      ALLOWED_ORIGINS="$(require_value "$1" "${2-}")"
+      shift 2
+      ;;
+    --allowed-origins=*)
+      ALLOWED_ORIGINS="${1#*=}"
+      shift
+      ;;
     --cookie-secure)
       COOKIE_SECURE="$(require_value "$1" "${2-}")"
+      COOKIE_SECURE_EXPLICIT=1
       shift 2
       ;;
     --cookie-secure=*)
       COOKIE_SECURE="${1#*=}"
+      COOKIE_SECURE_EXPLICIT=1
       shift
       ;;
     --database-mode)
@@ -921,6 +1053,7 @@ if [ -n "$RESTORE_BACKUP" ]; then
 fi
 
 PROMPT_CONFIG_VALUES=0
+FRESH_ENV_CREATED=0
 OLD_POSTGRES_PASSWORD=""
 OLD_BOOTSTRAP_ROOT_ACCOUNT=""
 OLD_BOOTSTRAP_ROOT_PASSWORD=""
@@ -935,6 +1068,7 @@ fi
 if [ ! -f ./docker/.env ]; then
   cp ./docker/.env.example ./docker/.env
   echo "Created docker/.env from docker/.env.example."
+  FRESH_ENV_CREATED=1
   ensure_database_mode_default ./docker/.env
   ensure_official_plugin_signature_required
   ensure_cookie_secure_default
@@ -974,6 +1108,10 @@ fi
 if [ -n "$WEB_PORT" ]; then
   set_env_value WEB_PORT "$WEB_PORT" ./docker/.env
   echo "Updated WEB_PORT in docker/.env."
+fi
+if [ -n "$ALLOWED_ORIGINS" ]; then
+  set_env_value API_ALLOWED_ORIGINS "$ALLOWED_ORIGINS" ./docker/.env
+  echo "Updated API_ALLOWED_ORIGINS in docker/.env."
 fi
 if [ -n "$COOKIE_SECURE" ]; then
   COOKIE_SECURE="$(normalize_true_false_value API_COOKIE_SECURE "$COOKIE_SECURE")"
@@ -1020,6 +1158,8 @@ if [ -n "$OFFICIAL_PLUGIN_SIGNATURE_REQUIRED" ]; then
   echo "Updated API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED in docker/.env."
 fi
 
+ensure_postgres_password
+
 if [ "$PROMPT_CONFIG_VALUES" -eq 1 ] && [ "$INTERACTIVE" -eq 1 ] && [ -r /dev/tty ]; then
   echo "Configure docker/.env. Press Enter to keep the value shown in brackets."
   prompt_database_configuration
@@ -1032,6 +1172,15 @@ if [ "$PROMPT_CONFIG_VALUES" -eq 1 ] && [ "$INTERACTIVE" -eq 1 ] && [ -r /dev/tt
   prompt_true_false_env_value API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED "Require official plugin signatures (true/false)"
 elif [ "$PROMPT_CONFIG_VALUES" -eq 1 ] && [ "$INTERACTIVE" -eq 1 ]; then
   echo "No interactive terminal was found. Keeping docker/.env values."
+fi
+
+if [ "$FRESH_ENV_CREATED" -eq 1 ] && [ "$COOKIE_SECURE_EXPLICIT" -eq 0 ]; then
+  case "$(read_env_value API_ALLOWED_ORIGINS ./docker/.env)" in
+    *https://*)
+      set_env_value API_COOKIE_SECURE true ./docker/.env
+      echo "Enabled API_COOKIE_SECURE=true for HTTPS allowed origins in docker/.env."
+      ;;
+  esac
 fi
 
 ensure_provider_secret_master_key
@@ -1082,7 +1231,11 @@ fi
 
 if [ -z "$START_CONTAINERS" ]; then
   if [ "$INTERACTIVE" -eq 1 ] && [ -r /dev/tty ]; then
-    START_CONTAINERS="$(prompt_yes_no "Start 1flowbase now?" "no")"
+    start_default="no"
+    if [ "$FRESH_ENV_CREATED" -eq 1 ]; then
+      start_default="yes"
+    fi
+    START_CONTAINERS="$(prompt_yes_no "Start 1flowbase now?" "$start_default")"
   else
     START_CONTAINERS="no"
   fi
@@ -1168,12 +1321,17 @@ if [ -n "$RESTORE_BACKUP" ] && [ "$START_CONTAINERS" = "yes" ]; then
   echo "Portable backup was restored before the API service started."
 fi
 
+web_port="$(read_env_value WEB_PORT .env)"
+root_account="$(read_env_value BOOTSTRAP_ROOT_ACCOUNT .env)"
+root_password="$(read_env_value BOOTSTRAP_ROOT_PASSWORD .env)"
+
 if [ "$START_CONTAINERS" = "yes" ]; then
   if [ "$NEW_DATABASE_MODE" = "external" ]; then
     compose -f docker-compose.external-db.yaml up -d --remove-orphans
   else
     compose up -d --remove-orphans
   fi
+  wait_for_service_startup "$NEW_DATABASE_MODE" "${web_port:-3100}"
 else
   echo "Skipping container startup."
   if [ "$NEW_DATABASE_MODE" = "external" ]; then
@@ -1183,10 +1341,6 @@ else
   fi
   exit 0
 fi
-
-web_port="$(read_env_value WEB_PORT .env)"
-root_account="$(read_env_value BOOTSTRAP_ROOT_ACCOUNT .env)"
-root_password="$(read_env_value BOOTSTRAP_ROOT_PASSWORD .env)"
 
 echo "1flowbase is starting. Web: http://127.0.0.1:${web_port:-3100}"
 if [ -n "$RESTORE_BACKUP" ]; then

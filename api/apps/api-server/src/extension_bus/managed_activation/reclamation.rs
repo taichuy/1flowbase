@@ -77,7 +77,7 @@ impl ManagedExtensionComposition {
     }
 
     pub(super) async fn reclaim_retained_snapshots(&self) {
-        let assembly = loop {
+        let _assembly = loop {
             let notified = self.reclamation.notify.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
@@ -98,6 +98,11 @@ impl ManagedExtensionComposition {
         else {
             return;
         };
+        self.reclaim_unreferenced_retained_locked().await;
+    }
+
+    // Called with the assembly lock held, including immediately after publication.
+    pub(super) async fn reclaim_unreferenced_retained_locked(&self) {
         let candidates = self
             .snapshots
             .lock()
@@ -128,7 +133,6 @@ impl ManagedExtensionComposition {
             }
         }
         self.refresh_lifecycle_source_observations().await;
-        drop(assembly);
     }
 }
 

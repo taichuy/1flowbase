@@ -40,6 +40,7 @@ import {
   loadAntdStyleModuleForArtifact
 } from './antd-style-runtime';
 import { loadAntdImgCropModule } from './image-crop/antd-img-crop-runtime';
+import { ensureApplicationNamespaces } from '../../../../shared/i18n/app-i18n';
 
 type ModuleNamespace = Record<string, unknown>;
 
@@ -334,9 +335,25 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       'RecordPermissionEditor',
       'getRecordCapabilities'
     ],
-    async () => ({
-      module: await import('./plugin-settings/runtime')
-    })
+    async () => {
+      const [module] = await Promise.all([
+        import('./plugin-settings/runtime'),
+        ensureApplicationNamespaces(['settingsRecordPermissions'])
+      ]);
+      return { module };
+    },
+    async (requestedExports) => {
+      const needsRecordPermissionI18n = requestedExports.includes(
+        'RecordPermissionEditor'
+      );
+      const [module] = await Promise.all([
+        import('./plugin-settings/runtime'),
+        needsRecordPermissionI18n
+          ? ensureApplicationNamespaces(['settingsRecordPermissions'])
+          : null
+      ]);
+      return { module };
+    }
   ),
   registration(
     '@1flowbase/data-table',
@@ -495,7 +512,8 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     async () => {
       const [viewer, workspace] = await Promise.all([
         import('../../../applications/components/logs/ApplicationRunLogViewer'),
-        import('../../../applications/components/logs/workspace/ApplicationLogs')
+        import('../../../applications/components/logs/workspace/ApplicationLogs'),
+        ensureApplicationNamespaces(['applications', 'agentFlow', 'workflow'])
       ]);
       return {
         module: {
@@ -515,6 +533,13 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
           : null,
         needsWorkspace
           ? import('../../../applications/components/logs/workspace/ApplicationLogs')
+          : null,
+        needsViewer || needsWorkspace
+          ? ensureApplicationNamespaces([
+              'applications',
+              'agentFlow',
+              'workflow'
+            ])
           : null
       ]);
       return {

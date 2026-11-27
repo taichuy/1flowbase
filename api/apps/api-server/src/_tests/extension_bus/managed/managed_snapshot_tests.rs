@@ -567,3 +567,878 @@ async fn root_2007_ac_008_snapshot_restart() {
     assert_eq!(retained, 1);
     missing.host.stop().await.unwrap();
 }
+
+#[tokio::test]
+async fn boot_refresh_rebuilds_each_workspace_once_with_all_bindings() {
+    exercise_boot_refresh(false).await;
+}
+
+#[tokio::test]
+async fn boot_refresh_rejects_old_binding_reenabled_after_package_selection() {
+    exercise_boot_refresh(true).await;
+}
+
+async fn exercise_boot_refresh(reenable_after_selection: bool) {
+    use runtime_core::runtime_backend::{RuntimeArtifactReference, RuntimeBackendError};
+    use runtime_extension_host::RuntimeArtifactResolver;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingResolver {
+        resolver: ApiRuntimeArtifactResolver,
+        activations: AtomicUsize,
+        store: MainDurableStore,
+        reenable: std::sync::Mutex<Option<UpdatePluginDesiredStateInput>>,
+    }
+    #[async_trait::async_trait]
+    impl RuntimeArtifactResolver for CountingResolver {
+        async fn resolve(
+            &self,
+            artifact: &RuntimeArtifactReference,
+        ) -> Result<PathBuf, RuntimeBackendError> {
+            self.activations.fetch_add(1, Ordering::Relaxed);
+            let reenable = self.reenable.lock().unwrap().take();
+            if let Some(input) = reenable {
+                // A surviving binding reaches the resolver only after prepare_packages has
+                // filtered the disabled one. Simulate the other node's durable write now.
+                self.store.update_desired_state(&input).await.unwrap();
+            }
+            self.resolver.resolve(artifact).await
+        }
+    }
+
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let actor_id: Uuid = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
+        .await
+        .unwrap();
+    let resolver = Arc::new(CountingResolver {
+        resolver: ApiRuntimeArtifactResolver::new(
+            state.store.clone(),
+            &state.api_node_id,
+            &state.provider_install_root,
+        ),
+        activations: AtomicUsize::new(0),
+        store: state.store.clone(),
+        reenable: std::sync::Mutex::new(None),
+    });
+    let runtime = RuntimeFixture::with_artifact_resolver(&state, resolver.clone(), false);
+    let management = PluginManagementService::new(
+        runtime.store.clone(),
+        ApiProviderRuntime::new(runtime.services.clone()),
+        state.official_plugin_source.clone(),
+        &state.provider_install_root,
+    )
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
+    let authority = PluginContributionAuthorityService::new(
+        runtime.store.clone(),
+        HostContributionGrantPolicy::root_composition(),
+    );
+    let mut ids = Vec::new();
+    for name in ["a", "b"] {
+        let id = management
+            .install_uploaded_plugin(InstallUploadedPluginCommand {
+                actor_user_id: actor_id,
+                file_name: format!("acme.composition-{name}.1flowbasepkg"),
+                package_bytes: package(&manifest(name)),
+            })
+            .await
+            .unwrap()
+            .installation
+            .id;
+        management
+            .assign_plugin(AssignPluginCommand {
+                actor_user_id: actor_id,
+                installation_id: id,
+            })
+            .await
+            .unwrap();
+        authority
+            .grant(&actor, id, grant(name, "event.subscribe"))
+            .await
+            .unwrap();
+        if name == "a" {
+            authority
+                .grant(&actor, id, grant(name, "event.publish"))
+                .await
+                .unwrap();
+        }
+        management
+            .enable_plugin(EnablePluginCommand {
+                actor_user_id: actor_id,
+                installation_id: id,
+            })
+            .await
+            .unwrap();
+        ids.push(id);
+    }
+    let before = runtime
+        .composition
+        .snapshot(actor.current_workspace_id)
+        .await
+        .unwrap();
+    assert!(ids
+        .iter()
+        .all(|id| before.bindings.values().any(|b| b.installation.id == *id)));
+    let module = plugin_framework::extension_bus::compile_managed_interface_module([
+        "notifications.instances.list",
+    ])
+    .unwrap();
+    runtime
+        .composition
+        .attach_interface_module(module.clone())
+        .unwrap();
+    resolver.activations.store(0, Ordering::Relaxed);
+    if reenable_after_selection {
+        let target = UpdatePluginDesiredStateInput {
+            installation_id: ids[1],
+            desired_state: domain::PluginDesiredState::Disabled,
+            actor_user_id: actor_id,
+        };
+        let disabled = runtime.store.update_desired_state(&target).await.unwrap();
+        *resolver.reenable.lock().unwrap() = Some(UpdatePluginDesiredStateInput {
+            desired_state: domain::PluginDesiredState::ActiveRequested,
+            ..target
+        });
+        let error = runtime
+            .composition
+            .refresh_boot_snapshots()
+            .await
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("managed candidate authority or installation revision changed"));
+        assert_eq!(resolver.activations.load(Ordering::Relaxed), 1);
+        assert!(Arc::ptr_eq(
+            &before,
+            &runtime
+                .composition
+                .snapshot(actor.current_workspace_id)
+                .await
+                .unwrap()
+        ));
+        let reenabled = runtime
+            .store
+            .get_installation(ids[1])
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            reenabled.desired_state,
+            domain::PluginDesiredState::ActiveRequested
+        );
+        assert_ne!(disabled.updated_at, reenabled.updated_at);
+        runtime.host.stop().await.unwrap();
+        return;
+    }
+    runtime.composition.refresh_boot_snapshots().await.unwrap();
+    let after = runtime
+        .composition
+        .snapshot(actor.current_workspace_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        resolver.activations.load(Ordering::Relaxed),
+        before.bindings.len()
+    );
+    assert_eq!(before.bindings.len(), after.bindings.len());
+    for (id, binding) in &before.bindings {
+        assert_eq!(after.bindings[id].handle, binding.handle);
+    }
+    assert!(module.extension_points.iter().all(|declared| after
+        .graph
+        .points()
+        .iter()
+        .any(|point| point.descriptor() == declared)));
+    runtime.host.stop().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn boot_refresh_holds_db_lock_until_visible_and_pinned_before_release() {
+    let (state, database_url) = crate::_tests::support::test_api_state_with_database_url().await;
+    let actor_id: Uuid = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
+        .await
+        .unwrap();
+    let runtime = RuntimeFixture::new(&state);
+    let management = PluginManagementService::new(
+        runtime.store.clone(),
+        ApiProviderRuntime::new(runtime.services.clone()),
+        state.official_plugin_source.clone(),
+        &state.provider_install_root,
+    )
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation();
+    let authority = PluginContributionAuthorityService::new(
+        runtime.store.clone(),
+        HostContributionGrantPolicy::root_composition(),
+    );
+    let id = management
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: actor_id,
+            file_name: "acme.composition-a.1flowbasepkg".into(),
+            package_bytes: package(&manifest("a")),
+        })
+        .await
+        .unwrap()
+        .installation
+        .id;
+    management
+        .assign_plugin(AssignPluginCommand {
+            actor_user_id: actor_id,
+            installation_id: id,
+        })
+        .await
+        .unwrap();
+    authority
+        .grant(&actor, id, grant("a", "event.subscribe"))
+        .await
+        .unwrap();
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: id,
+        })
+        .await
+        .unwrap();
+
+    let before = runtime
+        .composition
+        .snapshot(actor.current_workspace_id)
+        .await
+        .unwrap();
+    let module = plugin_framework::extension_bus::compile_managed_interface_module([
+        "notifications.instances.list",
+    ])
+    .unwrap();
+    runtime
+        .composition
+        .attach_interface_module(module.clone())
+        .unwrap();
+
+    type PinnedSnapshots = std::collections::BTreeMap<
+        Uuid,
+        Arc<api_host_kernel::extension_bus::ManagedWorkspaceSnapshot>,
+    >;
+    let pinned_once: Arc<std::sync::OnceLock<PinnedSnapshots>> =
+        Arc::new(std::sync::OnceLock::new());
+
+    // 1. Pre-commit failure after SQL staging rolls back visible state AND leaves OnceLock unpinned.
+    *runtime.composition.before_authority_release.lock().unwrap() =
+        Some(Box::new(|| anyhow::bail!("simulated pre-commit failure")));
+    let state_fail = state.clone();
+    let pin_fail = pinned_once.clone();
+    let err = runtime
+        .composition
+        .refresh_boot_snapshots_with_event_catalog_and_pin(
+            move |snapshots| {
+                Box::pin(async move {
+                    crate::event_center::persistence::snapshot(&state_fail, &snapshots).await
+                })
+            },
+            move |published| {
+                pin_fail
+                    .set(published.clone())
+                    .map_err(|_| anyhow::anyhow!("already pinned"))
+            },
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(err.to_string().contains("simulated pre-commit failure"));
+    assert!(pinned_once.get().is_none());
+    assert!(Arc::ptr_eq(
+        &before,
+        &runtime
+            .composition
+            .snapshot(actor.current_workspace_id)
+            .await
+            .unwrap()
+    ));
+
+    // 2. Real event_catalog SQL runs inside the authority transaction; before release, both
+    //    local snapshots mutex AND PG locks are held and OnceLock is still unset; after commit,
+    //    event_catalog rows are durable and OnceLock is pinned to the exact published snapshot.
+    sqlx::query("delete from event_catalog")
+        .execute(runtime.store.pool())
+        .await
+        .unwrap();
+    let composition_ref = runtime.composition.clone();
+    let workspace_id = actor.current_workspace_id;
+    let pin_check = pinned_once.clone();
+    *runtime.composition.before_authority_release.lock().unwrap() = Some(Box::new(move || {
+        assert!(
+            pin_check.get().is_none(),
+            "OnceLock must not pin before COMMIT"
+        );
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                assert!(
+                    tokio::time::timeout(
+                        std::time::Duration::from_millis(25),
+                        composition_ref.current_snapshots(),
+                    )
+                    .await
+                    .is_err(),
+                    "readers must remain blocked on snapshots mutex until authority lease commits"
+                );
+                let mut conn = <sqlx::PgConnection as sqlx::Connection>::connect(&database_url)
+                    .await
+                    .unwrap();
+                let mut tx = sqlx::Acquire::begin(&mut conn).await.unwrap();
+                let event_lock_free: bool = sqlx::query_scalar(
+                    "select pg_try_advisory_xact_lock(hashtextextended('1flowbase.event_catalog', 0))",
+                )
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap();
+                assert!(
+                    !event_lock_free,
+                    "1flowbase.event_catalog advisory lock must be held inside stage_managed_settings_templates"
+                );
+                let uncommitted_visible: i64 =
+                    sqlx::query_scalar("select count(*) from event_catalog")
+                        .fetch_one(&mut *tx)
+                        .await
+                        .unwrap();
+                assert_eq!(
+                    uncommitted_visible, 0,
+                    "event catalog SQL must be staged inside the uncommitted authority transaction"
+                );
+                sqlx::query("set local lock_timeout = '50ms'")
+                    .execute(&mut *tx)
+                    .await
+                    .unwrap();
+                let lock_err = sqlx::query(
+                    "update extension_installations set updated_at = now() where id = $1",
+                )
+                .bind(id)
+                .execute(&mut *tx)
+                .await
+                .unwrap_err();
+                let msg = lock_err.to_string();
+                assert!(
+                    msg.contains("lock timeout") || msg.contains("55P03"),
+                    "expected PG lock held while staging event catalog & visible snapshot, got: {msg}"
+                );
+            });
+        });
+        Ok(())
+    }));
+    let state_ok = state.clone();
+    let pin_ok = pinned_once.clone();
+    let returned = runtime
+        .composition
+        .refresh_boot_snapshots_with_event_catalog_and_pin(
+            move |snapshots| {
+                Box::pin(async move {
+                    crate::event_center::persistence::snapshot(&state_ok, &snapshots).await
+                })
+            },
+            move |published| {
+                pin_ok
+                    .set(published.clone())
+                    .map_err(|_| anyhow::anyhow!("already pinned"))
+            },
+        )
+        .await
+        .unwrap();
+    let after = runtime.composition.snapshot(workspace_id).await.unwrap();
+    assert!(Arc::ptr_eq(&returned[&workspace_id], &after));
+    assert!(Arc::ptr_eq(
+        &pinned_once.get().unwrap()[&workspace_id],
+        &after
+    ));
+    let committed_events: i64 = sqlx::query_scalar("select count(*) from event_catalog")
+        .fetch_one(runtime.store.pool())
+        .await
+        .unwrap();
+    assert!(
+        committed_events > 0,
+        "event catalog must commit with authority lease"
+    );
+    runtime.host.stop().await.unwrap();
+}
+
+fn management_for_snapshot(
+    state: &crate::app_state::ApiState,
+    runtime: &RuntimeFixture,
+) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
+    PluginManagementService::new(
+        runtime.store.clone(),
+        ApiProviderRuntime::new(runtime.services.clone()),
+        state.official_plugin_source.clone(),
+        &state.provider_install_root,
+    )
+    .with_node_id(&state.api_node_id)
+    .with_managed_activation()
+}
+
+async fn install_event_candidate(
+    runtime: &RuntimeFixture,
+    management: &PluginManagementService<MainDurableStore, ApiProviderRuntime>,
+    actor: &domain::ActorContext,
+    name: &str,
+    version: &str,
+) -> Uuid {
+    let mut declaration = manifest(name);
+    declaration["version"] = version.into();
+    declaration["managed"]["module"]["module_version"] = version.into();
+    let installed = management
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: actor.user_id,
+            file_name: format!("acme.composition-{name}.1flowbasepkg"),
+            package_bytes: package(&declaration),
+        })
+        .await
+        .unwrap();
+    let id = installed.installation.id;
+    // The first installation needs an assignment before granting; a staged sibling
+    // may instead receive candidate grants via the already assigned family.
+    if version == "1.0.0" {
+        management
+            .assign_plugin(AssignPluginCommand {
+                actor_user_id: actor.user_id,
+                installation_id: id,
+            })
+            .await
+            .unwrap();
+    }
+    let authority = PluginContributionAuthorityService::new(
+        runtime.store.clone(),
+        HostContributionGrantPolicy::root_composition(),
+    )
+    .with_node_id(installed.local_artifact.node_id);
+    authority
+        .grant(actor, id, grant(name, "event.subscribe"))
+        .await
+        .unwrap();
+    if name == "a" {
+        authority
+            .grant(actor, id, grant(name, "event.publish"))
+            .await
+            .unwrap();
+    }
+    id
+}
+
+#[tokio::test]
+async fn empty_boot_refresh_rejects_first_active_managed_binding_added_during_preparation() {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let actor_id = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
+        .await
+        .unwrap();
+    let runtime = RuntimeFixture::new(&state);
+    runtime
+        .composition
+        .attach_interface_module(
+            plugin_framework::extension_bus::compile_managed_interface_module([
+                "notifications.instances.list",
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(runtime.composition.current_snapshots().await.is_empty());
+    let pinned = Arc::new(std::sync::OnceLock::new());
+    let pin = pinned.clone();
+    let writer_state = state.clone();
+    let error = runtime
+        .composition
+        .refresh_boot_snapshots_with_event_catalog_and_pin(
+            move |snapshots| {
+                Box::pin(async move {
+                    assert!(snapshots.is_empty());
+                    let writer = RuntimeFixture::new(&writer_state);
+                    let management = management_for_snapshot(&writer_state, &writer);
+                    let id =
+                        install_event_candidate(&writer, &management, &actor, "a", "1.0.0").await;
+                    management
+                        .enable_plugin(EnablePluginCommand {
+                            actor_user_id: actor_id,
+                            installation_id: id,
+                        })
+                        .await
+                        .unwrap();
+                    writer.host.stop().await.unwrap();
+                    crate::event_center::persistence::snapshot(&writer_state, &snapshots).await
+                })
+            },
+            move |published| {
+                assert!(pin.set(published.clone()).is_ok());
+                Ok(())
+            },
+        )
+        .await
+        .err()
+        .expect("empty boot unexpectedly published before observing the new binding");
+    assert!(
+        error
+            .to_string()
+            .contains("managed candidate authority scope changed"),
+        "{error:#}"
+    );
+    assert!(pinned.get().is_none());
+    assert!(runtime.composition.current_snapshots().await.is_empty());
+    let catalog_rows = || async {
+        sqlx::query_scalar::<_, i64>("select count(*) from event_catalog")
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap()
+    };
+    assert_eq!(catalog_rows().await, 0);
+
+    let writer = RuntimeFixture::new(&state);
+    let id = sqlx::query_scalar("select id from extension_installations where desired_state = 'active_requested' and plugin_id like 'acme.composition-a%'")
+        .fetch_one(state.store.pool()).await.unwrap();
+    management_for_snapshot(&state, &writer)
+        .disable_plugin(DisablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: id,
+        })
+        .await
+        .unwrap();
+    let boot_state = state.clone();
+    let pin = pinned.clone();
+    let visible = runtime
+        .composition
+        .refresh_boot_snapshots_with_event_catalog_and_pin(
+            move |snapshots| {
+                Box::pin(async move {
+                    crate::event_center::persistence::snapshot(&boot_state, &snapshots).await
+                })
+            },
+            move |published| {
+                assert!(pin.set(published.clone()).is_ok());
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+    assert!(visible.is_empty());
+    assert!(runtime.composition.current_snapshots().await.is_empty());
+    assert!(pinned.get().unwrap().is_empty());
+    assert!(
+        catalog_rows().await > 0,
+        "empty boot still commits the host catalog"
+    );
+    writer.host.stop().await.unwrap();
+    runtime.host.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn boot_refresh_rejects_new_active_managed_binding_added_during_preparation() {
+    exercise_new_boot_binding(false).await;
+}
+
+#[tokio::test]
+async fn boot_refresh_rejects_first_binding_in_a_previously_unseen_workspace() {
+    exercise_new_boot_binding(true).await;
+}
+
+async fn exercise_new_boot_binding(new_workspace: bool) {
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let actor_id = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
+        .await
+        .unwrap();
+    let runtime = RuntimeFixture::new(&state);
+    let management = management_for_snapshot(&state, &runtime);
+    let a = install_event_candidate(&runtime, &management, &actor, "a", "1.0.0").await;
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: a,
+        })
+        .await
+        .unwrap();
+    let workspace = actor.current_workspace_id;
+    let before = runtime.composition.snapshot(workspace).await.unwrap();
+    assert_eq!(before.bindings.len(), 1);
+    runtime
+        .composition
+        .attach_interface_module(
+            plugin_framework::extension_bus::compile_managed_interface_module([
+                "notifications.instances.list",
+            ])
+            .unwrap(),
+        )
+        .unwrap();
+    let pinned = Arc::new(std::sync::OnceLock::new());
+    let pin = pinned.clone();
+    let catalog_rows = |store: MainDurableStore| async move {
+        sqlx::query_scalar::<_, i64>("select count(*) from event_catalog")
+            .fetch_one(store.pool())
+            .await
+            .unwrap()
+    };
+    assert_eq!(catalog_rows(runtime.store.clone()).await, 0);
+    let writer_actor = if new_workspace {
+        let workspace_id = Uuid::now_v7();
+        sqlx::query(
+            "insert into workspaces (id, tenant_id, name) values ($1, $2, 'new boot scope')",
+        )
+        .bind(workspace_id)
+        .bind(actor.tenant_id)
+        .execute(state.store.pool())
+        .await
+        .unwrap();
+        let writer = state
+            .store
+            .upsert_root_user(
+                workspace_id,
+                "boot-scope-writer",
+                "boot-scope-writer@example.test",
+                "unused-test-password-hash",
+                "Boot writer",
+                "Boot writer",
+            )
+            .await
+            .unwrap();
+        let actor = AuthRepository::load_actor_context_for_user(&state.store, writer.id)
+            .await
+            .unwrap();
+        assert_eq!(actor.current_workspace_id, workspace_id);
+        actor
+    } else {
+        actor
+    };
+    let state_for_writer = state.clone();
+    let error = runtime
+        .composition
+        .refresh_boot_snapshots_with_event_catalog_and_pin(
+            move |snapshots| {
+                Box::pin(async move {
+                    assert_eq!(snapshots[&workspace].bindings.len(), 1);
+                    // A separate composition owns the concurrent write; it does not share the boot assembly mutex.
+                    let state = state_for_writer;
+                    let writer = RuntimeFixture::new(&state);
+                    let management = management_for_snapshot(&state, &writer);
+                    let added = if new_workspace {
+                        // A is already active in W1. Its first assignment in W2 is a new
+                        // active authority scope even though the installation already exists.
+                        management
+                            .assign_plugin(AssignPluginCommand {
+                                actor_user_id: writer_actor.user_id,
+                                installation_id: a,
+                            })
+                            .await
+                            .unwrap();
+                        let authority = PluginContributionAuthorityService::new(
+                            writer.store.clone(),
+                            HostContributionGrantPolicy::root_composition(),
+                        )
+                        .with_node_id(&state.api_node_id);
+                        for permission in ["event.subscribe", "event.publish"] {
+                            authority
+                                .grant(&writer_actor, a, grant("a", permission))
+                                .await
+                                .unwrap();
+                        }
+                        writer.composition.rebuild_installation(a).await.unwrap();
+                        a
+                    } else {
+                        let b = install_event_candidate(
+                            &writer,
+                            &management,
+                            &writer_actor,
+                            "b",
+                            "1.0.0",
+                        )
+                        .await;
+                        management
+                            .enable_plugin(EnablePluginCommand {
+                                actor_user_id: writer_actor.user_id,
+                                installation_id: b,
+                            })
+                            .await
+                            .unwrap();
+                        b
+                    };
+                    let new = writer
+                        .composition
+                        .snapshot(writer_actor.current_workspace_id)
+                        .await
+                        .unwrap();
+                    assert!(new
+                        .bindings
+                        .values()
+                        .any(|binding| binding.installation.id == added));
+                    writer.host.stop().await.unwrap();
+                    crate::event_center::persistence::snapshot(&state, &snapshots).await
+                })
+            },
+            move |published| {
+                pin.set(published.clone())
+                    .map_err(|_| anyhow::anyhow!("already pinned"))
+            },
+        )
+        .await
+        .err()
+        .expect("boot published a candidate that omits the concurrent binding");
+    assert!(
+        error
+            .to_string()
+            .contains("managed candidate authority scope changed"),
+        "{error:#}"
+    );
+    assert_eq!(catalog_rows(runtime.store.clone()).await, 0);
+    assert!(pinned.get().is_none());
+    assert!(Arc::ptr_eq(
+        &before,
+        &runtime.composition.snapshot(workspace).await.unwrap()
+    ));
+    runtime.host.stop().await.unwrap();
+}
+
+#[tokio::test]
+async fn managed_switch_rejects_replaced_ready_node_artifact_after_preparation() {
+    use runtime_core::runtime_backend::{RuntimeArtifactReference, RuntimeBackendError};
+    use runtime_extension_host::RuntimeArtifactResolver;
+
+    struct ReplacingResolver {
+        resolver: ApiRuntimeArtifactResolver,
+        store: MainDurableStore,
+        node_id: String,
+        target: std::sync::OnceLock<Uuid>,
+    }
+    #[async_trait::async_trait]
+    impl RuntimeArtifactResolver for ReplacingResolver {
+        async fn resolve(
+            &self,
+            artifact: &RuntimeArtifactReference,
+        ) -> Result<PathBuf, RuntimeBackendError> {
+            let path = self.resolver.resolve(artifact).await?;
+            if let Some(&target) = self
+                .target
+                .get()
+                .filter(|target| target.to_string() == artifact.as_str())
+            {
+                // prepare_package has already captured the row, and the first switch lease is released.
+                let result = sqlx::query("update extension_artifact_instances set manifest_fingerprint = 'sha256:replacement' where node_id = $1 and installation_id = $2 and artifact_status = 'ready'")
+                    .bind(&self.node_id).bind(target).execute(self.store.pool()).await.unwrap();
+                assert_eq!(result.rows_affected(), 1);
+            }
+            Ok(path)
+        }
+    }
+
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let actor_id = sqlx::query_scalar("select id from users where account='root'")
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+    let actor = AuthRepository::load_actor_context_for_user(&state.store, actor_id)
+        .await
+        .unwrap();
+    let resolver = Arc::new(ReplacingResolver {
+        resolver: ApiRuntimeArtifactResolver::new(
+            state.store.clone(),
+            &state.api_node_id,
+            &state.provider_install_root,
+        ),
+        store: state.store.clone(),
+        node_id: state.api_node_id.clone(),
+        target: std::sync::OnceLock::new(),
+    });
+    let runtime = RuntimeFixture::with_artifact_resolver(&state, resolver.clone(), false);
+    let management = management_for_snapshot(&state, &runtime);
+    let current = install_event_candidate(&runtime, &management, &actor, "a", "1.0.0").await;
+    management
+        .enable_plugin(EnablePluginCommand {
+            actor_user_id: actor_id,
+            installation_id: current,
+        })
+        .await
+        .unwrap();
+    let target = install_event_candidate(&runtime, &management, &actor, "a", "2.0.0").await;
+    resolver.target.set(target).unwrap();
+    let workspace = actor.current_workspace_id;
+    let before = runtime.composition.snapshot(workspace).await.unwrap();
+    let authority_facts = || async {
+        sqlx::query_as::<_, (time::OffsetDateTime, i64)>(
+            "select i.updated_at, r.revision from extension_installations i join plugin_contribution_authorization_revisions r on r.installation_id = i.id where i.id = $1 and r.workspace_id = $2",
+        ).bind(target).bind(workspace).fetch_one(runtime.store.pool()).await.unwrap()
+    };
+    let expected = authority_facts().await;
+    let result = management
+        .for_plugin_console_operation(
+            domain::ConsolePolicyGroup::other("other.plugins").unwrap(),
+            "plugins.families.switch",
+        )
+        .switch_version(SwitchPluginVersionCommand {
+            actor_user_id: actor_id,
+            provider_code: "acme.composition-a".into(),
+            target_installation_id: target,
+        })
+        .await;
+    let replacement = runtime
+        .store
+        .get_local_installation(&state.api_node_id, target)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        replacement.artifact.manifest_fingerprint.as_deref(),
+        Some("sha256:replacement")
+    );
+    let error = result.expect_err("switch committed against a different Ready artifact row");
+    assert!(
+        error
+            .to_string()
+            .contains("managed candidate node artifact changed during preparation"),
+        "{error:#}"
+    );
+    assert_eq!(authority_facts().await, expected);
+    assert_eq!(
+        replacement.artifact.artifact_status,
+        domain::PluginArtifactInstanceStatus::Ready
+    );
+    assert_eq!(
+        replacement.artifact.runtime_status,
+        domain::PluginRuntimeStatus::Inactive
+    );
+    let source = runtime
+        .store
+        .get_local_installation(&state.api_node_id, current)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        source.installation.desired_state,
+        domain::PluginDesiredState::ActiveRequested
+    );
+    assert_eq!(
+        source.artifact.runtime_status,
+        domain::PluginRuntimeStatus::Active
+    );
+    let assignments = runtime.store.list_assignments(workspace).await.unwrap();
+    assert_eq!(
+        assignments
+            .iter()
+            .find(|assignment| assignment.provider_code == "acme.composition-a")
+            .unwrap()
+            .installation_id,
+        current
+    );
+    assert!(Arc::ptr_eq(
+        &before,
+        &runtime.composition.snapshot(workspace).await.unwrap()
+    ));
+    runtime.host.stop().await.unwrap();
+}
+
+#[path = "boot_refresh_removal_tests.rs"]
+mod boot_refresh_removal_tests;

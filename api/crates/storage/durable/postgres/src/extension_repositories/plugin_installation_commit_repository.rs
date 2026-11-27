@@ -117,6 +117,23 @@ async fn validate_admission(
 
 #[async_trait]
 impl PluginInstallationLease for PgPluginInstallationLease {
+    async fn node_runtime_is_active(&mut self, node_id: &str) -> Result<bool> {
+        let connection = self
+            .connection
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("installation lease released"))?;
+        Ok(sqlx::query_scalar(
+            "select a.runtime_status = 'active' from extension_artifact_instances a \
+             join extension_installations i on i.id = a.installation_id \
+             where i.plugin_id = $1 and a.node_id = $2",
+        )
+        .bind(&self.admission.plugin_id)
+        .bind(node_id)
+        .fetch_optional(&mut **connection)
+        .await?
+        .unwrap_or(false))
+    }
+
     async fn commit(
         &mut self,
         input: &CommitPluginInstallationInput,
@@ -197,7 +214,7 @@ impl PluginInstallationLease for PgPluginInstallationLease {
 }
 
 async fn write_installation(
-    connection: &mut PgConnection,
+    transaction: &mut sqlx::Transaction<'_, Postgres>,
     input: &CommitPluginInstallationInput,
 ) -> Result<domain::PluginInstallationRecord> {
     let installation = &input.installation;
@@ -296,18 +313,24 @@ async fn write_installation(
     .bind(installation.is_system_reserved)
     .bind(installation.actor_user_id)
     .bind(installation.actor_user_id)
-    .fetch_one(&mut *connection)
+    .fetch_one(&mut **transaction)
     .await?;
     let record = map_installation(row)?;
     let installation_id = record.id;
     crate::plugin_settings_template_repository::retain_settings_template_defaults(
-        connection,
+        transaction,
         &record,
         &input.settings_templates,
     )
     .await?;
 
     let artifact = &input.artifact_instance;
+    crate::plugin_repository::lock_node_artifact_slot(
+        transaction,
+        &artifact.node_id,
+        installation_id,
+    )
+    .await?;
     let selects_network_egress_current = artifact.is_current
         && installation.category == domain::ExtensionCategory::RuntimeExtensions
         && installation
@@ -324,12 +347,12 @@ async fn write_installation(
         );
         sqlx::query("select pg_advisory_xact_lock(hashtext($1))")
             .bind(family_lock)
-            .execute(&mut *connection)
+            .execute(&mut **transaction)
             .await?;
         sqlx::query(
             r#"
                 update extension_artifact_instances artifact
-                set is_current = false, checked_at = now()
+                set is_current = false, checked_at = greatest(now(), artifact.checked_at + interval '1 microsecond')
                 from extension_installations retained
                 where retained.id = artifact.installation_id
                   and artifact.node_id = $1
@@ -344,7 +367,7 @@ async fn write_installation(
         .bind(installation.category.as_str())
         .bind(&installation.organization)
         .bind(&installation.provider_code)
-        .execute(&mut *connection)
+        .execute(&mut **transaction)
         .await?;
     }
     sqlx::query(
@@ -363,7 +386,7 @@ async fn write_installation(
                 artifact_status = excluded.artifact_status,
                 runtime_status = excluded.runtime_status,
                 availability_status = excluded.availability_status,
-                checked_at = excluded.checked_at,
+                checked_at = greatest(excluded.checked_at, extension_artifact_instances.checked_at + interval '1 microsecond'),
                 last_error = excluded.last_error,
                 is_current = excluded.is_current
             "#,
@@ -381,7 +404,7 @@ async fn write_installation(
     .bind(artifact.checked_at)
     .bind(&artifact.last_error)
     .bind(artifact.is_current)
-    .execute(&mut *connection)
+    .execute(&mut **transaction)
     .await?;
 
     if let Some(package_catalog) = &input.package_catalog {
@@ -408,13 +431,13 @@ async fn write_installation(
         .bind(package_catalog.projection_status.as_str())
         .bind(&package_catalog.last_error_message)
         .bind(package_catalog.refreshed_at)
-        .execute(&mut *connection)
+        .execute(&mut **transaction)
         .await?;
     }
 
     sqlx::query("delete from node_contribution_registry where installation_id = $1")
         .bind(installation_id)
-        .execute(&mut *connection)
+        .execute(&mut **transaction)
         .await?;
     for entry in &input.node_contributions.entries {
         sqlx::query(
@@ -459,13 +482,13 @@ async fn write_installation(
         .bind(entry.experimental)
         .bind(&entry.dependency_installation_kind)
         .bind(&entry.dependency_plugin_version_range)
-        .execute(&mut *connection)
+        .execute(&mut **transaction)
         .await?;
     }
 
     sqlx::query("delete from js_dependency_registry where installation_id = $1")
         .bind(installation_id)
-        .execute(&mut *connection)
+        .execute(&mut **transaction)
         .await?;
     for entry in &input.js_dependencies.entries {
         sqlx::query(
@@ -492,13 +515,13 @@ async fn write_installation(
         .bind(&entry.permissions.network)
         .bind(&entry.permissions.filesystem)
         .bind(&entry.permissions.env)
-        .execute(&mut *connection)
+        .execute(&mut **transaction)
         .await?;
     }
 
     sqlx::query("delete from frontend_block_catalog where installation_id = $1")
         .bind(installation_id)
-        .execute(&mut *connection)
+        .execute(&mut **transaction)
         .await?;
     for entry in &input.frontend_blocks.entries {
         let context_contract = serde_json::json!({
@@ -539,7 +562,7 @@ async fn write_installation(
         .bind(serde_json::to_value(&entry.ui_capabilities)?)
         .bind(&entry.ui_registration)
         .bind(entry.block_registration)
-        .execute(&mut *connection)
+        .execute(&mut **transaction)
         .await?;
     }
 
@@ -558,7 +581,7 @@ async fn write_installation(
         .bind(&asset.sha256)
         .bind(&asset.media_type)
         .bind(&asset.bytes)
-        .fetch_optional(&mut *connection)
+        .fetch_optional(&mut **transaction)
         .await?;
         if inserted.is_none() {
             let matches: bool = sqlx::query_scalar(
@@ -573,7 +596,7 @@ async fn write_installation(
             .bind(&asset.sha256)
             .bind(&asset.media_type)
             .bind(&asset.bytes)
-            .fetch_one(&mut *connection)
+            .fetch_one(&mut **transaction)
             .await?;
             if !matches {
                 anyhow::bail!("retained frontend module asset identity conflict");
@@ -582,7 +605,7 @@ async fn write_installation(
     }
 
     crate::frontend_block_catalog_repository::plugin_components::sync_plugin_components(
-        connection,
+        transaction,
         installation_id,
         &input.frontend_blocks,
         installation.actor_user_id,

@@ -102,26 +102,6 @@ impl ModelProviderRepository for MemoryPluginManagementRepository {
             .collect())
     }
 
-    async fn reassign_instances_to_installation(
-        &self,
-        input: &ReassignModelProviderInstancesInput,
-    ) -> Result<Vec<ModelProviderInstanceRecord>> {
-        let mut instances = self.instances.write().await;
-        let mut migrated = Vec::new();
-        for instance in instances.values_mut() {
-            if instance.workspace_id == input.workspace_id
-                && instance.provider_code == input.provider_code
-            {
-                instance.installation_id = input.target_installation_id;
-                instance.protocol = input.target_protocol.clone();
-                instance.updated_by = input.updated_by;
-                instance.updated_at = OffsetDateTime::now_utc();
-                migrated.push(instance.clone());
-            }
-        }
-        Ok(migrated)
-    }
-
     async fn upsert_catalog_cache(
         &self,
         input: &UpsertModelProviderCatalogCacheInput,
@@ -223,7 +203,7 @@ impl ModelProviderRepository for MemoryPluginManagementRepository {
         &self,
         input: &crate::ports::CreateModelProviderPreviewSessionInput,
     ) -> Result<domain::ModelProviderPreviewSessionRecord> {
-        Ok(domain::ModelProviderPreviewSessionRecord {
+        let record = domain::ModelProviderPreviewSessionRecord {
             id: input.session_id,
             workspace_id: input.workspace_id,
             actor_user_id: input.actor_user_id,
@@ -233,18 +213,36 @@ impl ModelProviderRepository for MemoryPluginManagementRepository {
             models_json: input.models_json.clone(),
             expires_at: input.expires_at,
             created_at: OffsetDateTime::now_utc(),
-        })
+        };
+        self.preview_sessions
+            .write()
+            .await
+            .insert(record.id, record.clone());
+        Ok(record)
     }
 
     async fn get_preview_session(
         &self,
-        _workspace_id: Uuid,
-        _session_id: Uuid,
+        workspace_id: Uuid,
+        session_id: Uuid,
     ) -> Result<Option<domain::ModelProviderPreviewSessionRecord>> {
-        Ok(None)
+        Ok(self
+            .preview_sessions
+            .read()
+            .await
+            .get(&session_id)
+            .filter(|record| record.workspace_id == workspace_id)
+            .cloned())
     }
 
-    async fn delete_preview_session(&self, _workspace_id: Uuid, _session_id: Uuid) -> Result<()> {
+    async fn delete_preview_session(&self, workspace_id: Uuid, session_id: Uuid) -> Result<()> {
+        let mut sessions = self.preview_sessions.write().await;
+        if sessions
+            .get(&session_id)
+            .is_some_and(|record| record.workspace_id == workspace_id)
+        {
+            sessions.remove(&session_id);
+        }
         Ok(())
     }
 

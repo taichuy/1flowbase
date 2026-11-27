@@ -199,6 +199,7 @@ async fn nc_02b_sync_egresses_exposes_only_the_validated_provider_catalog() {
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        None,
         worker_config(),
     )
     .await
@@ -240,6 +241,7 @@ async fn nc_02c_provisions_config_only_at_worker_start_without_stdio_leak_and_wi
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        None,
         worker_config(),
     )
     .await
@@ -318,6 +320,7 @@ async fn ac_002_ac_003_ac_005_ac_014_resolves_public_lease_and_cleans_mihomo_tre
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        None,
         worker_config(),
     )
     .await
@@ -361,6 +364,7 @@ async fn ac_004_rejects_non_loopback_or_expired_leases_before_core_can_consume_t
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        None,
         worker_config(),
     )
     .await
@@ -400,6 +404,7 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        None,
         worker_config(),
     )
     .await
@@ -461,6 +466,7 @@ async fn ac_005_overlapping_leases_release_their_own_identity_without_cross_rele
         plugin_id,
         &package.path().display().to_string(),
         "fixture-v1",
+        None,
         worker_config(),
     )
     .await

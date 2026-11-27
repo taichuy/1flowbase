@@ -599,7 +599,27 @@ async fn root_2014_ac_014_selected_v2_keeps_v1_running_until_restart() {
             .loaded_count,
         1
     );
+    assert_eq!(
+        state
+            .store
+            .get_installation(first)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired_state,
+        PluginDesiredState::ActiveRequested
+    );
     formally_enable_native(&state, second).await;
+    assert_eq!(
+        state
+            .store
+            .get_installation(first)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired_state,
+        PluginDesiredState::Disabled
+    );
     // The ready check observed Disabled; native selection only changed desired state.
     assert_eq!(
         state
@@ -678,6 +698,295 @@ async fn root_2014_ac_014_selected_v2_keeps_v1_running_until_restart() {
             .runtime_status,
         PluginRuntimeStatus::Active
     );
+    let retired = state
+        .store
+        .get_artifact_instance(&state.api_node_id, first)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retired.runtime_status, PluginRuntimeStatus::Inactive);
+    assert_eq!(
+        retired.availability_status,
+        PluginAvailabilityStatus::Disabled
+    );
     let _ = fs::remove_dir_all(one);
     let _ = fs::remove_dir_all(two);
+}
+
+#[tokio::test]
+async fn startup_loader_clears_active_runtime_for_a_disabled_target() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let root = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+    let installation_id = seed_pending_restart_host_extension(&state, &root, "1.0.0").await;
+    formally_enable_native(&state, installation_id).await;
+    assert_eq!(
+        load_host_extensions_at_startup(&state)
+            .await
+            .unwrap()
+            .loaded_count,
+        1
+    );
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    native_selection_service(&state)
+        .disable_plugin(control_plane::plugin_management::DisablePluginCommand {
+            actor_user_id: actor.id,
+            installation_id,
+        })
+        .await
+        .unwrap();
+    assert!(!state.store.list_native_plugin_targets().await.unwrap()[0].enabled);
+    sqlx::query("update extension_artifact_instances set last_error='checksum_missing' where node_id=$1 and installation_id=$2")
+        .bind(&state.api_node_id).bind(installation_id).execute(state.store.pool()).await.unwrap();
+    let before = state
+        .store
+        .get_artifact_instance(&state.api_node_id, installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(before.runtime_status, PluginRuntimeStatus::Active);
+    assert_eq!(
+        load_host_extensions_at_startup(&state)
+            .await
+            .unwrap()
+            .loaded_count,
+        0
+    );
+    let after = state
+        .store
+        .get_artifact_instance(&state.api_node_id, installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.runtime_status, PluginRuntimeStatus::Inactive);
+    assert_eq!(
+        after.availability_status,
+        PluginAvailabilityStatus::Disabled
+    );
+    assert_eq!(after.artifact_status, before.artifact_status);
+    assert_eq!(after.last_error, before.last_error);
+    assert!(after.checked_at > before.checked_at);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn startup_loader_clears_active_runtime_for_a_skipped_target() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let root = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+    let id = seed_pending_restart_host_extension(&state, &root, "1.0.0").await;
+    formally_enable_native(&state, id).await;
+    assert_eq!(
+        load_host_extensions_at_startup(&state)
+            .await
+            .unwrap()
+            .loaded_count,
+        1
+    );
+    // A stale runtime observation may outlive the local artifact readiness observation.
+    sqlx::query("update extension_artifact_instances set artifact_status='missing' where node_id=$1 and installation_id=$2")
+        .bind(&state.api_node_id).bind(id).execute(state.store.pool()).await.unwrap();
+    let summary = load_host_extensions_at_startup(&state).await.unwrap();
+    assert_eq!(summary.skipped_count, 1);
+    assert_eq!(summary.loaded_count, 0);
+    assert!(state.store.list_native_plugin_targets().await.unwrap()[0].enabled);
+    let after = state
+        .store
+        .get_artifact_instance(&state.api_node_id, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.artifact_status, PluginArtifactInstanceStatus::Missing);
+    assert_eq!(after.runtime_status, PluginRuntimeStatus::Inactive);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn symmetric_f2_native_startup_rejects_tampered_artifact_marker() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let root = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+    let id = seed_pending_restart_host_extension(&state, &root, "1.0.0").await;
+    formally_enable_native(&state, id).await;
+    let before = state
+        .store
+        .get_artifact_instance(&state.api_node_id, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(before.artifact_status.is_ready());
+    let marker = root.join(".1flowbase-artifact.json");
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&marker).unwrap()).unwrap();
+    value["checksum"] = "sha256:tampered".into();
+    fs::write(marker, serde_json::to_vec(&value).unwrap()).unwrap();
+
+    let summary = load_host_extensions_at_startup(&state).await.unwrap();
+    let after = state
+        .store
+        .get_artifact_instance(&state.api_node_id, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        summary.loaded_count, 0,
+        "native startup accepted a changed marker checksum"
+    );
+    assert_eq!(summary.failed_count, 1);
+    assert_eq!(
+        after.artifact_status,
+        domain::PluginArtifactInstanceStatus::LoadFailed
+    );
+    assert_eq!(after.runtime_status, PluginRuntimeStatus::LoadFailed);
+    assert_eq!(after.manifest_fingerprint, before.manifest_fingerprint);
+    assert!(after.last_error.as_deref().unwrap().contains("checksum"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn symmetric_f2_native_startup_fences_node_artifact_changed_after_disk_validation() {
+    use crate::host_extension_loader::{
+        activate_prepared_host_extensions, prepare_host_extensions_at_startup,
+    };
+
+    let (state, _) = test_api_state_with_database_url().await;
+    let root = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+    let id = seed_pending_restart_host_extension(&state, &root, "1.0.0").await;
+    formally_enable_native(&state, id).await;
+    let prepared = prepare_host_extensions_at_startup(
+        &state.store,
+        &state.api_node_id,
+        &state.provider_install_root,
+        &state.host_extension_dropin_root,
+        state.allow_unverified_filesystem_dropins,
+    )
+    .await
+    .unwrap();
+    assert_eq!(prepared.native_targets()[0].installation_id, id);
+    sqlx::query("update extension_artifact_instances set last_error='checksum_missing' where node_id=$1 and installation_id=$2")
+        .bind(&state.api_node_id).bind(id).execute(state.store.pool()).await.unwrap();
+    let error = activate_prepared_host_extensions(&state.store, &state.api_node_id, prepared)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("native_plugin_artifact_changed"));
+    let after = state
+        .store
+        .get_artifact_instance(&state.api_node_id, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after.artifact_status,
+        PluginArtifactInstanceStatus::LoadFailed
+    );
+    assert_eq!(after.runtime_status, PluginRuntimeStatus::LoadFailed);
+    assert_eq!(
+        state
+            .store
+            .get_installation(id)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired_state,
+        PluginDesiredState::PendingRestart
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn native_startup_rejects_on_disk_changes_after_preparation() {
+    use crate::host_extension_loader::{
+        activate_prepared_host_extensions, prepare_host_extensions_at_startup,
+    };
+
+    for (file, contents) in [
+        ("manifest.yaml", "broken: ["),
+        (".1flowbase-artifact.json", "{}"),
+        ("host-extension.yaml", "broken: ["),
+    ] {
+        let (state, _) = test_api_state_with_database_url().await;
+        let root = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+        let id = seed_pending_restart_host_extension(&state, &root, "1.0.0").await;
+        formally_enable_native(&state, id).await;
+        let prepared = prepare_host_extensions_at_startup(
+            &state.store,
+            &state.api_node_id,
+            &state.provider_install_root,
+            &state.host_extension_dropin_root,
+            state.allow_unverified_filesystem_dropins,
+        )
+        .await
+        .unwrap();
+        assert_eq!(prepared.native_targets()[0].installation_id, id);
+        prepared
+            .apply_templates(&state.store, &state.api_node_id)
+            .await
+            .unwrap();
+        tokio::fs::write(root.join(file), contents).await.unwrap();
+        let result =
+            activate_prepared_host_extensions(&state.store, &state.api_node_id, prepared).await;
+        let after = state
+            .store
+            .get_artifact_instance(&state.api_node_id, id)
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::fs::remove_dir_all(root).await.unwrap();
+        let error = result.unwrap_err();
+        assert!(
+            error.to_string().contains("native_plugin_artifact_changed"),
+            "{file}: {error:#}"
+        );
+        assert_eq!(
+            after.artifact_status,
+            PluginArtifactInstanceStatus::LoadFailed,
+            "{file}"
+        );
+        assert_eq!(
+            after.runtime_status,
+            PluginRuntimeStatus::LoadFailed,
+            "{file}"
+        );
+        assert_eq!(
+            state
+                .store
+                .get_installation(id)
+                .await
+                .unwrap()
+                .unwrap()
+                .desired_state,
+            PluginDesiredState::PendingRestart
+        );
+    }
+}
+
+#[tokio::test]
+async fn native_startup_rejects_uploaded_artifact_missing_marker_even_without_expected_identity() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let root = create_current_node_host_extension_fixture(&state, "1.0.0", "uploaded").await;
+    let id = seed_pending_restart_host_extension(&state, &root, "1.0.0").await;
+    formally_enable_native(&state, id).await;
+    sqlx::query("update extension_artifact_instances set manifest_fingerprint=null where installation_id=$1")
+        .bind(id).execute(state.store.pool()).await.unwrap();
+    tokio::fs::remove_file(root.join(".1flowbase-artifact.json"))
+        .await
+        .unwrap();
+    let summary = load_host_extensions_at_startup(&state).await.unwrap();
+    assert_eq!((summary.loaded_count, summary.failed_count), (0, 1));
+    let artifact = state
+        .store
+        .get_artifact_instance(&state.api_node_id, id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(artifact.runtime_status, PluginRuntimeStatus::LoadFailed);
+    assert!(artifact
+        .last_error
+        .as_deref()
+        .unwrap()
+        .contains(".1flowbase-artifact.json"));
+    tokio::fs::remove_dir_all(root).await.unwrap();
 }

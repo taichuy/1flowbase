@@ -88,3 +88,16 @@ test('incomplete existing configuration is rejected without regenerating its sec
   assert.throws(() => initialize(options), /Missing API_DATABASE_URL/);
   assert.equal(fs.readFileSync(file, 'utf8'), "POSTGRES_PASSWORD='original'\n");
 });
+
+test('writable directories align nested paths without dereferencing symlinks', t => {
+  const { root, options } = fixture(t);
+  const nestedDir = path.join(options.writableDirectories[0], '1flowbase', 'nested');
+  const outsideTarget = path.join(root, 'outside.txt');
+  fs.mkdirSync(nestedDir, { recursive: true });
+  fs.writeFileSync(outsideTarget, 'keep-outside\n');
+  fs.symlinkSync(outsideTarget, path.join(nestedDir, 'escape-link'));
+  const result = initialize(options);
+  assert.equal(result.created, true);
+  assert.equal(fs.lstatSync(path.join(nestedDir, 'escape-link')).isSymbolicLink(), true);
+  assert.equal(fs.readFileSync(outsideTarget, 'utf8'), 'keep-outside\n');
+});

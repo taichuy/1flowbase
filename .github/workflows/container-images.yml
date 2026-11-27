@@ -657,6 +657,56 @@ jobs:
               pg_restore -h "'"$fixture_database"'" -U postgres -d restored_fixture --no-owner /tmp/fixture.dump
               test "$(psql -h "'"$fixture_database"'" -U postgres -d restored_fixture -Atqc "select count(*) from backup_fixture")" = 1
             '
+          mount_fixture="$(mktemp -d)"
+          chmod 0755 "$mount_fixture"
+          mkdir -p \
+            "$mount_fixture/storage" \
+            "$mount_fixture/packages" \
+            "$mount_fixture/installed" \
+            "$mount_fixture/dropins"
+          chmod 0755 \
+            "$mount_fixture/storage" \
+            "$mount_fixture/packages" \
+            "$mount_fixture/installed" \
+            "$mount_fixture/dropins"
+          docker run --rm --platform linux/amd64 \
+            -u 0:0 \
+            --entrypoint /bin/sh \
+            -v "$mount_fixture/storage:/app/api/storage" \
+            -v "$mount_fixture/packages:/app/api/plugins/packages" \
+            -v "$mount_fixture/installed:/app/api/plugins/installed" \
+            -v "$mount_fixture/dropins:/app/api/plugins/host-extension/dropins" \
+            "${{ steps.image_refs.outputs.scan_image_ref }}" \
+            -ceu '
+              owner="$(stat -c "%u:%g" /home/flowbase)"
+              uid="${owner%:*}"
+              gid="${owner#*:}"
+              for directory in /app/api/storage /app/api/plugins/packages /app/api/plugins/installed /app/api/plugins/host-extension/dropins; do
+                mkdir -p "$directory"
+                find "$directory" \( ! -user "$uid" -o ! -group "$gid" \) -exec chown -h "$owner" {} +
+              done
+            '
+          docker run --rm --platform linux/amd64 \
+            --entrypoint /bin/sh \
+            -v "$mount_fixture/storage:/app/api/storage" \
+            -v "$mount_fixture/packages:/app/api/plugins/packages" \
+            -v "$mount_fixture/installed:/app/api/plugins/installed" \
+            -v "$mount_fixture/dropins:/app/api/plugins/host-extension/dropins" \
+            "${{ steps.image_refs.outputs.scan_image_ref }}" \
+            -ceu '
+              mkdir -p \
+                /app/api/storage/extension-center/mcp \
+                /app/api/plugins/installed/1flowbase/2.0.installing-smoke \
+                /app/api/plugins/packages/smoke \
+                /app/api/plugins/host-extension/dropins/smoke
+            '
+          docker run --rm --platform linux/amd64 \
+            -u 0:0 \
+            --entrypoint /bin/sh \
+            -v "$mount_fixture:/cleanup" \
+            "${{ steps.image_refs.outputs.scan_image_ref }}" \
+            -ceu 'rm -rf /cleanup/*'
+          rm -rf "$mount_fixture"
 
       - name: Prepare Trivy report directory
         run: mkdir -p tmp/test-governance

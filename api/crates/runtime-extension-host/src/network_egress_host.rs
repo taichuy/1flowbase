@@ -1,3 +1,6 @@
+use crate::package_loader::{artifact_identity, verify_package_activation};
+use runtime_core::runtime_backend::LoadedRuntimeArtifactIdentity;
+
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File, OpenOptions},
@@ -104,20 +107,7 @@ struct NetworkEgressLeaseOwner {
 struct NetworkEgressSource {
     package_root: PathBuf,
     source_identity: String,
-}
-
-impl NetworkEgressSource {
-    fn resolve(package_root: &str, source_identity: &str) -> FrameworkResult<Self> {
-        let package_root = std::fs::canonicalize(package_root).map_err(|error| {
-            PluginFrameworkError::invalid_provider_package(format!(
-                "cannot resolve network egress package root: {error}"
-            ))
-        })?;
-        Ok(Self {
-            package_root,
-            source_identity: source_identity.to_string(),
-        })
-    }
+    identity: LoadedRuntimeArtifactIdentity,
 }
 
 impl NetworkEgressHost {
@@ -139,15 +129,21 @@ impl NetworkEgressHost {
         runtime_id: &str,
         plugin_id: &str,
         package_root: &str,
+        expected_fingerprint: Option<&str>,
         config: NetworkEgressWorkerConfig,
     ) -> FrameworkResult<Vec<EgressDescriptor>> {
         let package = NetworkEgressProviderPackage::load_from_dir(package_root)?;
-        if package.identifier() != plugin_id {
-            return Err(PluginFrameworkError::invalid_provider_package(format!(
-                "network egress package id {} does not match requested {plugin_id}",
-                package.identifier()
-            )));
-        }
+        let identity = artifact_identity(
+            &package.root,
+            &package.manifest,
+            package.manifest_fingerprint.clone(),
+        )?;
+        verify_package_activation(
+            &package.identifier(),
+            plugin_id,
+            &identity,
+            expected_fingerprint,
+        )?;
         let mut worker = NetworkEgressWorker::start(
             package.runtime_entry(),
             package.manifest.runtime.limits,
@@ -174,25 +170,39 @@ impl NetworkEgressHost {
         plugin_id: &str,
         package_root: &str,
         source_identity: &str,
+        expected_fingerprint: Option<&str>,
         config: NetworkEgressWorkerConfig,
-    ) -> FrameworkResult<()> {
-        let requested = NetworkEgressSource::resolve(package_root, source_identity)?;
+    ) -> FrameworkResult<LoadedRuntimeArtifactIdentity> {
+        let package_root = fs::canonicalize(package_root).map_err(|error| {
+            PluginFrameworkError::io(Some(std::path::Path::new(package_root)), error.to_string())
+        })?;
+        let package = NetworkEgressProviderPackage::load_from_dir(&package_root)?;
+        let identity = artifact_identity(
+            &package.root,
+            &package.manifest,
+            package.manifest_fingerprint.clone(),
+        )?;
+        verify_package_activation(
+            &package.identifier(),
+            plugin_id,
+            &identity,
+            expected_fingerprint,
+        )?;
+        let requested = NetworkEgressSource {
+            package_root,
+            source_identity: source_identity.to_string(),
+            identity: identity.clone(),
+        };
         if self
             .active_generations
             .get(runtime_id)
-            .and_then(|generation_id| self.sources.get(generation_id))
+            .and_then(|id| self.sources.get(id))
             == Some(&requested)
         {
-            return self.ensure_worker_is_live(runtime_id).await;
+            self.ensure_worker_is_live(runtime_id).await?;
+            return Ok(identity);
         }
 
-        let package = NetworkEgressProviderPackage::load_from_dir(&requested.package_root)?;
-        if package.identifier() != plugin_id {
-            return Err(PluginFrameworkError::invalid_provider_package(format!(
-                "network egress package id {} does not match requested {plugin_id}",
-                package.identifier()
-            )));
-        }
         let worker = NetworkEgressWorker::start(
             package.runtime_entry(),
             package.manifest.runtime.limits,
@@ -234,7 +244,7 @@ impl NetworkEgressHost {
                     .await?;
             }
         }
-        Ok(())
+        Ok(identity)
     }
 
     /// Resolves and validates a fresh HTTP forward-proxy lease for a caller-selected egress.
@@ -902,6 +912,7 @@ done
                 &fixture.plugin_id(),
                 fixture.path().to_str().unwrap(),
                 "installation=0.2.8",
+                None,
                 NetworkEgressWorkerConfig::from_secret_json(serde_json::json!({
                     "subscription_url": secret
                 })),
@@ -938,6 +949,7 @@ done
             &old_fixture.plugin_id(),
             old_fixture.path().to_str().unwrap(),
             "installation=0.2.5",
+            None,
             NetworkEgressWorkerConfig::from_secret_json(serde_json::json!({
                 "subscription_url": "secret-a"
             })),
@@ -974,6 +986,7 @@ done
             &new_fixture.plugin_id(),
             new_fixture.path().to_str().unwrap(),
             "installation=0.2.8",
+            None,
             NetworkEgressWorkerConfig::from_secret_json(serde_json::json!({
                 "subscription_url": "secret-a"
             })),

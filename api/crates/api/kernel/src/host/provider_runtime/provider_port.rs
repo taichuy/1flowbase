@@ -92,28 +92,32 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn activate_plugin(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         match installation.contract_version.as_str() {
-            "1flowbase.extension-bus/v1" => {
-                self.services
-                    .managed_composition()?
-                    .rebuild_installation(installation.id)
-                    .await
-            }
+            "1flowbase.extension-bus/v1" => self
+                .services
+                .managed_composition()?
+                .rebuild_installation(installation.id)
+                .await
+                .map(|()| None),
             plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT => {
                 let binding = self.resolve_model_provider_binding(installation)?;
-                self.ensure_provider_loaded(&binding).await
+                self.ensure_provider_loaded(&binding).await.map(Some)
             }
-            "1flowbase.data_source/v1" => self.ensure_data_source_loaded(installation).await,
-            "1flowbase.capability/v1" => self.ensure_capability_loaded(installation).await,
+            "1flowbase.data_source/v1" => {
+                self.ensure_data_source_loaded(installation).await.map(Some)
+            }
+            "1flowbase.capability/v1" => {
+                self.ensure_capability_loaded(installation).await.map(Some)
+            }
             // Network egress workers receive their private configuration only through `sync`.
             // Installation activation is intentionally deferred so no worker can start without it.
-            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => Ok(()),
-            extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1 => {
-                self.services
-                    .activate_provider_distribution_runtime(installation)
-                    .await
-            }
+            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => Ok(None),
+            extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1 => self
+                .services
+                .activate_provider_distribution_runtime(installation)
+                .await
+                .map(Some),
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }
@@ -183,9 +187,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn ensure_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         let binding = self.resolve_model_provider_binding(installation)?;
-        self.ensure_provider_loaded(&binding).await
+        self.ensure_provider_loaded(&binding).await.map(Some)
     }
 
     async fn validate_provider(

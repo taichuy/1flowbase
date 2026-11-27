@@ -5,22 +5,24 @@ impl DataSourceRuntimePort for RuntimeExtensionHost {
     async fn activate_data_source(
         &self,
         request: RuntimePackageActivation,
-    ) -> Result<Vec<extension_contracts::DataModelTemplateDescriptor>, RuntimeBackendError> {
+    ) -> Result<runtime_core::runtime_backend::LoadedDataSourceActivation, RuntimeBackendError>
+    {
         self.ensure_activating()?;
         let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
+        let eligibility = request.legacy_eligibility.map(legacy_eligibility);
         let mut host = self.data_source_host.write().await;
-        if !host.is_loaded(&request.plugin_id) {
-            match request.legacy_eligibility {
-                Some(eligibility) => {
-                    host.load_legacy_installed(&package_root, &legacy_eligibility(eligibility))
-                        .await
-                }
-                None => host.load(&package_root).await,
-            }
-            .map_err(RuntimeBackendError::from)?;
-        }
-        host.data_model_templates(&request.plugin_id)
-            .map_err(RuntimeBackendError::from)
+        let identity = host
+            .load_if_needed(
+                &package_root,
+                &request.plugin_id,
+                request.expected_manifest_fingerprint.as_deref(),
+                eligibility.as_ref(),
+            )
+            .await?;
+        Ok(runtime_core::runtime_backend::LoadedDataSourceActivation {
+            identity,
+            templates: host.data_model_templates(&request.plugin_id)?,
+        })
     }
 
     async fn deactivate_data_source(&self, plugin_id: &str) -> Result<(), RuntimeBackendError> {

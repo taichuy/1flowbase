@@ -105,6 +105,20 @@ impl ContributionAuthorityLease for Lease {
     ) -> TestFuture<LifecycleOutboxRecord> {
         panic!("unexpected resume")
     }
+    fn stage_managed_settings_templates<'a>(
+        &'a mut self,
+        installation_ids: Vec<Uuid>,
+        catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
+        _event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            anyhow::ensure!(
+                installation_ids.is_empty() && catalog.is_none() && _event_catalog.is_none(),
+                "settings templates are not supported by this fixture"
+            );
+            Ok(())
+        })
+    }
     fn commit_managed_settings_templates(
         self: Box<Self>,
         installation_ids: Vec<Uuid>,
@@ -139,7 +153,10 @@ impl PluginContributionAuthorityRepository for Authority {
     }
     async fn lock_contribution_authority_batch(
         &self,
+        _workspaces: &[Uuid],
         _: &[(Uuid, Uuid)],
+        _verify_all_active_scopes: bool,
+        _node: Option<control_plane_contracts::ports::ManagedArtifactVerification<'_>>,
     ) -> anyhow::Result<Box<dyn ContributionAuthorityLease>> {
         panic!("unexpected batch")
     }

@@ -51,9 +51,13 @@ write_value() {
 if [ ! -f "$file" ] && existing_database; then
   fail 'Existing database without deployment configuration; restore the original config'
 fi
-for directory in "$config_root" "$@"; do
+mkdir -p "$config_root"
+chown "$owner" "$config_root"
+owner_uid=${owner%:*}
+owner_gid=${owner#*:}
+for directory in "$@"; do
   mkdir -p "$directory"
-  chown "$owner" "$directory"
+  find "$directory" \( ! -user "$owner_uid" -o ! -group "$owner_gid" \) -exec chown -h "$owner" {} +
 done
 
 temporary=

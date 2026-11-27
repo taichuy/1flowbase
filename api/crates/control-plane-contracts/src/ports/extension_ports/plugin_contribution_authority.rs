@@ -30,7 +30,14 @@ pub struct RevokeContributionAuthorizationInput {
     pub audit_log: AuditLogRecord,
 }
 
+/// Node-local publication must validate the installed package under the node slot lock.
+pub struct ManagedArtifactVerification<'a> {
+    pub node_id: &'a str,
+    pub validate_manifest: super::plugin::ValidateInstalledPluginManifest,
+}
+
 pub struct ManagedInstallationSwitch {
+    pub validate_manifest: super::plugin::ValidateInstalledPluginManifest,
     pub workspace_id: Uuid,
     pub current_installation_id: Uuid,
     pub target_installation_id: Uuid,
@@ -68,6 +75,10 @@ pub trait ContributionAuthorityLease: Send {
     fn snapshot(&self) -> &PluginContributionAuthoritySnapshot;
     fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot];
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord>;
+    /// Node-local artifact observed under the publication lease, if requested.
+    fn node_artifact(&self, _: Uuid) -> Option<&domain::PluginArtifactInstanceRecord> {
+        None
+    }
     /// Current facts read on this lease's connection. System-workspace leases include the
     /// provider inventory under the system fence; workspace leases retain their scoped facts.
     /// Consumer grants remain in snapshot(); provider facts never confer consumer authority.
@@ -123,6 +134,12 @@ pub trait ContributionAuthorityLease: Send {
     /// Apply settings defaults for the locked, enabled system installations and commit this
     /// authority lease atomically, including optional permission and event catalogs. An empty list skips
     /// template application; any failure rolls back defaults and grants.
+    fn stage_managed_settings_templates<'a>(
+        &'a mut self,
+        installation_ids: Vec<Uuid>,
+        catalog: Option<crate::CompiledConsolePolicyCatalog>,
+        event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
     fn commit_managed_settings_templates(
         self: Box<Self>,
         installation_ids: Vec<Uuid>,
@@ -138,10 +155,14 @@ pub trait PluginContributionAuthorityRepository: Send + Sync {
         &self,
         input: &ManagedInstallationSwitch,
     ) -> Result<Box<dyn ManagedInstallationSwitchLease>>;
-    /// Sorted, deduplicated scopes share one transaction; an empty batch is invalid.
+    /// Lock the union of explicit workspaces and expected scopes, then include all live
+    /// active managed members. A global check also fences scopes not known to the caller.
     async fn lock_contribution_authority_batch(
         &self,
+        workspaces: &[Uuid],
         scopes: &[(Uuid, Uuid)],
+        verify_all_active_scopes: bool,
+        node: Option<ManagedArtifactVerification<'_>>,
     ) -> Result<Box<dyn ContributionAuthorityLease>>;
     async fn contribution_authority_workspaces(&self, installation_id: Uuid) -> Result<Vec<Uuid>>;
     /// One lock per installation/workspace provides all contribution facts without self-deadlock.

@@ -7,6 +7,31 @@ fn managed_input(actor: Uuid, version: &str) -> CommitPluginInstallationInput {
     record.installation.protocol = "stdio_json_multiplex_v1".into();
     record.installation.metadata_json = json!({"managed_service":{"scope":"system"}});
     record.artifact_instance.is_current = false;
+    let path = std::env::temp_dir().join(format!(
+        "managed-switch-{}",
+        record.installation.installation_id
+    ));
+    let raw =
+        control_plane_test_support::managed_manifest_fixture("northwind.settings-page", version);
+    let fp = format!(
+        "sha256:{:x}",
+        base16ct::HexDisplay(&<sha2::Sha256 as sha2::Digest>::digest(raw.as_bytes()))
+    );
+    std::fs::create_dir_all(&path).unwrap();
+    std::fs::write(path.join("manifest.yaml"), raw).unwrap();
+    std::fs::write(
+        path.join(".1flowbase-artifact.json"),
+        serde_json::to_vec(&json!({
+            "plugin_id": record.installation.plugin_id,
+            "version": version,
+            "checksum": record.installation.expected_checksum,
+            "manifest_fingerprint": fp,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    record.artifact_instance.local_path = Some(path.display().to_string());
+    record.artifact_instance.manifest_fingerprint = Some(fp);
     record
 }
 
@@ -174,6 +199,7 @@ async fn system_managed_switch_is_atomic_without_workspace_assignment() {
         .await
         .unwrap();
     let mut command = ManagedInstallationSwitch {
+        validate_manifest: control_plane_test_support::validate_installed_managed_manifest,
         workspace_id: domain::SYSTEM_SCOPE_ID,
         current_installation_id: current.id,
         target_installation_id: target.id,
@@ -448,6 +474,8 @@ async fn system_managed_rollback_reapplies_templates_with_monotonic_generations(
         if let Some(current) = previous {
             store
                 .lock_managed_installation_switch(&ManagedInstallationSwitch {
+                    validate_manifest:
+                        control_plane_test_support::validate_installed_managed_manifest,
                     workspace_id: domain::SYSTEM_SCOPE_ID,
                     current_installation_id: current,
                     target_installation_id: target.id,
@@ -665,6 +693,7 @@ async fn system_binding_targets_are_included_in_candidate_switch_set() {
         .await
         .unwrap();
     let command = ManagedInstallationSwitch {
+        validate_manifest: control_plane_test_support::validate_installed_managed_manifest,
         workspace_id: domain::SYSTEM_SCOPE_ID,
         current_installation_id: current,
         target_installation_id: target,

@@ -4,6 +4,7 @@ param(
   [string]$RootPassword = $env:FLOWBASE_ROOT_PASSWORD,
   [string]$ProviderSecret = $env:FLOWBASE_PROVIDER_SECRET,
   [string]$WebPort = $env:FLOWBASE_WEB_PORT,
+  [string]$AllowedOrigins = $env:FLOWBASE_ALLOWED_ORIGINS,
   [string]$CookieSecure = $env:FLOWBASE_COOKIE_SECURE,
   [string]$DatabaseMode = $env:FLOWBASE_DATABASE_MODE,
   [string]$ExternalPostgresHost = $env:FLOWBASE_EXTERNAL_POSTGRES_HOST,
@@ -58,8 +59,13 @@ if (-not $PluginGithubProxyUrl -and $env:API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL) {
 if (-not $OfficialPluginSignatureRequired -and $env:API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED) {
   $OfficialPluginSignatureRequired = $env:API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED
 }
+if (-not $AllowedOrigins -and $env:API_ALLOWED_ORIGINS) {
+  $AllowedOrigins = $env:API_ALLOWED_ORIGINS
+}
+$CookieSecureExplicit = [bool]$CookieSecure
 if (-not $CookieSecure -and $env:API_COOKIE_SECURE) {
   $CookieSecure = $env:API_COOKIE_SECURE
+  $CookieSecureExplicit = $true
 }
 
 function Fail([string]$Message) {
@@ -117,8 +123,8 @@ function Test-ProviderSecretMasterKeyPlaceholder([string]$Value) {
   )
 }
 
-function New-ProviderSecretMasterKey() {
-  $Bytes = New-Object byte[] 32
+function New-RandomHex([int]$ByteLength) {
+  $Bytes = New-Object byte[] $ByteLength
   $Generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
   try {
     $Generator.GetBytes($Bytes)
@@ -127,6 +133,39 @@ function New-ProviderSecretMasterKey() {
   }
 
   return [System.BitConverter]::ToString($Bytes).Replace("-", "").ToLowerInvariant()
+}
+
+function New-ProviderSecretMasterKey() {
+  return New-RandomHex 32
+}
+
+function Test-PostgresPasswordPlaceholder([string]$Value) {
+  if ($null -eq $Value) {
+    return $true
+  }
+
+  $TrimmedValue = $Value.Trim()
+  return $TrimmedValue -in @(
+    "",
+    "change-me-db-password"
+  )
+}
+
+function Ensure-PostgresPassword() {
+  if (-not $FreshEnvCreated) {
+    return
+  }
+
+  $Mode = Convert-ToDatabaseMode "DATABASE_MODE" (Read-EnvValue "DATABASE_MODE" ".\docker\.env")
+  if ($Mode -ne "internal" -or (Test-PostgresDataExists)) {
+    return
+  }
+
+  $CurrentValue = Read-EnvValue "POSTGRES_PASSWORD" ".\docker\.env"
+  if (Test-PostgresPasswordPlaceholder $CurrentValue) {
+    Set-EnvValue "POSTGRES_PASSWORD" (New-RandomHex 24) ".\docker\.env"
+    Write-Host "Generated POSTGRES_PASSWORD in docker/.env."
+  }
 }
 
 function Ensure-ProviderSecretMasterKey() {
@@ -276,6 +315,7 @@ function Show-EnvSummary([string]$Path) {
       "BOOTSTRAP_ROOT_ACCOUNT",
       "BOOTSTRAP_ROOT_PASSWORD",
       "API_PROVIDER_SECRET_MASTER_KEY",
+      "API_ALLOWED_ORIGINS",
       "API_COOKIE_SECURE",
       "API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL",
       "API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED"
@@ -417,7 +457,11 @@ function Prompt-TrueFalseEnvValue([string]$Key, [string]$Label) {
   }
 
   if ($InputValue) {
-    Set-EnvValue $Key (Convert-ToTrueFalseEnvValue $Key $InputValue) ".\docker\.env"
+    $NormalizedValue = Convert-ToTrueFalseEnvValue $Key $InputValue
+    if ($Key -eq "API_COOKIE_SECURE") {
+      $script:CookieSecureExplicit = $true
+    }
+    Set-EnvValue $Key $NormalizedValue ".\docker\.env"
     Write-Host "Updated $Key in docker/.env."
   } else {
     if ($CurrentValue) {
@@ -663,6 +707,7 @@ if ($RestoreBackup) {
 }
 
 $PromptConfigValues = $false
+$FreshEnvCreated = $false
 $OldPostgresPassword = $null
 $OldBootstrapRootAccount = $null
 $OldBootstrapRootPassword = $null
@@ -677,6 +722,7 @@ if (Test-Path ".\docker\.env") {
 if (-not (Test-Path ".\docker\.env")) {
   Copy-Item ".\docker\.env.example" ".\docker\.env"
   Write-Host "Created docker/.env from docker/.env.example."
+  $FreshEnvCreated = $true
   Ensure-DatabaseModeDefault ".\docker\.env"
   Ensure-OfficialPluginSignatureRequired
   Ensure-CookieSecureDefault
@@ -716,6 +762,10 @@ if ($ProviderSecret) {
 if ($WebPort) {
   Set-EnvValue "WEB_PORT" $WebPort ".\docker\.env"
   Write-Host "Updated WEB_PORT in docker/.env."
+}
+if ($AllowedOrigins) {
+  Set-EnvValue "API_ALLOWED_ORIGINS" $AllowedOrigins ".\docker\.env"
+  Write-Host "Updated API_ALLOWED_ORIGINS in docker/.env."
 }
 if ($CookieSecure) {
   $CookieSecure = Convert-ToTrueFalseEnvValue "API_COOKIE_SECURE" $CookieSecure
@@ -762,6 +812,8 @@ if ($OfficialPluginSignatureRequired) {
   Write-Host "Updated API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED in docker/.env."
 }
 
+Ensure-PostgresPassword
+
 if ($ShouldPrompt -and $PromptConfigValues) {
   Write-Host "Configure docker/.env. Press Enter to keep the value shown in brackets."
   Prompt-DatabaseConfiguration
@@ -772,6 +824,14 @@ if ($ShouldPrompt -and $PromptConfigValues) {
   Prompt-TrueFalseEnvValue "API_COOKIE_SECURE" "Use secure session cookies (true/false)"
   Prompt-OfficialPluginGithubProxyUrl
   Prompt-TrueFalseEnvValue "API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED" "Require official plugin signatures (true/false)"
+}
+
+if ($FreshEnvCreated -and -not $CookieSecureExplicit) {
+  $ConfiguredOrigins = Read-EnvValue "API_ALLOWED_ORIGINS" ".\docker\.env"
+  if ($ConfiguredOrigins -match "https://") {
+    Set-EnvValue "API_COOKIE_SECURE" "true" ".\docker\.env"
+    Write-Host "Enabled API_COOKIE_SECURE=true for HTTPS allowed origins in docker/.env."
+  }
 }
 
 Ensure-ProviderSecretMasterKey
@@ -814,6 +874,8 @@ if ($null -eq $PullImages) {
   if ($ShouldPrompt) {
     if (Test-LocalLatestFlowbaseImages ".\docker\.env") {
       $PullImages = Prompt-YesNo "Local latest Docker images were found. Update Docker images?" $false
+    } elseif ($FreshEnvCreated) {
+      $PullImages = Prompt-YesNo "Pull Docker images?" $true
     } else {
       $PullImages = Prompt-YesNo "Pull Docker images?" $false
     }
@@ -824,7 +886,7 @@ if ($null -eq $PullImages) {
 
 if ($null -eq $StartContainers) {
   if ($ShouldPrompt) {
-    $StartContainers = Prompt-YesNo "Start 1flowbase now?" $false
+    $StartContainers = Prompt-YesNo "Start 1flowbase now?" $FreshEnvCreated
   } else {
     $StartContainers = $false
   }
@@ -855,11 +917,70 @@ if ($PullImages -or $StartContainers) {
   Assert-FlowbaseImagePlatformSupport
 }
 
+function Assert-ApiContainerHealthy([string]$ContainerId) {
+  $StateLines = docker inspect --format "{{.State.Status}}:{{.State.RestartCount}}:{{.State.ExitCode}}" $ContainerId 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $StateLines) {
+    return
+  }
+  $State = ($StateLines | Select-Object -First 1).Trim()
+  $Parts = $State -split ":"
+  $StatusPart = $Parts[0]
+  $RestartCount = 0
+  if ($Parts.Count -ge 2) {
+    [void][int]::TryParse($Parts[1], [ref]$RestartCount)
+  }
+  if ($StatusPart -in @("restarting", "exited", "dead") -or $RestartCount -gt 0) {
+    & docker logs --tail 50 $ContainerId
+    Fail "1flowbase API container failed during startup ($State)."
+  }
+}
+
+function Wait-FlowbaseStartup([string]$DbMode, [string]$Port) {
+  $WaitSeconds = 90
+  if ($env:FLOWBASE_STARTUP_WAIT_SECONDS) {
+    if (-not [int]::TryParse($env:FLOWBASE_STARTUP_WAIT_SECONDS, [ref]$WaitSeconds)) {
+      $WaitSeconds = 90
+    }
+  }
+  if ($WaitSeconds -le 0) {
+    return
+  }
+
+  $PsArgs = if ($DbMode -eq "external") {
+    @("-f", "docker-compose.external-db.yaml", "ps", "-q", "api")
+  } else {
+    @("ps", "-q", "api")
+  }
+  $ContainerLines = Invoke-ComposeCommand $PsArgs 2>$null
+  $ContainerId = if ($ContainerLines) { ($ContainerLines | Select-Object -First 1).Trim() } else { "" }
+  if (-not $ContainerId) {
+    return
+  }
+
+  for ($Elapsed = 0; $Elapsed -lt $WaitSeconds; $Elapsed++) {
+    Assert-ApiContainerHealthy $ContainerId
+    try {
+      $Response = Invoke-WebRequest -Uri "http://127.0.0.1:${Port}/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+      if ($Response.StatusCode -eq 200) {
+        Write-Host "Verified 1flowbase health at http://127.0.0.1:${Port}/health."
+        return
+      }
+    } catch {
+    }
+    Start-Sleep -Seconds 1
+  }
+
+  Assert-ApiContainerHealthy $ContainerId
+}
+
 if ($PullImages) {
   if ($NewDatabaseMode -eq "external") {
     Invoke-ComposeCommand @("-f", "docker-compose.external-db.yaml", "pull")
   } else {
     Invoke-ComposeCommand @("pull")
+  }
+  if ($LASTEXITCODE -ne 0) {
+    Fail "Failed to pull 1flowbase Docker images."
   }
 } else {
   Write-Host "Skipping image pull."
@@ -898,12 +1019,24 @@ if ($RestoreBackup -and $StartContainers) {
   Write-Host "Portable backup was restored before the API service started."
 }
 
+$WebPort = Read-EnvValue "WEB_PORT" ".\.env"
+$RootAccount = Read-EnvValue "BOOTSTRAP_ROOT_ACCOUNT" ".\.env"
+$RootPassword = Read-EnvValue "BOOTSTRAP_ROOT_PASSWORD" ".\.env"
+
+if (-not $WebPort) { $WebPort = "3100" }
+if (-not $RootAccount) { $RootAccount = "root" }
+if (-not $RootPassword) { $RootPassword = "1flowbase" }
+
 if ($StartContainers) {
   if ($NewDatabaseMode -eq "external") {
     Invoke-ComposeCommand @("-f", "docker-compose.external-db.yaml", "up", "-d", "--remove-orphans")
   } else {
     Invoke-ComposeCommand @("up", "-d", "--remove-orphans")
   }
+  if ($LASTEXITCODE -ne 0) {
+    Fail "Failed to start 1flowbase containers."
+  }
+  Wait-FlowbaseStartup $NewDatabaseMode $WebPort
 } else {
   Write-Host "Skipping container startup."
   if ($NewDatabaseMode -eq "external") {
@@ -913,14 +1046,6 @@ if ($StartContainers) {
   }
   exit 0
 }
-
-$WebPort = Read-EnvValue "WEB_PORT" ".\.env"
-$RootAccount = Read-EnvValue "BOOTSTRAP_ROOT_ACCOUNT" ".\.env"
-$RootPassword = Read-EnvValue "BOOTSTRAP_ROOT_PASSWORD" ".\.env"
-
-if (-not $WebPort) { $WebPort = "3100" }
-if (-not $RootAccount) { $RootAccount = "root" }
-if (-not $RootPassword) { $RootPassword = "1flowbase" }
 
 Write-Host "1flowbase is starting. Web: http://127.0.0.1:$WebPort"
 if ($RestoreBackup) {

@@ -12,6 +12,7 @@ impl NetworkEgressWorker {
     ) -> FrameworkResult<Self> {
         let config_file = NetworkEgressConfigFile::create(config)?;
         let mut command = Command::new(&executable_path);
+        crate::sanitize_worker_command_env(&mut command);
         command
             .arg("--network-egress-config-file")
             .arg(config_file.path())

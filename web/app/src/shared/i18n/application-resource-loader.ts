@@ -73,6 +73,14 @@ export function createApplicationResourceLoader<Namespace extends string>(
     );
   }
 
+  async function demandPrimary(
+    locale: AppLocale,
+    namespaces: readonly Namespace[]
+  ) {
+    namespaces.forEach((namespace) => demanded.add(namespace));
+    await loadSingleLocale(locale, namespaces);
+  }
+
   async function load(locale: AppLocale, namespaces: readonly Namespace[]) {
     namespaces.forEach((namespace) => demanded.add(namespace));
     await Promise.all(
@@ -124,5 +132,5 @@ export function createApplicationResourceLoader<Namespace extends string>(
     return true;
   }
 
-  return { load, ready, readyPrimary, activate, activatePrimary };
+  return { load, demandPrimary, ready, readyPrimary, activate, activatePrimary };
 }
