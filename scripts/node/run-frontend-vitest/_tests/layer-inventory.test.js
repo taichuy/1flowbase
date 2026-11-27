@@ -2,77 +2,73 @@ const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { scripts } = require('../../../../web/app/package.json');
+const { exclusions, pageFilters } = require('../layers.js');
+const { parseCliArgs, buildVitestCommand } = require('../../cli/run-frontend-vitest.js');
+const { CONTRACT_TEST_FILES } = require('../../test/index.js');
 
-const appRoot = path.resolve(__dirname, '../../../../web/app');
-const { scripts } = JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8'));
-const testFiles = fs.readdirSync(path.join(appRoot, 'src'), { recursive: true })
+const src = path.resolve(__dirname, '../../../../web/app/src');
+const testFiles = new Set(fs.readdirSync(src, { recursive: true })
   .filter((file) => /\.test\.tsx?$/u.test(file))
-  .map((file) => `src/${file.split(path.sep).join('/')}`);
+  .map((file) => `src/${file.split(path.sep).join('/')}`));
 
-function tokens(command) {
-  return Array.from(command.matchAll(/'([^']*)'|"([^"]*)"|(\S+)/gu),
-    (match) => match[1] ?? match[2] ?? match[3]);
-}
-
-function missingPageCoverage(script, pageScript) {
-  const args = tokens(script);
-  const exclusions = args.flatMap((arg, index) => arg === '--exclude' ? [args[index + 1]] : []);
-  // Vitest positional filters are substrings, unlike --exclude globs.
-  const pageFilters = tokens(pageScript).filter((arg) => arg.startsWith('src/'));
-  return testFiles.filter((file) => exclusions.some((glob) => path.posix.matchesGlob(file, glob))
-    && !pageFilters.some((filter) => file.includes(filter)));
-}
-
-test('frontend run and coverage exclusions are all selected by page regression', () => {
-  for (const name of ['test', 'test:fast', 'test:coverage']) {
-    assert.deepEqual(missingPageCoverage(scripts[name], scripts['test:page-regression']), [], name);
+function inventory(patterns, filters, files) {
+  const excluded = new Set();
+  const unmatched = [];
+  const paths = [...files];
+  for (const pattern of patterns) {
+    const matches = pattern.includes('*') ? paths.filter((file) => path.posix.matchesGlob(file, pattern))
+      : files.has(pattern) ? [pattern] : [];
+    if (!matches.length) unmatched.push(pattern);
+    for (const file of matches) excluded.add(file);
   }
+  // Vitest positional arguments match substrings (even when they contain a literal '*').
+  for (const filter of filters) {
+    if (!files.has(filter) && !paths.some((file) => file.includes(filter))) unmatched.push(filter);
+  }
+  const selected = new Set(filters);
+  const missing = [...excluded].filter((file) => !selected.has(file) && !filters.some((filter) => file.includes(filter)));
+  return { missing, unmatched };
+}
+
+function checkBinding(script, mode, selectors) {
+  const prefix = '../../scripts/node/cli/exec-with-real-node.sh ../../scripts/node/cli/run-frontend-vitest.js ';
+  assert.ok(script.startsWith(prefix));
+  const options = parseCliArgs([...script.slice(prefix.length).split(' '), '--', '-t', 'name filter']);
+  assert.equal(options.mode, mode);
+  const runtimeConfig = { frontend: { vitestMaxWorkers: 2 } };
+  const expected = ['--dir', 'web/app', 'exec', 'vitest', 'run'];
+  if (mode === 'coverage') expected.push('--coverage');
+  assert.deepEqual(buildVitestCommand({ ...options, runtimeConfig }).args,
+    [...expected, '--maxWorkers=2', ...selectors, '-t', 'name filter']);
+}
+
+test('package bindings forward the ordered layer before user arguments', () => {
+  const args = exclusions.flatMap((pattern) => ['--exclude', pattern]);
+  for (const name of ['test', 'test:fast']) checkBinding(scripts[name], 'run', args);
+  checkBinding(scripts['test:coverage'], 'coverage', args);
+  checkBinding(scripts['test:page-regression'], 'run', pageFilters);
+  assert.throws(() => checkBinding(scripts['test:page-regression'], 'run', args), assert.AssertionError);
 });
 
-test('repository full frontend covers every targeted contract through normal and page suites', () => {
-  const { CONTRACT_TEST_FILES } = require('../../test/index.js');
-  const missing = missingPageCoverage(scripts.test, scripts['test:page-regression']);
+test('every selector exists; stable and page suites together cover every targeted contract', () => {
+  const result = inventory(exclusions, pageFilters, testFiles);
   for (const file of CONTRACT_TEST_FILES) {
-    assert.ok(testFiles.includes(file), `contract test must exist: ${file}`);
-    assert.ok(!missing.includes(file), `contract must execute in the full frontend lane: ${file}`);
+    assert.ok(testFiles.has(file), `contract test must exist: ${file}`);
+    assert.ok(!result.missing.includes(file), `contract must execute: ${file}`);
   }
+  assert.deepEqual(result, { missing: [], unmatched: [] });
 });
 
-test('inventory rejects quoted positional globs and omitted page directories', () => {
-  const directory = 'src/features/settings/_tests/model-providers-page/';
-  for (const replacement of [`'${directory}*.test.tsx'`, '']) {
-    const broken = scripts['test:page-regression'].replace(directory, replacement);
-    const missing = missingPageCoverage(scripts.test, broken);
-    assert.ok(missing.length > 0);
-    assert.ok(missing.every((file) => file.startsWith(directory)));
-  }
-});
-
-
-function unmatchedSelectors(script, pageScript, files = testFiles) {
-  const args = tokens(script);
-  const exclusions = args.flatMap((arg, index) => arg === '--exclude' ? [args[index + 1]] : []);
-  const pageFilters = tokens(pageScript).filter((arg) => arg.startsWith('src/'));
-  return [
-    ...exclusions.filter((glob) => !files.some((file) => path.posix.matchesGlob(file, glob))),
-    ...pageFilters.filter((filter) => !files.some((file) => file.includes(filter))),
-  ];
-}
-
-test('every frontend lane selector targets an existing test rather than borrowing adjacent execution evidence', () => {
-  for (const name of ['test', 'test:fast', 'test:coverage']) {
-    assert.deepEqual(unmatchedSelectors(scripts[name], scripts['test:page-regression']), [], name);
-  }
-});
-
-test('lane inventory rejects a removed test and accepts nested scenario globs', () => {
-  const files = ['src/pages/settings/roles/policy.test.tsx', 'src/pages/sign-in.test.tsx'];
-  assert.deepEqual(unmatchedSelectors(
-    "run --exclude 'src/pages/settings/**/*.test.tsx'",
-    'run src/pages/settings/ src/pages/sign-in.test.tsx', files,
-  ), []);
-  assert.deepEqual(unmatchedSelectors(
-    "run --exclude 'src/pages/settings/**/*.test.tsx' --exclude src/pages/retired.test.tsx",
-    'run src/pages/settings/ src/pages/moved.test.tsx', files,
-  ), ['src/pages/retired.test.tsx', 'src/pages/moved.test.tsx']);
+test('inventory rejects a literal positional glob, omitted directory and retired paths', () => {
+  const dir = 'src/pages/settings/';
+  const file = `${dir}roles/policy.test.tsx`;
+  const files = new Set([file, 'src/pages/sign-in.test.tsx']);
+  const glob = `${dir}**/*.test.tsx`;
+  const removed = 'src/pages/retired.test.tsx';
+  const moved = 'src/pages/moved.test.tsx';
+  assert.deepEqual(inventory([glob], [dir, 'src/pages/sign-in.test.tsx'], files), { missing: [], unmatched: [] });
+  assert.deepEqual(inventory([glob], [glob], files), { missing: [file], unmatched: [glob] });
+  assert.deepEqual(inventory([glob], [], files).missing, [file]);
+  assert.deepEqual(inventory([glob, removed], [dir, moved], files).unmatched, [removed, moved]);
 });
