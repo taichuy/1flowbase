@@ -197,6 +197,14 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{missing}");
     assert_eq!(missing["code"], "managed_paused_target_missing");
+    // Pin the installation's system graph across the disable publication sweep.
+    let frozen = runtime
+        .composition
+        .snapshot(domain::SYSTEM_SCOPE_ID)
+        .await
+        .expect("enabled system installation must have a current snapshot")
+        .freeze_reference()
+        .unwrap();
     management
         .disable_plugin(DisablePluginCommand {
             actor_user_id: actor_id,
@@ -205,19 +213,17 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
         .await
         .unwrap();
     let retire = format!("{base}/managed-executions/retire");
-    assert_eq!(
-        request(
-            &app,
-            &member_cookie,
-            &member_csrf,
-            "POST",
-            &retire,
-            target.clone()
-        )
-        .await
-        .0,
-        StatusCode::FORBIDDEN
-    );
+    let (status, denied) = request(
+        &app,
+        &member_cookie,
+        &member_csrf,
+        "POST",
+        &retire,
+        target.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
+    assert_eq!(denied["code"], "console_operation_permission_denied");
     allow(
         &app,
         &cookie,
@@ -226,6 +232,19 @@ async fn system_governance_uses_installation_scope_and_existing_operation_author
         "extension_center.managed_executions.retire",
     )
     .await;
+    let (status, protected) = request(
+        &app,
+        &member_cookie,
+        &member_csrf,
+        "POST",
+        &retire,
+        target.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{protected}");
+    assert_eq!(protected["code"], "managed_snapshot_has_frozen_references");
+    // This fixture has no background reclaimer; explicit retire now owns removal.
+    drop(frozen);
     let (status, retired) =
         request(&app, &member_cookie, &member_csrf, "POST", &retire, target).await;
     assert_eq!(status, StatusCode::OK, "{retired}");
