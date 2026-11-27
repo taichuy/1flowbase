@@ -24,8 +24,8 @@
       "file": "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogPanel.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "e0cb301d9ead5e7acad89c016b9c04250c328e41fe268fc60e53d2514f2c64e3",
-      "reason": "searchText is an editable Input.Search draft. onChange edits it independently; only onSearch trims/navigates the submitted q and clears cursor. The q effect synchronizes an externally changed URL value. The new infinite query has no old page-history state; deriving the input continuously from q would prevent unsubmitted typing. P21f reassessed 2026-11-17: Template catalog now owns an infinite cursor query, appended virtual-list rows, per-query in-flight loadMore guard and local file installation preview. Tests assert exact next cursor, retained loaded rows on continuation failure, query reset and upload permission/preview boundaries. Editable searchText still synchronizes external q while onSearch submits it. The old DataTable emptyText diagnostic is absent in wave3 and its review remains held; unsupported upload-status tag rationale is also untouched.",
-      "evidenceSet": 2
+      "reason": "searchText is the editable pre-submit value, not the committed q. The q effect handles external navigation. The catalog test types padded gateway, submits, asserts trimmed q and cleared cursor, then changes the route prop and verifies old results disappear. This does not rely on the former paged table.",
+      "evidence": [{"file":"web/app/src/features/settings/components/extension-center/_tests/ApplicationTemplateCatalogPanel.test.tsx","sha256":"28254cf1d6ea709843ded19a91d6d4126a3b6b669d532ed6bf7ba9e87f488a52"}]
     },
     {
       "file": "web/app/src/features/settings/components/extension-center/ExtensionUploadModal.tsx",
@@ -59,8 +59,8 @@
       "file": "web/app/src/features/settings/components/extension-center/InstalledExtensionVersionSwitch.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
       "sourceSha256": "401d7bdadc96213480f35baa0178f1f77dedd6e3a6303db6a38ef87ab24d956b",
-      "reason": "This operation is read/export-only or delegates success to the concrete query-owner callback documented below; the source call chain is attached. InstalledExtensionVersionSwitch delegates success completion to its required onChanged Promise callback. Its only consumer in SettingsExtensionCenterSection closes selection and awaits invalidateExtensionApplicationState, which invalidates extension/navigation/MCP/UI/docs/i18n query owners. Invalidation is present across the component boundary. Reassessed 2026-11-03: Version switch consumes the appropriate enable/family-switch operation. onChanged still delegates committed-success invalidation to the required parent callback.",
-      "evidence": [{"file":"web/app/src/features/settings/_tests/settings-extension-center/lifecycle.test.tsx","sha256":"93f6afcbb0948b631ab3253ea73675e22d28cebf43f24becb1daed6cc8ea8950"},{"file":"web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx","sha256":"65c8f560f72d2bc55cadd105cff4bcb83a41c35a2f1f93571d4b46471e1d8aef"},{"file":"web/app/src/features/settings/pages/settings-page/useExtensionCenterController.tsx","sha256":"90d706a4ca591e8665d86dcaa9ecf63297dfa3d670618421797baf0920cfd4e9"},{"file":"web/app/src/features/settings/pages/settings-page/extension-center-presentation.tsx","sha256":"d429a779d2a657dccda9bc0f941d00dea736c800663941f5772876530f58b7c7"}]
+      "reason": "onSuccess awaits required onChanged; the section callback clears selection and awaits the controller invalidator. The version-switch test seeds inactive pages under the instance and tool prefixes, verifies neither is stale before confirmation and both are invalidated after switching.",
+      "evidence": [{"file":"web/app/src/features/settings/_tests/settings-extension-center/version-switch-invalidation.test.tsx","sha256":"0a14d61e763b4c57425bb9b49b6b000ff96e3c818f57e5f032740d86f88c894e"},{"file":"web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx","sha256":"65c8f560f72d2bc55cadd105cff4bcb83a41c35a2f1f93571d4b46471e1d8aef"},{"file":"web/app/src/features/settings/pages/settings-page/useExtensionCenterController.tsx","sha256":"351103dd31e9c3b37f5fca8126f69ddce3b864d9f4418d929633dc9884248f90"}]
     }
   ]
 }
