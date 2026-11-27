@@ -46,7 +46,7 @@ struct PreparedPackage {
 }
 
 #[cfg(test)]
-pub(crate) type BeforeAuthorityReleaseHook = Box<dyn FnOnce() -> Result<()> + Send>;
+pub(crate) type BeforeAuthorityReleaseHook = futures_util::future::BoxFuture<'static, Result<()>>;
 
 pub(crate) struct ManagedExtensionComposition {
     source_observer: std::sync::OnceLock<
