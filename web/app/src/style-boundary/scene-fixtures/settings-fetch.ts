@@ -483,7 +483,7 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
-      requestUrl.pathname === '/api/console/mcp/pages/instances'
+      requestUrl.pathname === '/api/console/mcp/instances/page'
     ) {
       return createStyleBoundaryJsonResponse({
         data: {
@@ -508,7 +508,7 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
-      requestUrl.pathname === '/api/console/mcp/pages/tools'
+      requestUrl.pathname === '/api/console/mcp/tools/page'
     ) {
       return createStyleBoundaryJsonResponse({
         data: {
@@ -539,7 +539,7 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
-      requestUrl.pathname === '/api/console/mcp/pages/interface-capabilities'
+      requestUrl.pathname === '/api/console/mcp/interface-capabilities/page'
     ) {
       return createStyleBoundaryJsonResponse({
         data: {
