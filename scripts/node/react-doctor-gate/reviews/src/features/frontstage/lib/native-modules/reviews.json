@@ -1,9 +1,9 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-dropdown-runtime.test.tsx","sha256":"fdc7d694813c6c0e46e366f4a4fc7e0087e8b83f2473919605ccd1278dfde1fa"},{"file":"web/app/src/features/frontstage/lib/native-modules/modal/_tests/runtime.test.tsx","sha256":"fde485261c8bf8fb039e01692c835c29dd79bac895f0a04e29293a00cdac4cda"},{"file":"web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts","sha256":"16e5c2a29fa0b368686dda26e03be813c82b6d1aa60ae9bf3d4adc9ded0f599b"},{"file":"web/app/src/features/frontstage/lib/native-modules/native-dropdown-runtime.tsx","sha256":"b3c768a2463606661b88cad7437fcb494c93de2bfee620a71e35fcde21075977"},{"file":"web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx","sha256":"4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"},{"file":"web/app/src/features/frontstage/lib/native-modules/registry.ts","sha256":"af350af32974efce930a05e10ccb523bed61d02445688f73530c43ab6e2092e9"}],
+    [{"file":"web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts","sha256":"16e5c2a29fa0b368686dda26e03be813c82b6d1aa60ae9bf3d4adc9ded0f599b"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-dropdown-runtime.test.tsx","sha256":"fdc7d694813c6c0e46e366f4a4fc7e0087e8b83f2473919605ccd1278dfde1fa"}],
     [{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/overlay-and-chart-demand.test.tsx","sha256":"3e4ea3af1d6576ca00c17f1e325d4920ac6e73ee068f5933c396203bbf66d084"}],
-    [{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/declarations.test.ts","sha256":"8c6a42b77fe3871d6626a4ffcb907cdf75bf03698d8f56eccdb0c092d077abe4"}]
+    [{"file":"web/app/src/features/auth/_tests/sign-in-cold-start.test.ts","sha256":"264701f02de11857baffc7d716bbf751a096bbf8d118aee84bb224ead300d560"}]
   ],
   "reviews": [
     {
@@ -17,14 +17,14 @@
       "file": "web/app/src/features/frontstage/lib/native-modules/native-dropdown-runtime.tsx",
       "rule": "react-doctor/jsx-key",
       "sourceSha256": "b3c768a2463606661b88cad7437fcb494c93de2bfee620a71e35fcde21075977",
-      "reason": "overlayGeneration is the explicit Dropdown resource generation key used to recreate the overlay after runtime changes. This is one element, not an unkeyed mapped list; removing the key would retain stale overlay internals. Reassessed 2026-11-17: Registry changes add plugin-settings capabilities, block-design and data-blocks. Existing Dropdown composition remains unchanged; its fixture retains layout-epoch generation and committed-geometry correction assertions.",
+      "reason": "The props spread precedes the explicit overlayGeneration key, so it cannot overwrite the key. The layout-epoch test exercises remount of the AntD overlay while preserving the Block; this is a single child, not list reconciliation.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/lib/native-modules/native-dropdown-runtime.tsx",
       "rule": "react-doctor/no-cascading-set-state",
       "sourceSha256": "b3c768a2463606661b88cad7437fcb494c93de2bfee620a71e35fcde21075977",
-      "reason": "The layout effect measures the trigger relative to its owner window, computes viewport correction, and observes external geometry changes with cleanup. This depends on committed DOM and cannot be replaced by synchronous render derivation. Reassessed 2026-11-17: Registry changes add plugin-settings capabilities, block-design and data-blocks. Existing Dropdown composition remains unchanged; its fixture retains layout-epoch generation and committed-geometry correction assertions.",
+      "reason": "The two early returns reset the same correction for mutually exclusive unmeasurable triggers. The remaining branch measures committed DOM geometry; repeated measurements retain the current correction below the half-pixel tolerance. The fixed virtual-trigger test exercises viewport positioning, not an event-handler substitute.",
       "evidenceSet": 0
     },
     {
@@ -44,8 +44,8 @@
     {
       "file": "web/app/src/features/frontstage/lib/native-modules/registry.ts",
       "rule": "react-doctor/js-set-map-lookups",
-      "sourceSha256": "af350af32974efce930a05e10ccb523bed61d02445688f73530c43ab6e2092e9",
-      "reason": "indexOf and lastIndexOf locate braces within one import clause string for named/default import parsing. A Set would not return the offsets consumed by the subsequent slice.",
+      "sourceSha256": "5d95f61bedb8815cab86304251ccc1a37aa0cfcff13f54b92581cb4409557dd8",
+      "reason": "extractNativeSourceImports reads brace offsets in a string, then slices that same import clause. A Set supplies membership, not offsets. The sign-in cold-start scanner test distinguishes named, aliased, type-only, commented and default bindings. The namespace-demand registration change does not touch this scanner.",
       "evidenceSet": 2
     }
   ]
