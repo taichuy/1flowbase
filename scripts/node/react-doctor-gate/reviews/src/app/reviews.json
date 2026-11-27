@@ -18,7 +18,7 @@
     {
       "file": "web/app/src/app/bootstrap/frontstage-startup-prefetch.ts",
       "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "ce15650bef0c5d7ec418a0868e74914c751fb315872fc7961dbfb16697e3ee7b",
+      "sourceSha256": "1e23ebbfc744022f49a6c58796b41b250308c3b4a72ba5d61b43058486c10b3d",
       "reason": "The guards after page-tree and tabs requests check the current actor/workspace flight after each suspension. Moving these checks ahead would miss supersession while a network request is pending.",
       "evidenceSet": 1
     },
@@ -40,7 +40,7 @@
     [
       {
         "file": "web/app/src/app/bootstrap/_tests/frontstage-startup-prefetch.test.ts",
-        "sha256": "a506a311d6cd3aaf22d8e78e9106e2212d8ab066fee06e2882881d66218addad"
+        "sha256": "1b069d679ce7c12cfe180a34c2281679ae40c78b7571642ea41592c63c3b7521"
       }
     ],
     [
