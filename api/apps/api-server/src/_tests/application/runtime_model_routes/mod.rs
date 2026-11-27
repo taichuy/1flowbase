@@ -1,6 +1,6 @@
 use crate::_tests::support::{
-    login_and_capture_cookie, test_api_state_with_database_url, test_app,
-    test_app_with_database_url, test_config,
+    copy_fixture_tree, login_and_capture_cookie, test_api_state_with_database_url, test_app,
+    test_app_with_database_url, test_config, write_fixture_artifact_marker, TempDataSourcePackage,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -8,49 +8,8 @@ use axum::{
 };
 use serde_json::json;
 use sqlx::Row;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::{fs, path::PathBuf};
 use tower::ServiceExt;
-
-struct TempDataSourcePackage {
-    root: PathBuf,
-}
-
-impl TempDataSourcePackage {
-    fn new() -> Self {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "api-runtime-model-data-source-test-{}-{nonce}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&root).unwrap();
-        Self { root }
-    }
-
-    fn path(&self) -> &Path {
-        &self.root
-    }
-
-    fn write(&self, relative_path: &str, content: &str) {
-        let path = self.root.join(relative_path);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(path, content).unwrap();
-    }
-}
-
-impl Drop for TempDataSourcePackage {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
-    }
-}
 
 fn write_external_runtime_package(package: &TempDataSourcePackage) {
     let list_output = json!({
@@ -401,7 +360,7 @@ async fn seed_runtime_data_source_instance(
 ) -> String {
     seed_runtime_data_source_instance_with_options(
         database_url,
-        package.path(),
+        package,
         RuntimeDataSourceSeedOptions::default(),
     )
     .await
@@ -445,7 +404,7 @@ impl Default for RuntimeDataSourceSeedOptions<'_> {
 
 async fn seed_runtime_data_source_instance_with_options(
     database_url: &str,
-    package_root: &Path,
+    package: &TempDataSourcePackage,
     options: RuntimeDataSourceSeedOptions<'_>,
 ) -> String {
     let pool = sqlx::PgPool::connect(database_url).await.unwrap();
@@ -467,10 +426,12 @@ async fn seed_runtime_data_source_instance_with_options(
     let installation_id = uuid::Uuid::now_v7();
     let assignment_id = uuid::Uuid::now_v7();
     let data_source_instance_id = uuid::Uuid::now_v7();
+    let fingerprint =
+        write_fixture_artifact_marker(package.path(), options.plugin_id, "0.1.0").await;
     let installed_path = options
         .installed_path
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| package_root.display().to_string());
+        .unwrap_or_else(|| package.path().display().to_string());
 
     sqlx::query(
         r#"
@@ -501,8 +462,8 @@ async fn seed_runtime_data_source_instance_with_options(
         r#"
         insert into extension_artifact_instances (
             node_id, installation_id, local_version, local_path,
-            artifact_status, runtime_status, availability_status
-        ) values ($1, $2, '0.1.0', $3, $4, $5, $6)
+            artifact_status, runtime_status, availability_status, manifest_fingerprint
+        ) values ($1, $2, '0.1.0', $3, $4, $5, $6, $7)
         "#,
     )
     .bind(crate::_tests::support::test_config().api_node_id)
@@ -511,6 +472,7 @@ async fn seed_runtime_data_source_instance_with_options(
     .bind(options.artifact_status)
     .bind(options.runtime_status)
     .bind(options.availability_status)
+    .bind(fingerprint)
     .execute(&pool)
     .await
     .unwrap();

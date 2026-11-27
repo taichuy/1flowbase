@@ -1,4 +1,78 @@
 use super::*;
+use std::path::PathBuf;
+
+pub struct TempDataSourcePackage {
+    root: PathBuf,
+}
+
+impl Default for TempDataSourcePackage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TempDataSourcePackage {
+    pub fn new() -> Self {
+        let root = std::env::temp_dir().join(format!("api-data-source-test-{}", Uuid::now_v7()));
+        fs::create_dir_all(&root).unwrap();
+        Self { root }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn write(&self, relative_path: &str, content: &str) {
+        let path = self.root.join(relative_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, content).unwrap();
+    }
+}
+
+impl Drop for TempDataSourcePackage {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+pub fn copy_fixture_tree(src: &Path, dst: &Path) {
+    fs::create_dir_all(dst).unwrap();
+    for entry in fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let file_type = entry.file_type().unwrap();
+        let target = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_fixture_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+pub async fn write_fixture_artifact_marker(
+    installed_path: &Path,
+    plugin_id: &str,
+    version: &str,
+) -> String {
+    let manifest_fingerprint =
+        plugin_framework::compute_manifest_fingerprint(&installed_path.join("manifest.yaml"))
+            .await
+            .unwrap();
+    fs::write(
+        installed_path.join(".1flowbase-artifact.json"),
+        serde_json::to_vec_pretty(&json!({
+            "plugin_id": plugin_id,
+            "version": version,
+            "checksum": null,
+            "manifest_fingerprint": manifest_fingerprint,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    manifest_fingerprint
+}
 
 pub fn write_test_executable(path: &Path, content: &str) {
     fs::write(path, content).unwrap();

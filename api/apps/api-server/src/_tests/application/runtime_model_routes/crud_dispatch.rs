@@ -749,13 +749,15 @@ async fn runtime_model_data_model_template_maps_and_dispatches_external_operatio
 
 #[tokio::test]
 async fn runtime_model_data_model_template_uses_checked_in_provider_catalog_and_operation() {
+    let package = TempDataSourcePackage::new();
     let package_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../plugins/templates/data_source_http_fixture");
+    copy_fixture_tree(&package_root, package.path());
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let data_source_instance_id = seed_runtime_data_source_instance_with_options(
         &database_url,
-        &package_root,
+        &package,
         RuntimeDataSourceSeedOptions {
             organization: "flowbase",
             provider_code: "data_source_http_fixture",
@@ -1004,8 +1006,7 @@ async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unava
         let (app, database_url) = test_app_with_database_url().await;
         let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
         let data_source_instance_id =
-            seed_runtime_data_source_instance_with_options(&database_url, package.path(), options)
-                .await;
+            seed_runtime_data_source_instance_with_options(&database_url, &package, options).await;
         let model_code = format!("external_runtime_blocked_{case_name}");
 
         let model_id = seed_external_runtime_model(
