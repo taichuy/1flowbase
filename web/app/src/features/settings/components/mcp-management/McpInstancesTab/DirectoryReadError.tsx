@@ -9,7 +9,7 @@ export function DirectoryReadError({ error, retry }: { error: Error; retry: () =
       description={error.message}
       action={
         <Button onMouseDown={(event) => event.preventDefault()} onClick={retry}>
-          {i18nText('settings', 'auto.retry')}
+          {i18nText('sharedUi', 'auto.list_retry')}
         </Button>
       }
     />

@@ -34,9 +34,10 @@ describe('MCP directory and table browsing', () => {
     const picker = dialog.getByRole('combobox', { name: '选择 Tool' });
     await mouseDown(picker);
     const next = async () => {
-      const button = await screen.findByRole('button', { name: '下一页' });
-      await waitFor(() => expect(button).toBeEnabled());
-      await click(button);
+      const listbox = document.getElementById(picker.getAttribute('aria-controls')!);
+      const popup = listbox?.closest<HTMLElement>('.ant-select-dropdown');
+      expect(popup).toBeInstanceOf(HTMLElement);
+      await click(await within(popup!).findByRole('button', { name: '下一页' }));
     };
     await next();
     await waitFor(() => expect(api.fetchSettingsMcpToolsPage).toHaveBeenCalledWith({
@@ -110,7 +111,7 @@ describe('MCP directory and table browsing', () => {
     const panel = () => within(screen.getByRole('tabpanel', { name: 'MCP 实例' }));
     await mouseDown(panel().getByRole('combobox'));
     await selectAntdOption('10');
-    await click(await panel().findByTitle('2'));
+    await click(await panel().findByRole('button', { name: /^(页|Page) 2$/i }));
     expect(await panel().findByText('Instance 10')).toBeVisible();
     expect(api.fetchSettingsMcpInstancesPage).toHaveBeenLastCalledWith({ page: 2, page_size: 10 });
     api.fetchSettingsMcpInstancesPage.mockClear();
