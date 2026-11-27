@@ -105,7 +105,7 @@ async function mount(
 async function findPreviewCell(filename: string) {
   await waitFor(() => expect(client.fetchConsoleFileRecords).toHaveBeenCalled());
   const link = await screen.findByText(filename, { selector: 'a[href]' });
-  return within(within(link.closest('tr')!).getAllByRole('cell')[0]);
+  return within(link.closest('tr')!).getAllByRole('cell')[0];
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -320,9 +320,9 @@ describe('FileTableView', () => {
       await mount();
       const previewCell = await findPreviewCell(record.filename);
       expect(
-        previewCell.getByRole('link', { name: record.url })
+        within(previewCell).getByRole('link', { name: record.url })
       ).toHaveAttribute('href', record.url);
-      expect(previewCell.queryByRole('img')).not.toBeInTheDocument();
+      expect(within(previewCell).queryByRole('img')).not.toBeInTheDocument();
     }
   );
 
@@ -333,11 +333,11 @@ describe('FileTableView', () => {
     });
     await mount();
     const cell = await findPreviewCell(record.filename);
-    await error(cell.getByRole('img', { name: record.filename }));
-    expect(await cell.findByRole('link', { name: record.url })).toHaveAttribute(
+    await error(within(cell).getByRole('img', { name: record.filename }));
+    expect(await within(cell).findByRole('link', { name: record.url })).toHaveAttribute(
       'href', record.url
     );
-    expect(cell.queryByRole('img')).not.toBeInTheDocument();
+    expect(within(cell).queryByRole('img')).not.toBeInTheDocument();
   });
 
   test('shows two-decimal binary size and exact bytes on hover', async () => {
@@ -366,7 +366,7 @@ describe('FileTableView', () => {
     });
     await mount();
     const cell = await findPreviewCell(imageRecord.filename);
-    const thumbnail = cell.getByRole('img', { name: imageRecord.filename });
+    const thumbnail = within(cell).getByRole('img', { name: imageRecord.filename });
     expect(thumbnail).toHaveAttribute('src', imageRecord.preview_url);
     expect(thumbnail).toHaveAttribute('loading', 'lazy');
     expect(

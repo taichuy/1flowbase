@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/components/files/_tests/FileTableView.test.tsx","sha256":"ab654dc65e203f9a21a3a1a16032c4d1fd0fdc2e3053d757a444d0e60a19e96f"},{"file":"web/app/src/features/frontstage/components/files/FileShareModal.tsx","sha256":"32cc5e760262e4a10069283e750a60d33d4fc96a254d3cff14c6d3445d37a357"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+    [{"file":"web/app/src/features/frontstage/components/files/_tests/FileTableView.test.tsx","sha256":"a30251ad2eb51150015e813f0baea5c2cf7cba82cab7b6de9486af4bb3c2d8ca"},{"file":"web/app/src/features/frontstage/components/files/FileShareModal.tsx","sha256":"32cc5e760262e4a10069283e750a60d33d4fc96a254d3cff14c6d3445d37a357"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
   ],
   "reviews": [
     {
