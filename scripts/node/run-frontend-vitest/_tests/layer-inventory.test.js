@@ -48,7 +48,22 @@ test('package bindings forward the ordered layer before user arguments', () => {
   for (const name of ['test', 'test:fast']) checkBinding(scripts[name], 'run', args);
   checkBinding(scripts['test:coverage'], 'coverage', args);
   checkBinding(scripts['test:page-regression'], 'run', pageFilters);
-  assert.throws(() => checkBinding(scripts['test:page-regression'], 'run', args), assert.AssertionError);
+});
+
+test('page-only directories and PR business anchors stay in their designated lanes', () => {
+  // Keep expensive suites out of the fast lane without widening page regression to a whole feature.
+  for (const [directory, glob] of [
+    ['src/features/settings/_tests/model-providers-page/', '*.test.tsx'],
+    ['src/features/applications/_tests/application-logs-page/', '**/*.test.tsx'],
+  ]) {
+    assert.ok(exclusions.includes(directory + glob), directory);
+    assert.ok(pageFilters.includes(directory), directory);
+  }
+  const pr = new Set(scripts['test:pr'].split(' '));
+  for (const file of ['src/features/frontstage/_tests/page-tree.test.ts',
+    'src/features/agent-flow/_tests/start-node-variables.test.ts']) {
+    assert.ok(pr.has(file) && testFiles.has(file), file);
+  }
 });
 
 test('every selector exists; stable and page suites together cover every targeted contract', () => {
