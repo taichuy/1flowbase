@@ -1,3 +1,4 @@
+import { useMcpTablePagination } from '../mcp-management-state';
 import '../../../../../test/fixtures/rc-util-unique-ids';
 import { useAuthStore } from '../../../../../state/auth-store';
 import {
@@ -59,9 +60,12 @@ const connection = {
 };
 
 function renderTab(onImported = vi.fn()) {
+  function Tab() {
+    return <ThirdPartyMcpTab {...useMcpTablePagination()} onImported={onImported} />;
+  }
   render(
     <AppProviders>
-      <ThirdPartyMcpTab canManage onImported={onImported} />
+      <Tab />
     </AppProviders>
   );
   return { onImported };

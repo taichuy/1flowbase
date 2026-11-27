@@ -17,9 +17,7 @@ import type {
   ConsoleMcpToolSummary
 } from '@1flowbase/api-client';
 import {
-  fetchSettingsMcpInstances,
   fetchSettingsMcpToolsPage,
-  settingsMcpInstancesQueryKey,
   settingsMcpToolsQueryKey
 } from '../../../api/mcp-management';
 import { useAuthStore } from '../../../../../state/auth-store';
@@ -30,7 +28,7 @@ import {
   normalizeMcpDirectoryPath
 } from '../mcp-management-view-model';
 import {
-  createInitialMcpInstancesState,
+  initialMcpInstancesState,
   mcpInstancesReducer,
   type McpDirectoryEditorMode
 } from '../mcp-management-state';
@@ -43,7 +41,6 @@ import { useDirectoryDraft } from './use-directory-draft';
 import type { GroupFormValues, BindingFormValues } from './editor-types';
 
 const DIRECTORY_TOOL_LOOKUP_CHUNK_SIZE = 100;
-const DIRECTORY_TOOL_PICKER_PAGE_SIZE = 50;
 
 async function fetchToolSummariesByIds(
   toolIds: string[]
@@ -83,7 +80,7 @@ function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
 }
 
 /** Node editing buffers are independent of the confirmed directory draft and its persistence. */
-export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
+export function useMcpDirectoryEditor() {
   const can = useConsoleOperationAccess();
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
@@ -123,7 +120,8 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
   const [expandedDirectoryKeys, setExpandedDirectoryKeys] = useState<string[]>(
     []
   );
-  const [toolSearchKeyword, setToolSearchKeyword] = useState('');
+  const [selectedInstance, setSelectedInstance] = useState<ConsoleMcpInstance>();
+  const [pickedTool, setPickedTool] = useState<ConsoleMcpToolSummary>();
   const groupSavedValuesRef = useRef<GroupFormValues | null>(null);
   const editingGroupIdRef = useRef<string | null>(null);
   const bindingSavedValuesRef = useRef<BindingFormValues | null>(null);
@@ -132,8 +130,7 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
   const pendingDirectorySessionChangeRef = useRef<(() => void) | null>(null);
   const [instancesState, dispatch] = useReducer(
     mcpInstancesReducer,
-    instances[0]?.instance_id ?? '',
-    createInitialMcpInstancesState
+    initialMcpInstancesState
   );
   const {
     editingInstance,
@@ -141,15 +138,8 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
     instanceModalOpen,
     directoryModalOpen,
     directoryEditorMode,
-    requestedInstanceId,
     selectedDirectoryKey
   } = instancesState;
-  const allInstancesQuery = useQuery({
-    queryKey: [...settingsMcpInstancesQueryKey, 'all'],
-    queryFn: () => fetchSettingsMcpInstances(),
-    enabled: directoryModalOpen
-  });
-  const availableInstances = allInstancesQuery.data ?? instances;
   const setEditingInstance = useCallback(
     (value: SetStateAction<ConsoleMcpInstance | null>) =>
       dispatch({ type: 'setEditingInstance', value }),
@@ -175,19 +165,11 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
       dispatch({ type: 'setDirectoryEditorMode', value }),
     []
   );
-  const setRequestedInstanceId = useCallback(
-    (value: SetStateAction<string>) =>
-      dispatch({ type: 'setRequestedInstanceId', value }),
-    []
-  );
   const setSelectedDirectoryKey = useCallback(
     (value: SetStateAction<string>) =>
       dispatch({ type: 'setSelectedDirectoryKey', value }),
     []
   );
-  const selectedInstance =
-    availableInstances.find((row) => row.instance_id === requestedInstanceId) ??
-    availableInstances[0];
   const selectedInstanceGroups = useMemo(
     () => draft.snapshot?.groups ?? [],
     [draft.snapshot]
@@ -201,59 +183,19 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
       [...new Set(selectedInstanceBindings.map((row) => row.tool_id))].sort(),
     [selectedInstanceBindings]
   );
+  const canReadTools = can('mcp.tools.view');
   const boundToolsQuery = useQuery({
     queryKey: [...settingsMcpToolsQueryKey, 'directory-bound', boundToolIds],
     queryFn: () => fetchToolSummariesByIds(boundToolIds),
-    enabled: directoryModalOpen && boundToolIds.length > 0
-  });
-  const normalizedToolSearch = toolSearchKeyword.trim();
-  const pickerToolsQuery = useQuery({
-    queryKey: [
-      ...settingsMcpToolsQueryKey,
-      'directory-picker',
-      normalizedToolSearch
-    ],
-    queryFn: () =>
-      fetchSettingsMcpToolsPage({
-        page: 1,
-        page_size: DIRECTORY_TOOL_PICKER_PAGE_SIZE,
-        keyword: normalizedToolSearch || undefined
-      }),
-    enabled: directoryModalOpen
+    enabled: directoryModalOpen && canReadTools && boundToolIds.length > 0
   });
   const directoryTools = useMemo(() => {
-    const byToolId = new Map<string, ConsoleMcpToolSummary>();
-    for (const tool of boundToolsQuery.data ?? []) {
-      byToolId.set(tool.tool_id, tool);
-    }
-    for (const tool of pickerToolsQuery.data?.items ?? []) {
-      byToolId.set(tool.tool_id, tool);
-    }
-    return [...byToolId.values()];
-  }, [boundToolsQuery.data, pickerToolsQuery.data]);
-  const toolOptions = useMemo(() => {
-    const pickerItems = pickerToolsQuery.data?.items ?? [];
-    const options = pickerItems.map((tool) => ({
-      label: tool.name,
-      value: tool.tool_id
-    }));
-    if (
-      watchedToolId &&
-      !options.some((option) => option.value === watchedToolId)
-    ) {
-      const selected = directoryTools.find(
-        (tool) => tool.tool_id === watchedToolId
-      );
-      if (selected) {
-        options.unshift({ label: selected.name, value: selected.tool_id });
-      }
-    }
-    return options;
-  }, [directoryTools, pickerToolsQuery.data, watchedToolId]);
-  const selectedTool = useMemo(
-    () => directoryTools.find((tool) => tool.tool_id === watchedToolId),
-    [directoryTools, watchedToolId]
-  );
+    if (!canReadTools) return [];
+    const bound = boundToolsQuery.isError ? [] : boundToolsQuery.data ?? [];
+    return pickedTool && !bound.some((tool) => tool.tool_id === pickedTool.tool_id)
+      ? [...bound, pickedTool] : bound;
+  }, [boundToolsQuery.data, boundToolsQuery.isError, canReadTools, pickedTool]);
+  const selectedTool = directoryTools.find((tool) => tool.tool_id === watchedToolId);
   const groupByPath = useMemo(
     () => new Map(selectedInstanceGroups.map((row) => [row.path, row])),
     [selectedInstanceGroups]
@@ -353,7 +295,8 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
     );
   }
   async function openDirectory(instance: ConsoleMcpInstance) {
-    setRequestedInstanceId(instance.instance_id);
+    setSelectedInstance(instance);
+    setPickedTool(undefined);
     setDirectoryModalOpen(true);
     setEditingBinding(null);
     setDirectoryEditorMode('group');
@@ -449,7 +392,6 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
     if (draft.saveDirectoryMutation.isPending) return;
     requestDirectorySessionChange(() => {
       draft.clear();
-      setToolSearchKeyword('');
       setDirectoryModalOpen(false);
       setNodeEditing(false);
       setDirectoryDraftActive(false);
@@ -458,14 +400,9 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
       bindingForm.resetFields();
     }, true);
   }
-  function changeDirectoryInstance(instanceId: string) {
-    const instance = availableInstances.find(
-      (row) => row.instance_id === instanceId
-    );
-    if (instance && !draft.saveDirectoryMutation.isPending)
-      requestDirectorySessionChange(() => {
-        void openDirectory(instance);
-      }, true);
+  function changeDirectoryInstance(instance: ConsoleMcpInstance) {
+    if (!draft.saveDirectoryMutation.isPending)
+      requestDirectorySessionChange(() => { void openDirectory(instance); }, true);
   }
   function selectedDirectoryPath() {
     if (selectedDirectoryKey.startsWith('group:'))
@@ -519,6 +456,8 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
     groupSavedValuesRef.current = values;
   }
   function startToolMount(path = selectedDirectoryPath()) {
+    if (!canReadTools) return;
+    setPickedTool(undefined);
     expandDirectoryPath(path);
     setDirectoryEditorMode('binding');
     setDirectoryEditorIntent('create');
@@ -611,12 +550,14 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
             row.tool_id === editingBinding.tool_id &&
             row.group_path === editingBinding.group_path
         ));
-    const tool = directoryTools.find((row) => row.tool_id === values.tool_id);
-    if (!tool) return;
+    const toolRecordId = old?.tool_record_id ?? (
+      canReadTools && pickedTool?.tool_id === values.tool_id ? pickedTool.id : undefined
+    );
+    if (!toolRecordId) return;
     const saved: ConsoleMcpToolBinding = {
       id: old?.id ?? `draft:${crypto.randomUUID()}`,
       instance_record_id: draft.snapshot.instance_record_id,
-      tool_record_id: tool.id,
+      tool_record_id: toolRecordId,
       tool_id: values.tool_id,
       group_path:
         old?.group_path ?? normalizeMcpDirectoryPath(values.group_path),
@@ -780,16 +721,11 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
     watchedDisplayName,
     watchedGroupDescriptionShort,
     parentGroupPath,
-    setParentGroupPath,
     directoryEditorIntent,
-    setDirectoryEditorIntent,
     directoryDraftActive,
-    setDirectoryDraftActive,
     directoryDraftVersion,
     expandedDirectoryKeys,
     setExpandedDirectoryKeys,
-    groupSavedValuesRef,
-    bindingSavedValuesRef,
     discardDirectoryChangesOpen,
     setDiscardDirectoryChangesOpen,
     pendingDirectorySessionChangeRef,
@@ -800,28 +736,18 @@ export function useMcpDirectoryEditor(instances: ConsoleMcpInstance[]) {
     directoryEditorMode,
     selectedDirectoryKey,
     setEditingInstance,
-    setEditingBinding,
     setInstanceModalOpen,
-    setDirectoryModalOpen,
-    setDirectoryEditorMode,
-    setRequestedInstanceId,
-    setSelectedDirectoryKey,
-    availableInstances,
     selectedInstance,
     selectedTool,
-    toolOptions,
-    toolSearchKeyword,
-    setToolSearchKeyword,
-    pickerToolsLoading: pickerToolsQuery.isFetching,
+    setPickedTool,
+    canReadTools,
+    boundToolsQuery,
     bindingOptions,
     treeData,
     handleTreeDrop,
-    applyDirectoryPathToForms,
     applyBindingSelection,
-    directorySessionHasChanges,
     requestDirectorySessionChange,
     closeDirectoryModal,
-    selectedDirectoryPath,
     groupCreationPathPrefix,
     groupCreationPath,
     startChildGroupCreation,

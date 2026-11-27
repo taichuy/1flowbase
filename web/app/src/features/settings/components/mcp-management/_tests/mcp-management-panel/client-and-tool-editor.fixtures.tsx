@@ -354,12 +354,14 @@ async function renderPanel(
 }
 
 async function renderPanelWithMountedTool({
+  queryClient,
   includeBinding = true,
   includeGroup = false,
   operation = 'POST /api/console/apps',
   proxy = false,
   fullDescription = 'Search customer'
 }: {
+  queryClient?: QueryClient;
   includeBinding?: boolean;
   includeGroup?: boolean;
   operation?: string;
@@ -494,7 +496,7 @@ async function renderPanelWithMountedTool({
   installDirectorySnapshotApi(mcpManagementApi, catalog);
   installProgressiveMcpApi(mcpManagementApi, catalog, interfaceCapabilities);
   return await renderSettled(
-    <AppProviders>
+    <AppProviders queryClient={queryClient}>
       <ObservePanelQueries />
       <McpManagementPanel canManage />
     </AppProviders>

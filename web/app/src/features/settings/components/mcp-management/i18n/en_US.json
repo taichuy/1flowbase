@@ -40,6 +40,7 @@
     "cancel_node_edit": "Cancel node editing",
     "save_node": "Save node",
     "save_directory": "Save directory",
+    "directory_tools_permission": "Viewing tool details or selecting a tool to mount requires mcp.tools.view.",
     "directory_not_ready": "The directory is not ready. Please try again shortly.",
     "directory_duplicate_path": "A group or Tool mount already exists at this path.",
     "discard_unsaved_changes_title": "Discard unsaved changes?",

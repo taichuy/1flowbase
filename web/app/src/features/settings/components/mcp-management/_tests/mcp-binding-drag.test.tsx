@@ -137,14 +137,14 @@ function grant(permissions: string[]) {
 }
 
 const clients: QueryClient[] = [];
-function renderEditor(initialCatalog: ConsoleMcpCatalog = catalog) {
+function renderEditor() {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } }
   });
   clients.push(client);
   let current: ReturnType<typeof useMcpDirectoryEditor>;
   function Harness() {
-    current = useMcpDirectoryEditor(initialCatalog.instances);
+    current = useMcpDirectoryEditor();
     return (
       <>
         <Form form={current.groupForm} />
@@ -211,7 +211,7 @@ afterEach(() => {
 });
 
 async function openEditor(initialCatalog: ConsoleMcpCatalog = catalog) {
-  const view = renderEditor(initialCatalog);
+  const view = renderEditor();
   await act(async () => {
     await view.editor.openDirectory(initialCatalog.instances[0]!);
   });
@@ -354,7 +354,7 @@ describe('MCP directory draft drag', () => {
   });
 
   test('a new mount moved during PUT keeps its unconfirmed visible flag and saves through the returned server identity', async () => {
-    grant(['mcp.directory.view', 'mcp.directory.replace']);
+    grant(['mcp.directory.view', 'mcp.directory.replace', 'mcp.tools.view']);
     const newCatalog: ConsoleMcpCatalog = {
       ...catalog,
       tools: [newMountTool],
@@ -364,6 +364,7 @@ describe('MCP directory draft drag', () => {
     installProgressiveMcpApi(api, newCatalog);
     const view = await openEditor(newCatalog);
     act(() => view.editor.startToolMount('/origin'));
+    act(() => view.editor.setPickedTool(newMountTool));
     act(() => {
       view.editor.bindingForm.setFieldsValue({
         instance_id: 'ops',

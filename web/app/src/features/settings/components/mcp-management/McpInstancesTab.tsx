@@ -1,10 +1,11 @@
+import type { ConsoleMcpInstance, ConsoleMcpToolSummary } from '@1flowbase/api-client';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../../state/auth-store';
 import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import {
   Alert,
@@ -32,6 +33,8 @@ import {
 
 import {
   fetchSettingsMcpInstancesPage,
+  fetchSettingsMcpToolsPage,
+  settingsMcpToolsQueryKey,
   invalidateSettingsMcpInstancesAndTools,
   settingsMcpInstancesQueryKey
 } from '../../api/mcp-management';
@@ -48,17 +51,18 @@ import { McpInstanceDiscoveryPolicyModal } from './McpInstanceDiscoveryPolicyMod
 import { McpBundleExportModal } from './bundle/McpBundleExportModal';
 import { McpBundleImportFlow } from './bundle/McpBundleImportFlow';
 
+import type { McpTablePagination } from './mcp-management-state';
+import { DirectoryReadError } from './McpInstancesTab/DirectoryReadError';
+import { DirectoryPagedSelect } from './McpInstancesTab/DirectoryPagedSelect';
 import { useMcpDirectoryEditor } from './McpInstancesTab/use-mcp-directory-editor';
 import { useMcpInstanceActions } from './McpInstancesTab/use-mcp-instance-actions';
 
 const EMPTY_INSTANCES: never[] = [];
 
-export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
+export function McpInstancesTab({ page, pageSize, setPosition }: McpTablePagination) {
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
   const instancesQuery = useQuery({
     queryKey: [...settingsMcpInstancesQueryKey, 'page', { page, page_size: pageSize }],
     queryFn: () =>
@@ -71,11 +75,11 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
     if (!instancesQuery.data) return;
     const maxPage = Math.max(1, Math.ceil(totalInstances / pageSize));
     if (page > maxPage) {
-      setPage(maxPage);
+      setPosition({ page: maxPage, pageSize });
     }
-  }, [instancesQuery.data, page, pageSize, totalInstances]);
+  }, [instancesQuery.data, page, pageSize, setPosition, totalInstances]);
 
-  const directory = useMcpDirectoryEditor(instances);
+  const directory = useMcpDirectoryEditor();
   const {
     groupForm,
     bindingForm,
@@ -100,12 +104,11 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
     selectedDirectoryKey,
     setEditingInstance,
     setInstanceModalOpen,
-    availableInstances,
     selectedInstance,
     selectedTool,
-    toolOptions,
-    setToolSearchKeyword,
-    pickerToolsLoading,
+    canReadTools,
+    setPickedTool,
+    boundToolsQuery,
     bindingOptions,
     treeData,
     handleTreeDrop,
@@ -153,6 +156,7 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
     copyInstanceMutation,
     handleExportInstanceBundle
   } = useMcpInstanceActions(directory);
+  const choosingTool = nodeEditing && directoryEditorMode === 'binding' && !editingBinding;
   const toolMountPath = watchedToolId
     ? buildMcpChildGroupPath(watchedGroupPath, watchedToolId)
     : normalizeMcpDirectoryPath(watchedGroupPath);
@@ -187,8 +191,7 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
         pageSize={pageSize}
         loading={instancesQuery.isLoading}
         onPageChange={(nextPage, nextSize) => {
-          setPage(nextPage);
-          setPageSize(nextSize);
+          setPosition({ page: nextPage, pageSize: nextSize });
         }}
         onEdit={(record) => {
           setEditingInstance(record);
@@ -321,17 +324,18 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
                 >
                   {i18nText('settings', 'auto.instance_name')}
                 </Typography.Text>
-                {nodeEditing ? (
-                  <Select
+                {nodeEditing && can('mcp.instances.view') ? (
+                  <DirectoryPagedSelect<ConsoleMcpInstance>
                     aria-label={i18nText('settings', 'auto.instance_name')}
                     className="mcp-management__instance-select"
                     value={selectedInstance.instance_id}
+                    selected={selectedInstance}
                     disabled={saveDirectoryMutation.isPending}
-                    options={availableInstances.map((instance) => ({
-                      label: `${instance.name} (${instance.instance_id})`,
-                      value: instance.instance_id
-                    }))}
-                    onChange={changeDirectoryInstance}
+                    queryKey={settingsMcpInstancesQueryKey}
+                    fetchPage={fetchSettingsMcpInstancesPage}
+                    getId={(instance) => instance.instance_id}
+                    getLabel={(instance) => `${instance.name} (${instance.instance_id})`}
+                    onPick={changeDirectoryInstance}
                   />
                 ) : (
                   <Typography.Text>
@@ -388,6 +392,7 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
                   )}
                   disabled={
                     !can('mcp.directory.replace') ||
+                    !canReadTools ||
                     !directorySnapshot ||
                     directoryLoading
                   }
@@ -399,6 +404,14 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
                 </Button>
               </Flex>
 
+              {!canReadTools && (can('mcp.directory.replace') || Boolean(directorySnapshot?.bindings.length)) ? (
+                <Alert
+                  type="warning"
+                  title={i18nText('settingsMcpManagement', 'auto.directory_tools_permission')}
+                />
+              ) : canReadTools && boundToolsQuery.isError ? (
+                <DirectoryReadError error={boundToolsQuery.error} retry={() => void boundToolsQuery.refetch()} />
+              ) : null}
               <McpDirectoryTree
                 key={`${directoryEditorMode}:${
                   directoryDraftActive ? directoryDraftVersion : 'stable'
@@ -499,7 +512,7 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
                           'auto.save_node'
                         )}
                         disabled={
-                          !can('mcp.directory.replace') || directoryLoading
+                          !can('mcp.directory.replace') || directoryLoading || (choosingTool && !canReadTools)
                         }
                         onClick={() =>
                           directoryEditorMode === 'group'
@@ -773,21 +786,23 @@ export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
                   </Form.Item>
                   <Form.Item
                     name="tool_id"
-                    hidden={!nodeEditing || Boolean(editingBinding)}
+                    hidden={!choosingTool || !canReadTools}
                     label={i18nText(
                       'settingsMcpManagement',
                       'auto.select_tool'
                     )}
                     rules={[{ required: true }]}
                   >
-                    <Select
-                      disabled={Boolean(editingBinding)}
-                      showSearch
-                      filterOption={false}
-                      loading={pickerToolsLoading}
-                      onSearch={setToolSearchKeyword}
-                      options={toolOptions}
-                    />
+                    {choosingTool && canReadTools ? (
+                      <DirectoryPagedSelect<ConsoleMcpToolSummary>
+                        selected={selectedTool}
+                        queryKey={settingsMcpToolsQueryKey}
+                        fetchPage={fetchSettingsMcpToolsPage}
+                        getId={(tool) => tool.tool_id}
+                        getLabel={(tool) => tool.name}
+                        onPick={setPickedTool}
+                      />
+                    ) : <Input hidden />}
                   </Form.Item>
                   {selectedTool ? (
                     <Descriptions
