@@ -601,15 +601,9 @@ impl RecoveryScenario {
             .await
             .unwrap();
         let storage_id = storage.id;
-        let artifact_bytes = b"builtin-mcp-artifact";
         let artifact_path = roots.mcp.join("builtin-fixture.bundle");
-        tokio::fs::write(&artifact_path, artifact_bytes)
-            .await
-            .unwrap();
-        let artifact_checksum = format!(
-            "sha256:{:x}",
-            base16ct::HexDisplay(&Sha256::digest(artifact_bytes))
-        );
+        let artifact_checksum =
+            write_fixture_artifact(&artifact_path, b"builtin-mcp-artifact").await;
         let installation_id = Uuid::now_v7();
         ExtensionInstallationRepository::upsert_extension_installation(
             &store,
@@ -648,6 +642,7 @@ impl RecoveryScenario {
                 workspace_id: bootstrap.workspace_id,
                 installation_id: assigned_fixture_plugin(
                     &store,
+                    &roots.providers,
                     bootstrap.workspace_id,
                     bootstrap.root_user_id,
                     "recovery_fixture_source",
@@ -685,6 +680,7 @@ impl RecoveryScenario {
                 workspace_id: bootstrap.workspace_id,
                 installation_id: assigned_fixture_plugin(
                     &store,
+                    &roots.providers,
                     bootstrap.workspace_id,
                     bootstrap.root_user_id,
                     "recovery_fixture_provider",
@@ -905,14 +901,22 @@ impl BackupComponentSource for BytesBackupSource {
     }
 }
 
+async fn write_fixture_artifact(path: &Path, bytes: &[u8]) -> String {
+    tokio::fs::write(path, bytes).await.unwrap();
+    format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
+}
+
 // Secret-bearing instances are ordinary plugin references; the MCP backup artifact is not one.
 async fn assigned_fixture_plugin(
     store: &impl PluginRepository,
+    install_root: &Path,
     workspace_id: Uuid,
     actor_user_id: Uuid,
     code: &str,
     contract: &str,
 ) -> Uuid {
+    let path = install_root.join(format!("{code}.bundle"));
+    let checksum = write_fixture_artifact(&path, code.as_bytes()).await;
     let installed = store
         .upsert_installation(&UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
@@ -928,13 +932,32 @@ async fn assigned_fixture_plugin(
             trust_level: "unverified".into(),
             verification_status: domain::PluginVerificationStatus::Valid,
             desired_state: domain::PluginDesiredState::ActiveRequested,
-            expected_checksum: None,
+            expected_checksum: Some(checksum.clone()),
             signature_status: ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
             metadata_json: serde_json::json!({}),
             is_system_reserved: false,
             actor_user_id,
+        })
+        .await
+        .unwrap();
+    // Post-restore reconciliation checks the actual file on this node, not just its assignment.
+    store
+        .upsert_artifact_instance(&control_plane::ports::UpsertPluginArtifactInstanceInput {
+            node_id: NODE_ID.into(),
+            installation_id: installed.id,
+            local_version: Some(installed.plugin_version.clone()),
+            local_checksum: Some(checksum),
+            local_path: Some(path.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: domain::PluginRuntimeStatus::Active,
+            availability_status: domain::PluginAvailabilityStatus::Available,
+            checked_at: OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: true,
         })
         .await
         .unwrap();
