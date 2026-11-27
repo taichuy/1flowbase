@@ -735,3 +735,151 @@ async fn artifact_refresh_guards_readiness_flips_while_runtime_writes_skip_depen
         domain::PluginRuntimeStatus::LoadFailed
     );
 }
+
+#[tokio::test]
+async fn runtime_activation_rechecks_target_dependencies_before_publishing_active() {
+    let (store, actor) = store().await;
+    let p = provider();
+    let c = consumer();
+    seed(&store, &p, actor).await;
+    seed(&store, &c, actor).await;
+
+    let dir = std::env::temp_dir().join(format!("artifact-activation-{}", c.id));
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(dir.join("manifest.yaml"), "fixture").unwrap();
+    std::fs::write(
+        dir.join(".1flowbase-artifact.json"),
+        serde_json::json!({
+            "plugin_id": c.plugin_id, "version": c.plugin_version, "manifest_fingerprint": "fixture"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let mut ready = artifact(&c);
+    ready.local_path = Some(dir.display().to_string());
+    ready.manifest_fingerprint = Some("fixture".into());
+    let before = store.upsert_artifact_instance(&ready).await.unwrap();
+    let activate = ActivatePluginArtifactInstanceInput {
+        node_id: ready.node_id,
+        installation_id: c.id,
+        expected_local_version: ready.local_version,
+        expected_local_checksum: ready.local_checksum,
+        expected_local_path: ready.local_path.unwrap(),
+        expected_manifest_fingerprint: ready.manifest_fingerprint,
+        validate_manifest: |_, raw| (raw == "fixture").then(|| raw.to_owned()),
+        checked_at: time::OffsetDateTime::now_utc(),
+    };
+    // Simulate provider drift after enable without changing the consumer or its local files.
+    sqlx::query("update extension_artifact_instances set artifact_status='missing' where node_id='node-a' and installation_id=$1")
+        .bind(p.id).execute(store.pool()).await.unwrap();
+    let refused = store.try_mark_active_artifact_instance(&activate).await;
+    let persisted = store.get_artifact_instance("node-a", c.id).await.unwrap();
+    // Positive control: the exact same observed artifact can activate after provider repair.
+    store.upsert_artifact_instance(&artifact(&p)).await.unwrap();
+    let repaired = store.try_mark_active_artifact_instance(&activate).await;
+    std::fs::remove_dir_all(dir).unwrap();
+    let error = refused.unwrap_err();
+    assert!(matches!(error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PluginDependency { code, provider_plugin_code, .. })
+            if code == "plugin_dependency_not_ready" && provider_plugin_code == "provider"));
+    assert_eq!(
+        persisted,
+        Some(before),
+        "refusal must not change the row clock or status"
+    );
+    assert!(
+        matches!(repaired.unwrap(), ActivatePluginArtifactOutcome::Activated(row)
+        if row.runtime_status == PluginRuntimeStatus::Active)
+    );
+}
+
+#[tokio::test]
+async fn refresh_uses_the_locked_version_when_readiness_would_ambiguate_a_provider() {
+    let (store, actor) = store().await;
+    let p = provider();
+    let c = consumer();
+    seed(&store, &p, actor).await;
+    seed(&store, &c, actor).await;
+    // This provider can coexist with the selected one only while it is not ready here.
+    let mut other = provider();
+    other.plugin_version = "2.0.0".into();
+    store
+        .upsert_installation(&installation_input(&other, actor))
+        .await
+        .unwrap();
+    let mut missing = artifact(&other);
+    missing.artifact_status = domain::PluginArtifactInstanceStatus::Missing;
+    missing.is_current = false;
+    let before = store.upsert_artifact_instance(&missing).await.unwrap();
+    let new_version = "3.0.0";
+    let refresh = RefreshPluginArtifactInstanceInput {
+        node_id: before.node_id.clone(),
+        installation_id: other.id,
+        observed_artifact: Some(before.clone()),
+        touch_checked_at: true,
+        local_version: Some(new_version.into()),
+        local_checksum: None,
+        local_path: before.local_path.clone(),
+        manifest_fingerprint: None,
+        artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+        last_error: None,
+        reset_runtime_status: false,
+        checked_at: time::OffsetDateTime::now_utc(),
+    };
+
+    let mut fence = store.pool().begin().await.unwrap();
+    lock_managed_dependency_scope(&mut fence).await.unwrap();
+    let blocker: i32 = sqlx::query_scalar("select pg_backend_pid()")
+        .fetch_one(&mut *fence)
+        .await
+        .unwrap();
+    let worker = store.clone();
+    let pending = tokio::spawn(async move { worker.refresh_artifact_instance(&refresh).await });
+    // Wait for the actual scope-lock request, not a scheduler delay or a task-start signal.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let waiting: bool = sqlx::query_scalar(
+                "select exists(select 1 from pg_stat_activity where $1 = any(pg_blocking_pids(pid))
+                 and query like '%pg_advisory_xact_lock%managed-workspace:%')",
+            )
+            .bind(blocker)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+            if waiting {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("refresh did not wait for the held dependency fence");
+    sqlx::query("select id from extension_installations where id=$1 for update nowait")
+        .bind(other.id)
+        .fetch_one(&mut *fence)
+        .await
+        .expect("scope fence must precede installation row lock");
+    // This is the version change performed by a conflict-update on the same installation.
+    sqlx::query("update extension_installations set artifact_version=$2 where id=$1")
+        .bind(other.id)
+        .bind(new_version)
+        .execute(&mut *fence)
+        .await
+        .unwrap();
+    fence.commit().await.unwrap();
+    let error = tokio::time::timeout(Duration::from_secs(10), pending)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PluginDependency { code, dependents, .. })
+            if code == "plugin_dependency_in_use" && dependents == &["fixture.publisher/consumer@1.0.0"]));
+    assert_eq!(
+        store
+            .get_artifact_instance("node-a", other.id)
+            .await
+            .unwrap(),
+        Some(before)
+    );
+}
