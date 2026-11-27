@@ -31,10 +31,10 @@ function inventory(patterns, filters, files) {
   return { missing, unmatched };
 }
 
-function checkBinding(script, mode, selectors) {
+function checkBinding(script, mode, selectors, extra = []) {
   const prefix = '../../scripts/node/cli/exec-with-real-node.sh ../../scripts/node/cli/run-frontend-vitest.js ';
   assert.ok(script.startsWith(prefix));
-  const options = parseCliArgs([...script.slice(prefix.length).split(' '), '--', '-t', 'name filter']);
+  const options = parseCliArgs([...script.slice(prefix.length).split(' '), ...extra, '--', '-t', 'name filter']);
   assert.equal(options.mode, mode);
   const runtimeConfig = { frontend: { vitestMaxWorkers: 2 } };
   const expected = ['--dir', 'web/app', 'exec', 'vitest', 'run'];
@@ -59,11 +59,15 @@ test('page-only directories and PR business anchors stay in their designated lan
     assert.ok(exclusions.includes(directory + glob), directory);
     assert.ok(pageFilters.includes(directory), directory);
   }
-  const pr = new Set(scripts['test:pr'].split(' '));
-  for (const file of ['src/features/frontstage/_tests/page-tree.test.ts',
-    'src/features/agent-flow/_tests/start-node-variables.test.ts']) {
-    assert.ok(pr.has(file) && testFiles.has(file), file);
-  }
+  const smoke = [
+    'src/routes/_tests/route-config.test.ts', 'src/routes/_tests/route-guards.test.tsx',
+    'src/app-shell/_tests/navigation.test.tsx', 'src/features/agent-flow/_tests/node-schema-registry.test.tsx',
+    'src/features/agent-flow/_tests/validation/validate-document.test.ts', 'src/features/frontstage/_tests/page-document.test.ts',
+    'src/features/applications/_tests/applications-api.test.ts', 'src/shared/i18n/_tests/locales.test.ts',
+    'src/features/frontstage/_tests/page-tree.test.ts', 'src/features/agent-flow/_tests/start-node-variables.test.ts',
+  ];
+  for (const file of smoke) assert.ok(testFiles.has(file), file);
+  checkBinding(scripts['test:pr'], 'run', [...smoke, ...CONTRACT_TEST_FILES], CONTRACT_TEST_FILES);
 });
 
 test('every selector exists; stable and page suites together cover every targeted contract', () => {
