@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
     fmt::{Display, Formatter},
+    sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};
@@ -409,7 +410,7 @@ pub struct ConsoleOperationRegistryDiff {
 
 #[derive(Debug)]
 pub struct ConsoleOperationRegistry {
-    inventory: ConsoleOperationCompiledInventory,
+    inventory: Arc<ConsoleOperationCompiledInventory>,
     route_owners: BTreeMap<(String, String), String>,
 }
 
@@ -502,7 +503,7 @@ impl ConsoleOperationRegistry {
         }
 
         Ok(Self {
-            inventory,
+            inventory: Arc::new(inventory),
             route_owners,
         })
     }
@@ -577,12 +578,16 @@ impl ConsoleOperationRegistry {
                 "console route is missing interface metadata: {method} {path}"
             )));
         }
-        self.inventory.interfaces = interfaces.into_values().collect();
+        Arc::make_mut(&mut self.inventory).interfaces = interfaces.into_values().collect();
         Ok(self)
     }
 
     pub fn inventory(&self) -> &ConsoleOperationCompiledInventory {
-        &self.inventory
+        self.inventory.as_ref()
+    }
+
+    pub fn shared_inventory(&self) -> Arc<ConsoleOperationCompiledInventory> {
+        Arc::clone(&self.inventory)
     }
 
     pub fn access_for_console_route(

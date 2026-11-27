@@ -280,7 +280,7 @@ impl ManagedExtensionComposition {
             .iter()
             .flat_map(|snapshot| snapshot.bindings.values())
         {
-            retired_installations.insert(binding.installation.id, &binding.installation);
+            retired_installations.insert(binding.installation.id, binding.installation.as_ref());
             // The host mounts only one generation per identity. A newer owned generation
             // means an earlier attempt already removed this one; never retire its replacement.
             if !still_owned_identities.contains(binding.handle.identity())

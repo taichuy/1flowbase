@@ -129,11 +129,13 @@ impl ManagedExtensionComposition {
                 .snapshot(domain::SYSTEM_SCOPE_ID)
                 .await
                 .map(|snapshot| {
-                    snapshot
-                        .bindings
-                        .values()
-                        .map(|binding| (binding.installation.id, binding.installation.clone()))
-                        .collect()
+                    let mut unique = BTreeMap::new();
+                    for binding in snapshot.bindings.values() {
+                        unique
+                            .entry(binding.installation.id)
+                            .or_insert_with(|| (*binding.installation).clone());
+                    }
+                    unique
                 })
                 .unwrap_or_default(),
         };

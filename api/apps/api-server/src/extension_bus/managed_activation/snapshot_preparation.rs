@@ -333,6 +333,8 @@ impl ManagedExtensionComposition {
         }
         let mut bindings = BTreeMap::new();
         for package in packages {
+            // Share one immutable installation record across contributions in this snapshot.
+            let installation = Arc::new(package.installation.clone());
             for contribution in &package.manifest.module.contributions {
                 let interface_protocol = package
                     .manifest
@@ -369,7 +371,7 @@ impl ManagedExtensionComposition {
                         handle,
                         descriptor: contribution.clone(),
                         interface_protocol,
-                        installation: package.installation.clone(),
+                        installation: Arc::clone(&installation),
                     },
                 );
             }

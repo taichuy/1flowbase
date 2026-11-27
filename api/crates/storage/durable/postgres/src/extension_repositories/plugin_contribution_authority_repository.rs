@@ -847,24 +847,28 @@ async fn locked_installation(
 
 /// Called only after taking the system managed-workspace fence. Provider lifecycle
 /// writers use the same fence; inventory reads reuse this transaction/connection.
+/// Disabled rows stay visible so dependency checks can tell missing from disabled.
 async fn locked_installations(
     transaction: &mut Transaction<'_, Postgres>,
+    subjects: &[Uuid],
 ) -> Result<BTreeMap<Uuid, domain::PluginInstallationRecord>> {
-    let rows = sqlx::query("select *, artifact_id as provider_code, artifact_version as plugin_version, receipt->>'legacy_manifest_compatibility' as legacy_manifest_compatibility from extension_installations where plugin_id is not null order by id")
-        .fetch_all(&mut **transaction).await?;
-    rows.into_iter()
-        .map(|row| {
-            let installation = crate::plugin_repository::map_installation(row)?;
-            Ok((installation.id, installation))
-        })
-        .collect()
+    authority_installations(transaction, subjects, false).await
 }
 
-// Shared reads need full metadata only for the authority subject. Keep missing
-// keys distinct from explicit JSON nulls, including inside exported definitions.
 async fn read_system_resource_installations(
     transaction: &mut Transaction<'_, Postgres>,
     installation_id: Uuid,
+) -> Result<BTreeMap<Uuid, domain::PluginInstallationRecord>> {
+    authority_installations(transaction, &[installation_id], true).await
+}
+
+// Authority checks need full metadata only for their subjects; other installations keep
+// the dependency/resource keys they read. Keep missing keys distinct from explicit JSON
+// nulls, including inside exported definitions.
+async fn authority_installations(
+    transaction: &mut Transaction<'_, Postgres>,
+    subjects: &[Uuid],
+    active_only: bool,
 ) -> Result<BTreeMap<Uuid, domain::PluginInstallationRecord>> {
     let rows = sqlx::query(r#"
         select id, scope_id, category, organization, artifact_id as provider_code, plugin_id,
@@ -873,7 +877,7 @@ async fn read_system_resource_installations(
                signature_status, signature_algorithm, signing_key_id,
                receipt->>'legacy_manifest_compatibility' as legacy_manifest_compatibility,
                is_system_reserved, created_by, updated_by, created_at, updated_at,
-               case when id = $1 then metadata_json else coalesce((
+               case when id = any($1) then metadata_json else coalesce((
                    select jsonb_object_agg(key, value) from (values
                        ('plugin_dependencies', metadata_json->'plugin_dependencies'),
                        ('resource_imports', metadata_json->'resource_imports'),
@@ -885,10 +889,12 @@ async fn read_system_resource_installations(
                    ) as projection(key, value) where value is not null
                ), '{}'::jsonb) end as metadata_json
         from extension_installations
-        where plugin_id is not null and (id = $1 or desired_state = 'active_requested')
+        where plugin_id is not null
+          and (id = any($1) or not $2 or desired_state = 'active_requested')
         order by id
     "#)
-    .bind(installation_id)
+    .bind(subjects)
+    .bind(active_only)
     .fetch_all(&mut **transaction)
     .await?;
     rows.into_iter()
@@ -1071,7 +1077,8 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             snapshots.push(snapshot(&mut transaction, id, input.workspace_id, None).await?);
         }
         if system_service {
-            installations.extend(locked_installations(&mut transaction).await?);
+            let subjects = installations.keys().copied().collect::<Vec<_>>();
+            installations.extend(locked_installations(&mut transaction, &subjects).await?);
         }
         let ids = ids.into_iter().collect::<Vec<_>>();
         let node_artifacts = lock_node_artifacts(
@@ -1182,7 +1189,8 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             BTreeMap::new()
         };
         if includes_system_scope {
-            installations.extend(locked_installations(&mut transaction).await?);
+            let subjects = installations.keys().copied().collect::<Vec<_>>();
+            installations.extend(locked_installations(&mut transaction, &subjects).await?);
         }
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
@@ -1206,7 +1214,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         let mut transaction = begin_locked(self, installation_id, workspace_id).await?;
         let snapshot = snapshot(&mut transaction, installation_id, workspace_id, None).await?;
         let installations = if workspace_id == domain::SYSTEM_SCOPE_ID {
-            locked_installations(&mut transaction).await?
+            locked_installations(&mut transaction, &[installation_id]).await?
         } else {
             [(
                 installation_id,
@@ -1394,7 +1402,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         )
         .await?;
         let installations = if workspace_id == domain::SYSTEM_SCOPE_ID {
-            locked_installations(&mut transaction).await?
+            locked_installations(&mut transaction, &[installation_id]).await?
         } else {
             [(
                 installation_id,

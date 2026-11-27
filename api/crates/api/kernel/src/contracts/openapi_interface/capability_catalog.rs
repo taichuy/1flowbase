@@ -100,7 +100,7 @@ pub async fn query_openapi_capability_catalog(
     query_openapi_capability_catalog_with(
         &OpenApiCapabilityCatalogDependencies {
             store: state.store.clone(),
-            console_operations: state.console_operation_registry.inventory().clone(),
+            console_operations: state.console_operation_registry.shared_inventory(),
             interface_registry: state
                 .extension_boot_snapshot
                 .as_ref()
@@ -196,7 +196,7 @@ pub async fn get_openapi_capability(
     get_openapi_capability_with(
         &OpenApiCapabilityCatalogDependencies {
             store: state.store.clone(),
-            console_operations: state.console_operation_registry.inventory().clone(),
+            console_operations: state.console_operation_registry.shared_inventory(),
             interface_registry: state
                 .extension_boot_snapshot
                 .as_ref()
@@ -233,7 +233,7 @@ pub async fn get_openapi_capability_by_route(
     get_openapi_capability_by_route_with(
         &OpenApiCapabilityCatalogDependencies {
             store: state.store.clone(),
-            console_operations: state.console_operation_registry.inventory().clone(),
+            console_operations: state.console_operation_registry.shared_inventory(),
             interface_registry: state
                 .extension_boot_snapshot
                 .as_ref()
@@ -308,7 +308,7 @@ pub async fn build_openapi_capability_catalog(
     build_openapi_capability_catalog_with(
         &OpenApiCapabilityCatalogDependencies {
             store: state.store.clone(),
-            console_operations: state.console_operation_registry.inventory().clone(),
+            console_operations: state.console_operation_registry.shared_inventory(),
             interface_registry: state
                 .extension_boot_snapshot
                 .as_ref()
@@ -325,7 +325,7 @@ pub async fn build_openapi_capability_catalog(
 #[derive(Clone)]
 pub struct OpenApiCapabilityCatalogDependencies {
     pub store: storage_durable_postgres::MainDurableStore,
-    pub console_operations: access_control::ConsoleOperationCompiledInventory,
+    pub console_operations: Arc<access_control::ConsoleOperationCompiledInventory>,
     pub interface_registry: Option<Arc<interface_runtime::CompiledInterfaceRegistry>>,
     pub api_docs: Arc<crate::openapi_docs::ApiDocsRegistry>,
     pub template_catalog: runtime_core::data_model_template_registry::DataModelTemplateCatalog,

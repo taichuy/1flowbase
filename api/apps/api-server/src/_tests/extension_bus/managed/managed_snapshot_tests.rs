@@ -202,6 +202,16 @@ async fn root_2007_ac_008_snapshot_restart() {
         installations.push(installed);
     }
     let g1 = runtime.composition.snapshot(workspace).await.unwrap();
+    let a_bindings = g1
+        .bindings
+        .values()
+        .filter(|binding| binding.installation.id == installations[0].installation.id)
+        .collect::<Vec<_>>();
+    assert_eq!(a_bindings.len(), 2);
+    assert!(Arc::ptr_eq(
+        &a_bindings[0].installation,
+        &a_bindings[1].installation
+    ));
     create(&runtime.store, actor_id, workspace).await;
     let worker_id = Uuid::now_v7();
     let records = runtime

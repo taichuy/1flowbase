@@ -676,3 +676,62 @@ async fn installation_commit_rolls_back_new_ready_provider_that_would_ambiguate_
         .artifact_status
         .is_ready());
 }
+
+#[tokio::test]
+async fn artifact_refresh_guards_readiness_flips_while_runtime_writes_skip_dependency_facts() {
+    let (store, actor) = store().await;
+    let p = provider();
+    let c = consumer();
+    seed(&store, &p, actor).await;
+    seed(&store, &c, actor).await;
+    let refresh = |artifact_status, observed_artifact| RefreshPluginArtifactInstanceInput {
+        node_id: "node-a".into(),
+        installation_id: p.id,
+        observed_artifact,
+        touch_checked_at: true,
+        local_version: Some(p.plugin_version.clone()),
+        local_checksum: None,
+        local_path: Some("/fixture/installed".into()),
+        manifest_fingerprint: None,
+        artifact_status,
+        last_error: None,
+        reset_runtime_status: false,
+        checked_at: time::OffsetDateTime::now_utc(),
+    };
+    let observed = store.get_artifact_instance("node-a", p.id).await.unwrap();
+    // Readiness unchanged: the dependency facts cannot change, the write commits.
+    let ready = store
+        .refresh_artifact_instance(&refresh(
+            domain::PluginArtifactInstanceStatus::Ready,
+            observed,
+        ))
+        .await
+        .unwrap()
+        .expect("observed row is current");
+    // Readiness flip: the guard still sees the active consumer and rolls back.
+    let error = store
+        .refresh_artifact_instance(&refresh(
+            domain::PluginArtifactInstanceStatus::Missing,
+            Some(ready),
+        ))
+        .await
+        .unwrap_err();
+    assert!(matches!(error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PluginDependency { code, .. }) if code == "plugin_dependency_in_use"));
+    // Runtime-only writes keep artifact status and version, so they never touch the guard.
+    let failed = store
+        .record_artifact_runtime_status(&RecordPluginRuntimeStatusInput {
+            node_id: "node-a".into(),
+            installation_id: p.id,
+            runtime_status: domain::PluginRuntimeStatus::LoadFailed,
+            last_error: Some("fixture load failure".into()),
+            checked_at: time::OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    assert!(failed.artifact_status.is_ready());
+    assert_eq!(
+        failed.runtime_status,
+        domain::PluginRuntimeStatus::LoadFailed
+    );
+}

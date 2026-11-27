@@ -155,7 +155,7 @@ pub async fn synchronize_at_startup(
             store: state.store.clone(),
             openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
                 store: state.store.clone(),
-                console_operations: state.console_operation_registry.inventory().clone(),
+                console_operations: state.console_operation_registry.shared_inventory(),
                 interface_registry: None,
                 api_docs: Arc::clone(&state.api_docs),
                 template_catalog: state.runtime_engine.template_catalog().clone(),

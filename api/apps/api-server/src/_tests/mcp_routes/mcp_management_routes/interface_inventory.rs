@@ -101,7 +101,7 @@ async fn ac_001_ac_005_ac_010_interface_catalog_covers_compiled_routes_and_media
         .expect("the current owner documents credential deletion");
     let dependencies = crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
         store: state.store.clone(),
-        console_operations: state.console_operation_registry.inventory().clone(),
+        console_operations: state.console_operation_registry.shared_inventory(),
         interface_registry: state
             .extension_boot_snapshot
             .as_ref()

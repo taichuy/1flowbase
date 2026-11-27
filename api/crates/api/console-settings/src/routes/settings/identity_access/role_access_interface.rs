@@ -129,7 +129,7 @@ fn affects_event_subscriptions(input: &RoleAccessInput) -> bool {
 struct RoleAccessAdapter {
     navigation_cache: control_plane::navigation_cache::NavigationCache,
     store: MainDurableStore,
-    console_inventory: access_control::ConsoleOperationCompiledInventory,
+    console_inventory: Arc<access_control::ConsoleOperationCompiledInventory>,
     settings_features: Vec<access_control::SettingsFeatureInventoryEntry>,
     bootstrap_workspace_id: uuid::Uuid,
 }
@@ -137,7 +137,7 @@ struct RoleAccessAdapter {
 pub fn role_access_port(
     navigation_cache: control_plane::navigation_cache::NavigationCache,
     store: MainDurableStore,
-    console_inventory: access_control::ConsoleOperationCompiledInventory,
+    console_inventory: Arc<access_control::ConsoleOperationCompiledInventory>,
     settings_features: Vec<access_control::SettingsFeatureInventoryEntry>,
     bootstrap_workspace_id: uuid::Uuid,
     changes: Arc<tokio::sync::Notify>,

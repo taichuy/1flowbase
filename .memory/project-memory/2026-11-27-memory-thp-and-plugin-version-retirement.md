@@ -63,3 +63,10 @@ scope:
 
 - `tmp/test-governance/ab-startup-benchmark/ab_summary.json`
 - `docker/README.md`
+
+## 后续：启动期反复分配修复（2026-11-27 16）
+
+- jemalloc 堆剖析（`prof_accum`，隔离副本 + 克隆库）发现启动期累计分配约 26.2 GiB：47% 来自 `e7db6e879` 把全表 `managed_dependency_facts` 加进每次产物写入（O(N²)），12% 来自系统作用域授权租约整表读取，11% 来自按 contribution 重复解析 manifest。
+- 已修复（未提交，位于本地与 `taichuy-dev` 的 `dev` 工作区）：依赖事实只在“就绪且版本一致”谓词翻转时计算；授权租约非主体只取依赖/资源投影列且保留禁用记录；manifest 按已校验指纹单条复用。
+- 同条件普通启动对比：就绪 80.4s → 32.6s，`VmHWM` 650 → 603 MiB，累计分配 26.2 → 5.9 GiB；稳态 RSS 约 450 MiB 未变（堆约 275 MiB，采样存活对象约 150 MiB）。`narenas:8` 实验稳态仅 270 MiB，排除 arena 数量；剩余约 125 MiB 差额来源尚未归因。
+- 收据：`tmp/test-governance/startup-memory-churn-2026-11-27.json` 及前后调用链文件。

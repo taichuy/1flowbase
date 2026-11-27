@@ -753,6 +753,17 @@ async fn root_2014_r3_probe_reference_worker_roundtrip() {
             loaded.interface_protocol,
             Some(ManagedInterfaceProtocol::ReferenceV2)
         );
+        // The verified digest identifies the bytes: reuse its parse, re-parse any other digest.
+        let last = std::sync::Mutex::new(None);
+        let digest = bound.artifact_fingerprint();
+        let other = ManagedArtifactFingerprint::from_bytes(b"other");
+        let parse = crate::package_loader::parse_managed_manifest_with;
+        let first = parse(&last, digest, std::str::from_utf8(&raw).unwrap()).unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            &first,
+            &parse(&last, digest, "unparsable: [").unwrap()
+        ));
+        assert!(parse(&last, &other, "unparsable: [").is_err());
         let mut wrong = activation.clone();
         wrong.identity = ManagedExecutionIdentity::new(
             bound.installation_id().clone(),
