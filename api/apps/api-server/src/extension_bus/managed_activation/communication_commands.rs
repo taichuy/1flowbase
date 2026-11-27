@@ -27,7 +27,7 @@ fn declarations(
     let installations = snapshot
         .bindings
         .values()
-        .map(|binding| (binding.installation.id, &binding.installation))
+        .map(|binding| (binding.installation.id, binding.installation.as_ref()))
         .collect::<BTreeMap<_, _>>();
     let mut commands = Vec::new();
     for (installation_id, installation) in installations {

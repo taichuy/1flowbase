@@ -20,7 +20,7 @@ import {
   Tooltip,
   Typography
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -34,8 +34,11 @@ import { statusColor } from '../mcp-management-utils';
 
 export function McpInstanceTable({
   instances,
-  groupCounts,
-  toolCounts,
+  total,
+  page,
+  pageSize,
+  loading,
+  onPageChange,
   onCreate,
   onEdit,
   onOpenDirectory,
@@ -48,8 +51,11 @@ export function McpInstanceTable({
 }: {
   canManage?: boolean;
   instances: ConsoleMcpInstance[];
-  groupCounts: Map<string, number>;
-  toolCounts: Map<string, number>;
+  total: number;
+  page: number;
+  pageSize: number;
+  loading?: boolean;
+  onPageChange: (page: number, pageSize: number) => void;
   onCreate: () => void;
   onEdit: (instance: ConsoleMcpInstance) => void;
   onOpenDirectory: (instance: ConsoleMcpInstance) => void;
@@ -61,12 +67,6 @@ export function McpInstanceTable({
   onDelete: (instance: ConsoleMcpInstance) => Promise<unknown>;
 }) {
   const can = useConsoleOperationAccess();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const currentPage = Math.min(
-    page,
-    Math.max(1, Math.ceil(instances.length / pageSize))
-  );
   const columns = useMemo<Array<DataTableColumn<ConsoleMcpInstance>>>(
     () => [
       {
@@ -126,7 +126,7 @@ export function McpInstanceTable({
         title: i18nText('settings', 'auto.directory_summary'),
         render: (_, record) => (
           <Typography.Text>
-            {groupCounts.get(record.id) ?? 0} / {toolCounts.get(record.id) ?? 0}
+            {record.group_count ?? 0} / {record.tool_count ?? 0}
           </Typography.Text>
         )
       },
@@ -260,8 +260,6 @@ export function McpInstanceTable({
     ],
     [
       can,
-      groupCounts,
-      toolCounts,
       onEdit,
       onOpenDirectory,
       onConnect,
@@ -283,17 +281,14 @@ export function McpInstanceTable({
         rowKey="id"
         columns={columns}
         configuration={configuration}
-        dataSource={instances.slice(
-          (currentPage - 1) * pageSize,
-          currentPage * pageSize
-        )}
-        page={currentPage}
+        dataSource={instances}
+        loading={loading}
+        page={page}
         pageSize={pageSize}
         pageSizeOptions={[10, 20, 50, 100]}
-        total={instances.length}
+        total={total}
         onPageChange={(nextPage, nextSize) => {
-          setPage(nextSize === pageSize ? nextPage : 1);
-          setPageSize(nextSize);
+          onPageChange(nextSize === pageSize ? nextPage : 1, nextSize);
         }}
         toolbar={
           <Flex justify="flex-end" align="center" gap={8} wrap>

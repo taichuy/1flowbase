@@ -102,7 +102,9 @@ describe('McpManagementPanel', () => {
       within(dialog).getByTestId('fixed-height-modal-scroll-body')
     ).toBeInTheDocument();
     expect(within(dialog).getByText('ops_mcp')).toBeInTheDocument();
-    expect(within(dialog).getByLabelText('默认返回数量')).toHaveValue('20');
+    expect(
+      await within(dialog).findByLabelText('默认返回数量')
+    ).toHaveValue('20');
     expect(within(dialog).getByLabelText('最大目录深度')).toHaveValue('3');
     expect(within(dialog).getByLabelText('允许正则路径查询')).not.toBeChecked();
     expect(within(dialog).getByLabelText('正则表达式最大长度')).toHaveValue(

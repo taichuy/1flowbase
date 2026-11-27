@@ -54,6 +54,8 @@ import {
   importSettingsMcpUpstreamTools,
   saveSettingsMcpUpstreamConnectionCredentials,
   settingsMcpCatalogQueryKey,
+  settingsMcpInstancesQueryKey,
+  settingsMcpToolsQueryKey,
   settingsMcpUpstreamConnectionsQueryKey,
   testSettingsMcpUpstreamConnection,
   testSettingsMcpUpstreamConnectionDraft,
@@ -451,9 +453,13 @@ function useUpstreamMcpController({
     },
     onSuccess: async () => {
       message.success(text('upstream_tools_imported'));
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: settingsMcpToolsQueryKey }),
+        queryClient.invalidateQueries({
+          queryKey: settingsMcpInstancesQueryKey
+        }),
+        queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey })
+      ]);
       setDiscoverConnection(null);
       setSelectedToolNames([]);
       onImported();

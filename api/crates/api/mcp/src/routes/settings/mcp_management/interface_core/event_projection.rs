@@ -20,7 +20,9 @@ impl ApiInput for McpCoreInput {
             Self::SaveCredential(instance_id, _) => {
                 json!({"path":{"instance_id":instance_id},"body":{}})
             }
-            Self::ListInstances => json!({}),
+            Self::ListInstances(query) if query.status.is_none() => json!({}),
+            Self::ListInstances(query) => json!({"query":event::to_value(query)?}),
+            Self::InstancesPage(query) => json!({"query":event::to_value(query)?}),
             Self::CreateInstance(body) => json!({"body":event::to_value(body)?}),
             Self::CopyInstance(instance_id, body) => {
                 json!({"path":{"instance_id":instance_id},"body":event::to_value(body)?})
@@ -62,6 +64,7 @@ impl ApiOutput for McpCoreOutput {
         match self {
             Self::Credential(value) => event::to_value(&CredentialEvent { saved: value.saved }),
             Self::Instances(value) => event::to_value(value),
+            Self::InstancesPage(value) => event::to_value(value),
             Self::Instance(value) => event::to_value(value),
             Self::Group(value) => event::to_value(value),
             Self::Binding(value) => event::to_value(value),

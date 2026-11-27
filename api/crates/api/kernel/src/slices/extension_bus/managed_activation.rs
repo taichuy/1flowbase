@@ -14,7 +14,7 @@ pub struct ManagedContributionBinding {
     pub handle: ManagedExecutionHandle,
     pub descriptor: ContributionDescriptor,
     pub interface_protocol: Option<extension_contracts::ManagedInterfaceProtocol>,
-    pub installation: domain::PluginInstallationRecord,
+    pub installation: Arc<domain::PluginInstallationRecord>,
 }
 
 pub struct ManagedWorkspaceSnapshot {

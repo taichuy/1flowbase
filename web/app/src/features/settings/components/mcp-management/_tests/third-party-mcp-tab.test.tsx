@@ -11,6 +11,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const upstreamApi = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
+  settingsMcpInstancesQueryKey: ['settings', 'mcp-management', 'instances'],
+  settingsMcpToolsQueryKey: ['settings', 'mcp-management', 'tools'],
   settingsMcpUpstreamConnectionsQueryKey: [
     'settings',
     'mcp-management',

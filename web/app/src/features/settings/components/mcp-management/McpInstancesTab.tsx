@@ -1,9 +1,10 @@
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../../state/auth-store';
 import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
+import { useEffect, useState } from 'react';
 
 import {
   Alert,
@@ -29,8 +30,11 @@ import {
   McpInstanceEditorModal
 } from './McpInstancesTab/McpInstanceModals';
 
-import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
-import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
+import {
+  fetchSettingsMcpInstancesPage,
+  invalidateSettingsMcpInstancesAndTools,
+  settingsMcpInstancesQueryKey
+} from '../../api/mcp-management';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
@@ -47,16 +51,31 @@ import { McpBundleImportFlow } from './bundle/McpBundleImportFlow';
 import { useMcpDirectoryEditor } from './McpInstancesTab/use-mcp-directory-editor';
 import { useMcpInstanceActions } from './McpInstancesTab/use-mcp-instance-actions';
 
-export function McpInstancesTab({
-  catalog
-}: {
-  canManage?: boolean;
-  catalog: ConsoleMcpCatalog;
-}) {
+const EMPTY_INSTANCES: never[] = [];
+
+export function McpInstancesTab(_props: { canManage?: boolean } = {}) {
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
-  const directory = useMcpDirectoryEditor(catalog);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const instancesQuery = useQuery({
+    queryKey: [...settingsMcpInstancesQueryKey, 'page', { page, page_size: pageSize }],
+    queryFn: () =>
+      fetchSettingsMcpInstancesPage({ page, page_size: pageSize })
+  });
+  const instances = instancesQuery.data?.items ?? EMPTY_INSTANCES;
+  const totalInstances = instancesQuery.data?.total ?? 0;
+
+  useEffect(() => {
+    if (!instancesQuery.data) return;
+    const maxPage = Math.max(1, Math.ceil(totalInstances / pageSize));
+    if (page > maxPage) {
+      setPage(maxPage);
+    }
+  }, [instancesQuery.data, page, pageSize, totalInstances]);
+
+  const directory = useMcpDirectoryEditor(instances);
   const {
     groupForm,
     bindingForm,
@@ -81,9 +100,12 @@ export function McpInstancesTab({
     selectedDirectoryKey,
     setEditingInstance,
     setInstanceModalOpen,
-    groupCounts,
-    toolCounts,
+    availableInstances,
     selectedInstance,
+    selectedTool,
+    toolOptions,
+    setToolSearchKeyword,
+    pickerToolsLoading,
     bindingOptions,
     treeData,
     handleTreeDrop,
@@ -129,15 +151,21 @@ export function McpInstancesTab({
     saveInstanceMutation,
     deleteInstanceMutation,
     copyInstanceMutation,
-    handleExportInstanceBundle,
-    selectedDiscoveryPolicy
-  } = useMcpInstanceActions(catalog, directory);
-  const selectedTool = catalog.tools.find(
-    (tool) => tool.tool_id === watchedToolId
-  );
+    handleExportInstanceBundle
+  } = useMcpInstanceActions(directory);
   const toolMountPath = watchedToolId
     ? buildMcpChildGroupPath(watchedGroupPath, watchedToolId)
     : normalizeMcpDirectoryPath(watchedGroupPath);
+
+  if (instancesQuery.isError) {
+    return (
+      <Alert
+        type="error"
+        title={i18nText('settings', 'auto.mcp_load_failed')}
+      />
+    );
+  }
+
   return (
     <div className="mcp-management__table-tab">
       <McpInstanceTable
@@ -153,9 +181,15 @@ export function McpInstancesTab({
           });
           setInstanceModalOpen(true);
         }}
-        instances={catalog.instances}
-        groupCounts={groupCounts}
-        toolCounts={toolCounts}
+        instances={instances}
+        total={totalInstances}
+        page={page}
+        pageSize={pageSize}
+        loading={instancesQuery.isLoading}
+        onPageChange={(nextPage, nextSize) => {
+          setPage(nextPage);
+          setPageSize(nextSize);
+        }}
         onEdit={(record) => {
           setEditingInstance(record);
           instanceForm.setFieldsValue({
@@ -189,10 +223,9 @@ export function McpInstancesTab({
           deleteInstanceMutation.mutateAsync(record.instance_id)
         }
       />
-      {discoveryPolicyInstance && selectedDiscoveryPolicy ? (
+      {discoveryPolicyInstance ? (
         <McpInstanceDiscoveryPolicyModal
           instance={discoveryPolicyInstance}
-          policy={selectedDiscoveryPolicy}
           open
           onClose={() => setDiscoveryPolicyInstance(null)}
         />
@@ -235,9 +268,7 @@ export function McpInstancesTab({
         csrfToken={csrfToken}
         onClose={() => setRestoreSource(null)}
         onApplied={async () => {
-          await queryClient.invalidateQueries({
-            queryKey: settingsMcpCatalogQueryKey
-          });
+          await invalidateSettingsMcpInstancesAndTools(queryClient);
         }}
       />
       {directoryModalOpen && selectedInstance ? (
@@ -296,7 +327,7 @@ export function McpInstancesTab({
                     className="mcp-management__instance-select"
                     value={selectedInstance.instance_id}
                     disabled={saveDirectoryMutation.isPending}
-                    options={catalog.instances.map((instance) => ({
+                    options={availableInstances.map((instance) => ({
                       label: `${instance.name} (${instance.instance_id})`,
                       value: instance.instance_id
                     }))}
@@ -751,10 +782,11 @@ export function McpInstancesTab({
                   >
                     <Select
                       disabled={Boolean(editingBinding)}
-                      options={catalog.tools.map((tool) => ({
-                        label: tool.name,
-                        value: tool.tool_id
-                      }))}
+                      showSearch
+                      filterOption={false}
+                      loading={pickerToolsLoading}
+                      onSearch={setToolSearchKeyword}
+                      options={toolOptions}
                     />
                   </Form.Item>
                   {selectedTool ? (

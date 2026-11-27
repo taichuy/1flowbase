@@ -73,8 +73,7 @@ async fn no_mcp_factory_leases_g2_without_catalog_and_keeps_detached_task_tail()
                     console_operations: selected
                         .state
                         .console_operation_registry
-                        .inventory()
-                        .clone(),
+                        .shared_inventory(),
                     interface_registry: None,
                     api_docs: selected.state.api_docs.clone(),
                     template_catalog: selected.state.runtime_engine.template_catalog().clone(),

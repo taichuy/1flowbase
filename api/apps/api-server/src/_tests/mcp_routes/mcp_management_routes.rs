@@ -13,6 +13,25 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
+async fn mcp_get(app: &axum::Router, cookie: &str, uri: &str) -> axum::response::Response {
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+async fn mcp_data(app: &axum::Router, cookie: &str, uri: &str) -> Value {
+    let response = mcp_get(app, cookie, uri).await;
+    assert_eq!(response.status(), StatusCode::OK, "{uri}");
+    response_json(response).await["data"].clone()
+}
+
 #[tokio::test]
 async fn ac_002_ac_006_bundle_source_is_projected_without_blocking_mutations() {
     let (app, database_url) = test_app_with_database_url().await;
@@ -558,6 +577,82 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert!(runtime_profile_interface["result_schema"]["properties"]
         .get("topology")
         .is_some());
+    let detail = mcp_data(
+        &app,
+        &root_cookie,
+        "/api/console/mcp/interface-capabilities/get_runtime_profile",
+    )
+    .await;
+    assert_eq!(&detail, runtime_profile_interface);
+    let first = mcp_data(
+        &app,
+        &root_cookie,
+        "/api/console/mcp/interface-capabilities/page?limit=1",
+    )
+    .await;
+    assert_eq!(
+        first["total"],
+        interface_payload["data"].as_array().unwrap().len()
+    );
+    assert_eq!(first["next_offset"], 1);
+    let second = mcp_data(
+        &app,
+        &root_cookie,
+        "/api/console/mcp/interface-capabilities/page?limit=1&offset=1",
+    )
+    .await;
+    assert_eq!(second["offset"], 1);
+    assert_ne!(
+        first["items"][0]["interface_id"],
+        second["items"][0]["interface_id"]
+    );
+    let filtered = mcp_data(&app, &root_cookie, "/api/console/mcp/interface-capabilities/page?method=gEt&bindable_only=true&q=GET%20%2Fapi%2Fconsole%2Fsystem%2Fruntime-profile").await;
+    assert_eq!(filtered["total"], 1);
+    assert_eq!(filtered["items"][0]["interface_id"], "get_runtime_profile");
+    assert!(filtered["items"][0].get("parameter_schema").is_none());
+    let not_bindable = mcp_data(
+        &app,
+        &root_cookie,
+        "/api/console/mcp/interface-capabilities/page?bindable_only=true&q=debug-runs%2Fstream",
+    )
+    .await;
+    assert_eq!(not_bindable["total"], 0);
+    assert_eq!(
+        mcp_get(
+            &app,
+            &root_cookie,
+            "/api/console/mcp/interface-capabilities/not-found"
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+
+    let model =
+        create_exposed_published_model(&app, &root_cookie, &root_csrf, "progressive_orders").await;
+    let model_detail = mcp_data(
+        &app,
+        &root_cookie,
+        &format!("/api/console/mcp/interface-capabilities/data_model__{model}__list_records"),
+    )
+    .await;
+    assert_eq!(
+        model_detail["path"],
+        "/api/runtime/models/progressive_orders/list"
+    );
+    assert_eq!(model_detail["bindable"], true);
+    assert!(model_detail["result_schema"].is_object());
+    assert_eq!(
+        mcp_get(
+            &app,
+            &root_cookie,
+            &format!("/api/console/mcp/interface-capabilities/data_model__{model}__nonexistent")
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+
     let application_api_docs_interface = interface_payload["data"]
         .as_array()
         .unwrap()
@@ -707,6 +802,106 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert_eq!(get_tool_payload["data"]["tool_id"].as_str(), Some(tool_id));
     assert!(get_tool_payload["data"].get("usage_description").is_none());
 
+    let bind_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances/workspace_ops/tool-bindings")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"tool_id":tool_id,"group_path":"/system","visible":true,"sort_order":0})
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bind_response.status(), StatusCode::CREATED);
+    let instance_page = mcp_data(
+        &app,
+        &root_cookie,
+        "/api/console/mcp/instances/page?page=0&page_size=1&status=enabled&keyword=wOrKsPaCe%20mCp",
+    )
+    .await;
+    assert_eq!(instance_page["total"], 1);
+    assert_eq!(instance_page["page"], 1);
+    assert_eq!(instance_page["items"][0]["group_count"], 1);
+    assert_eq!(instance_page["items"][0]["tool_count"], 1);
+    let second_page = mcp_data(
+        &app,
+        &root_cookie,
+        "/api/console/mcp/instances/page?page=2&page_size=1",
+    )
+    .await;
+    assert_eq!(second_page["total"], 1);
+    assert_eq!(second_page["items"], json!([]));
+    let listed = mcp_data(
+        &app,
+        &root_cookie,
+        "/api/console/mcp/instances?status=enabled",
+    )
+    .await;
+    assert_eq!(listed, instance_page["items"]);
+    let full = mcp_data(&app, &root_cookie, "/api/console/mcp/catalog").await;
+    assert_eq!(full["instances"], listed);
+    assert_eq!(full["groups"].as_array().unwrap().len(), 1);
+    assert_eq!(full["bindings"].as_array().unwrap().len(), 1);
+    let tools = mcp_data(&app, &root_cookie, "/api/console/mcp/tools").await;
+    assert_eq!(tools[0], get_tool_payload["data"]);
+    assert_eq!(full["tools"], tools);
+
+    let tool_page = mcp_data(&app, &root_cookie, "/api/console/mcp/tools/page?page_size=1&keyword=gEt%20%2Fapi%2Fconsole%2Fsystem%2Fruntime-profile&execution_target_kind=interface_wrapper&interface_id=get_runtime_profile&risk_level=low&status=enabled&des_id_required=false&tool_ids=%20runtime_profile%2C%20%2C").await;
+    assert_eq!(tool_page["total"], 1);
+    let summary = &tool_page["items"][0];
+    assert_eq!(summary["tool_id"], tool_id);
+    assert_eq!(
+        summary["operation"],
+        "GET /api/console/system/runtime-profile"
+    );
+    assert_eq!(summary["availability_status"], "available");
+    for field in [
+        "full_description",
+        "parameter_schema",
+        "result_schema",
+        "input_mapping",
+        "output_mapping",
+        "max_inline_chars",
+        "response_fields",
+    ] {
+        assert!(summary.get(field).is_none(), "summary leaked {field}");
+        assert!(tools[0].get(field).is_some(), "legacy list lost {field}");
+    }
+    for filter in [
+        "execution_target_kind=assistant_client",
+        "interface_id=not-found",
+        "risk_level=critical",
+        "status=disabled",
+        "des_id_required=true",
+        "tool_ids=missing",
+    ] {
+        assert_eq!(
+            mcp_data(
+                &app,
+                &root_cookie,
+                &format!("/api/console/mcp/tools/page?{filter}")
+            )
+            .await["total"],
+            0,
+            "{filter}"
+        );
+    }
+    let tool_second_page = mcp_data(
+        &app,
+        &root_cookie,
+        "/api/console/mcp/tools/page?page=2&page_size=1",
+    )
+    .await;
+    assert_eq!(tool_second_page["total"], 1);
+    assert_eq!(tool_second_page["items"], json!([]));
+
     let refresh_response = app
         .clone()
         .oneshot(
@@ -728,6 +923,22 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         refresh_payload["data"]["des_id"].as_str().unwrap(),
         first_des_id
     );
+
+    let binding_id = full["bindings"][0]["id"].as_str().unwrap();
+    let unbind = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/console/mcp/tool-bindings/{binding_id}"))
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unbind.status(), StatusCode::NO_CONTENT);
 
     let delete_group_response = app
         .clone()
@@ -847,3 +1058,42 @@ mod runtime_interfaces;
 
 #[path = "mcp_management_routes/directory.rs"]
 mod directory;
+
+#[tokio::test]
+async fn progressive_interfaces_hide_root_workspace_only_capabilities() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let other =
+        crate::_tests::support::seed_workspace(&database_url, "MCP restricted capability test")
+            .await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let page_uri =
+        "/api/console/mcp/interface-capabilities/page?q=extension_center_list_installed&method=GET";
+    let root_page = mcp_data(&app, &cookie, page_uri).await;
+    assert_eq!(root_page["total"], 1);
+    let interface_id = root_page["items"][0]["interface_id"].as_str().unwrap();
+    let detail_uri = format!("/api/console/mcp/interface-capabilities/{interface_id}");
+    assert_eq!(
+        mcp_get(&app, &cookie, &detail_uri).await.status(),
+        StatusCode::OK
+    );
+    let switched = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/session/actions/switch-workspace")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"workspace_id":other}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(switched.status(), StatusCode::OK);
+    assert_eq!(mcp_data(&app, &cookie, page_uri).await["total"], 0);
+    assert_eq!(
+        mcp_get(&app, &cookie, &detail_uri).await.status(),
+        StatusCode::NOT_FOUND
+    );
+}

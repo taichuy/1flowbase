@@ -2,6 +2,7 @@ mod managed_projection;
 
 use std::sync::Arc;
 
+use control_plane::ports::{McpInstancePageQuery, McpManagementRepository};
 use interface_runtime::{InterfaceContract, UserPrincipal};
 
 use super::*;
@@ -20,7 +21,8 @@ pub enum McpCoreInput {
     GetCredential(String),
     SaveCredential(String, SaveMcpClientCredentialBody),
     DeleteCredential(String),
-    ListInstances,
+    ListInstances(McpInstancesQuery),
+    InstancesPage(McpInstancePageHttpQuery),
     CreateInstance(CreateMcpInstanceBody),
     CopyInstance(String, CopyMcpInstanceBody),
     UpdateInstance(String, CreateMcpInstanceBody),
@@ -38,6 +40,7 @@ pub enum McpCoreInput {
 pub enum McpCoreOutput {
     Credential(McpClientCredentialResponse),
     Instances(Vec<McpInstanceResponse>),
+    InstancesPage(McpInstancePageResponse),
     Instance(Box<McpInstanceResponse>),
     Group(McpGroupResponse),
     Binding(McpToolBindingResponse),
@@ -89,15 +92,51 @@ impl McpCoreAdapter {
                     .await?;
                 Ok(McpCoreOutput::NoContent)
             }
-            McpCoreInput::ListInstances => {
-                let snapshot = service.read_catalog_for_actor(actor).await?;
+            McpCoreInput::ListInstances(query) => {
+                let status = query
+                    .status
+                    .as_deref()
+                    .map(parse_instance_status)
+                    .transpose()?;
+                let instances = service
+                    .list_instances_with_counts_for_actor(actor, status)
+                    .await?;
                 Ok(McpCoreOutput::Instances(
-                    snapshot
-                        .instances
+                    instances
                         .into_iter()
-                        .map(to_instance_response)
+                        .map(to_instance_summary_response)
                         .collect(),
                 ))
+            }
+            McpCoreInput::InstancesPage(query) => {
+                let page = service
+                    .list_instances_page_for_actor(
+                        actor,
+                        &McpInstancePageQuery {
+                            page: query.page.unwrap_or(1).max(1),
+                            page_size: query.page_size.unwrap_or(20).clamp(1, 100),
+                            status: query
+                                .status
+                                .as_deref()
+                                .map(parse_instance_status)
+                                .transpose()?,
+                            keyword: query
+                                .keyword
+                                .map(|keyword| keyword.trim().to_string())
+                                .filter(|keyword| !keyword.is_empty()),
+                        },
+                    )
+                    .await?;
+                Ok(McpCoreOutput::InstancesPage(McpInstancePageResponse {
+                    items: page
+                        .items
+                        .into_iter()
+                        .map(to_instance_summary_response)
+                        .collect(),
+                    total: page.total,
+                    page: page.page,
+                    page_size: page.page_size,
+                }))
             }
             McpCoreInput::CreateInstance(body) => {
                 let record = service
@@ -105,6 +144,7 @@ impl McpCoreAdapter {
                     .await?;
                 Ok(McpCoreOutput::Instance(Box::new(to_instance_response(
                     record,
+                    (0, 0),
                 ))))
             }
             McpCoreInput::CopyInstance(source_instance_id, body) => {
@@ -119,8 +159,13 @@ impl McpCoreAdapter {
                         },
                     )
                     .await?;
+                let counts = self
+                    .0
+                    .store
+                    .get_mcp_instance_directory_counts(record.id)
+                    .await?;
                 Ok(McpCoreOutput::Instance(Box::new(to_instance_response(
-                    record,
+                    record, counts,
                 ))))
             }
             McpCoreInput::UpdateInstance(instance_id, mut body) => {
@@ -128,8 +173,13 @@ impl McpCoreAdapter {
                 let record = service
                     .update_instance_for_actor(actor, to_instance_command(actor.user_id, body)?)
                     .await?;
+                let counts = self
+                    .0
+                    .store
+                    .get_mcp_instance_directory_counts(record.id)
+                    .await?;
                 Ok(McpCoreOutput::Instance(Box::new(to_instance_response(
-                    record,
+                    record, counts,
                 ))))
             }
             McpCoreInput::DeleteInstance(instance_id) => {
@@ -287,6 +337,13 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.mcp.instances.get.v1",
         method: "GET",
         path: "/api/console/mcp/instances",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.instances.view",
+        binding_id: "http.console.mcp.instances.page.get.v1",
+        method: "GET",
+        path: "/api/console/mcp/instances/page",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

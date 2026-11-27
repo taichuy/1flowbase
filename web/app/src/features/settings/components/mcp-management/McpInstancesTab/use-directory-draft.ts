@@ -8,7 +8,8 @@ import type {
 import {
   fetchSettingsMcpInstanceDirectory,
   replaceSettingsMcpInstanceDirectory,
-  settingsMcpCatalogQueryKey
+  settingsMcpCatalogQueryKey,
+  settingsMcpInstancesQueryKey
 } from '../../../api/mcp-management';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { notifyWebMcpRegistrationsChanged } from '../../../../webmcp/registration-events';
@@ -170,6 +171,9 @@ export function useDirectoryDraft(csrfToken: string) {
               }
             : catalog
       );
+      await queryClient.invalidateQueries({
+        queryKey: settingsMcpInstancesQueryKey
+      });
       notifyWebMcpRegistrationsChanged();
       message.success(i18nText('settings', 'auto.mcp_saved'));
     },

@@ -164,6 +164,20 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/mcp/interface-capabilities/page",
+            console_get(
+                list_mcp_interface_capabilities_page,
+                ConsoleOperation("mcp.catalog.view".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/interface-capabilities/:interface_id",
+            console_get(
+                get_mcp_interface_capability,
+                ConsoleOperation("mcp.catalog.view".to_string()),
+            ),
+        )
+        .route(
             "/mcp/list",
             console_get(
                 list_mcp_items,
@@ -186,6 +200,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .post(
                 create_mcp_instance,
                 ConsoleOperation("mcp.instances.create".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/instances/page",
+            console_get(
+                list_mcp_instances_page,
+                ConsoleOperation("mcp.instances.view".to_string()),
             ),
         )
         .route(
@@ -277,6 +298,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .post(
                 create_mcp_tool,
                 ConsoleOperation("mcp.tools.create".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/tools/page",
+            console_get(
+                list_mcp_tools_page,
+                ConsoleOperation("mcp.tools.view".to_string()),
             ),
         )
         .route(
@@ -487,16 +515,17 @@ pub async fn export_mcp_catalog(
     Ok(Json(ApiSuccess::new(value)))
 }
 
-#[utoipa::path(get, path = "/api/console/mcp/instances", responses((status = 200, body = [McpInstanceResponse])))]
+#[utoipa::path(get, path = "/api/console/mcp/instances", params(McpInstancesQuery), responses((status = 200, body = [McpInstanceResponse])))]
 pub async fn list_mcp_instances(
     State(state): State<Arc<ApiState>>,
+    Query(query): Query<McpInstancesQuery>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<McpInstanceResponse>>>, ApiError> {
     let interface_core::McpCoreOutput::Instances(value) = invoke_core(
         state,
         headers,
         "http.console.mcp.instances.get.v1",
-        interface_core::McpCoreInput::ListInstances,
+        interface_core::McpCoreInput::ListInstances(query),
         false,
     )
     .await?
@@ -1114,3 +1143,81 @@ fn to_update_tool_command(
 
 #[cfg(test)]
 mod tests;
+
+#[utoipa::path(get, path = "/api/console/mcp/interface-capabilities/page", summary = "List MCP interface capability summaries", description = "Returns a filtered page of MCP interface capabilities without their schemas.", params(McpInterfaceCapabilitiesPageQuery), responses((status = 200, body = McpInterfaceCapabilityPageResponse)))]
+pub async fn list_mcp_interface_capabilities_page(
+    State(state): State<Arc<ApiState>>,
+    Query(query): Query<McpInterfaceCapabilitiesPageQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<McpInterfaceCapabilityPageResponse>>, ApiError> {
+    let interface_catalog_routes::McpCatalogOutput::InterfacesPage(value) = invoke_catalog(
+        state,
+        headers,
+        "http.console.mcp.interfaces.page.get.v1",
+        interface_catalog_routes::McpCatalogInput::InterfacesPage(query),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+#[utoipa::path(get, path = "/api/console/mcp/interface-capabilities/{interface_id}", summary = "Get MCP interface capability details", description = "Returns the full contract for a single visible MCP interface capability.", params(("interface_id" = String, Path, description = "Interface capability ID")), responses((status = 200, body = McpInterfaceCatalogEntryResponse), (status = 404, description = "Interface capability not found")))]
+pub async fn get_mcp_interface_capability(
+    State(state): State<Arc<ApiState>>,
+    Path(interface_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<McpInterfaceCatalogEntryResponse>>, ApiError> {
+    let interface_catalog_routes::McpCatalogOutput::Interface(value) = invoke_catalog(
+        state,
+        headers,
+        "http.console.mcp.interfaces.detail.get.v1",
+        interface_catalog_routes::McpCatalogInput::Interface(interface_id),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+#[utoipa::path(get, path = "/api/console/mcp/instances/page", summary = "List MCP instance summaries", description = "Returns a filtered page of MCP instances with group and tool binding counts.", params(McpInstancePageHttpQuery), responses((status = 200, body = McpInstancePageResponse)))]
+pub async fn list_mcp_instances_page(
+    State(state): State<Arc<ApiState>>,
+    Query(query): Query<McpInstancePageHttpQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<McpInstancePageResponse>>, ApiError> {
+    let interface_core::McpCoreOutput::InstancesPage(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.instances.page.get.v1",
+        interface_core::McpCoreInput::InstancesPage(query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+#[utoipa::path(get, path = "/api/console/mcp/tools/page", summary = "List MCP tool summaries", description = "Returns a filtered page of MCP tools without schemas, mappings, or full descriptions.", params(McpToolPageHttpQuery), responses((status = 200, body = McpToolSummaryPageResponse)))]
+pub async fn list_mcp_tools_page(
+    State(state): State<Arc<ApiState>>,
+    Query(query): Query<McpToolPageHttpQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<McpToolSummaryPageResponse>>, ApiError> {
+    let interface_tools::McpToolsOutput::ToolsPage(value) = invoke_tools(
+        state,
+        headers,
+        "http.console.mcp.tools.page.get.v1",
+        interface_tools::McpToolsInput::ToolsPage(query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}

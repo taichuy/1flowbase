@@ -28,7 +28,7 @@ pub(super) fn contributions(
                         catalog: crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
                             store: state.store.clone(),
                             openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                                store: state.store.clone(), console_operations: state.console_operation_registry.inventory().clone(), interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()), api_docs: Arc::clone(&state.api_docs), template_catalog: state.runtime_engine.template_catalog().clone(),
+                                store: state.store.clone(), console_operations: state.console_operation_registry.shared_inventory(), interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()), api_docs: Arc::clone(&state.api_docs), template_catalog: state.runtime_engine.template_catalog().clone(),
                             },
                         },
                         dispatcher: Arc::clone(console_frontstage_callable_dispatch),
@@ -152,7 +152,7 @@ pub(super) fn contributions(
                     crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogDependencies {
                         openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
                             store: state.store.clone(),
-                            console_operations: state.console_operation_registry.inventory().clone(),
+                            console_operations: state.console_operation_registry.shared_inventory(),
                             interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
                             api_docs: Arc::clone(&state.api_docs),
                             template_catalog: state.runtime_engine.template_catalog().clone(),
@@ -171,7 +171,7 @@ pub(super) fn contributions(
                         store: state.store.clone(),
                         openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
                             store: state.store.clone(),
-                            console_operations: state.console_operation_registry.inventory().clone(),
+                            console_operations: state.console_operation_registry.shared_inventory(),
                             interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
                             api_docs: Arc::clone(&state.api_docs),
                             template_catalog: state.runtime_engine.template_catalog().clone(),

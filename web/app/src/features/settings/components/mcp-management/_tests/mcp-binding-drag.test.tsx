@@ -15,9 +15,14 @@ import {
   holdNextDirectoryReplace,
   installDirectorySnapshotApi
 } from './mcp-management-panel/fixtures/directory-snapshot';
+import { installProgressiveMcpApi } from './mcp-management-panel/fixtures/progressive-api';
 
 const api = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
+  settingsMcpInstancesQueryKey: ['settings', 'mcp-management', 'instances'],
+  settingsMcpToolsQueryKey: ['settings', 'mcp-management', 'tools'],
+  fetchSettingsMcpInstances: vi.fn(),
+  fetchSettingsMcpToolsPage: vi.fn(),
   fetchSettingsMcpInstanceDirectory: vi.fn(),
   replaceSettingsMcpInstanceDirectory: vi.fn(),
   createSettingsMcpToolBinding: vi.fn(),
@@ -139,7 +144,7 @@ function renderEditor(initialCatalog: ConsoleMcpCatalog = catalog) {
   clients.push(client);
   let current: ReturnType<typeof useMcpDirectoryEditor>;
   function Harness() {
-    current = useMcpDirectoryEditor(initialCatalog);
+    current = useMcpDirectoryEditor(initialCatalog.instances);
     return (
       <>
         <Form form={current.groupForm} />
@@ -196,6 +201,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetAuthStore();
   installDirectorySnapshotApi(api, catalog);
+  installProgressiveMcpApi(api, catalog);
 });
 afterEach(() => {
   act(() => {
@@ -355,6 +361,7 @@ describe('MCP directory draft drag', () => {
       bindings: []
     };
     installDirectorySnapshotApi(api, newCatalog);
+    installProgressiveMcpApi(api, newCatalog);
     const view = await openEditor(newCatalog);
     act(() => view.editor.startToolMount('/origin'));
     act(() => {

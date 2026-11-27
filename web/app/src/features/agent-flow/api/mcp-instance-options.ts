@@ -1,4 +1,4 @@
-import { fetchConsoleMcpCatalog } from '@1flowbase/api-client';
+import { fetchConsoleMcpInstances } from '@1flowbase/api-client';
 
 export const agentFlowMcpInstanceOptionsQueryKey = [
   'agent-flow',
@@ -6,10 +6,16 @@ export const agentFlowMcpInstanceOptionsQueryKey = [
 ] as const;
 
 export async function fetchAgentFlowMcpInstanceOptions() {
-  const catalog = await fetchConsoleMcpCatalog();
-  return catalog.instances.flatMap((instance) => instance.status === 'enabled' ? [{
-    value: instance.instance_id,
-    label: instance.name,
-    registrationPrefix: instance.llm_tool_registration.prefix
-  }] : []);
+  const instances = await fetchConsoleMcpInstances({ status: 'enabled' });
+  return instances.flatMap((instance) =>
+    instance.status === 'enabled'
+      ? [
+          {
+            value: instance.instance_id,
+            label: instance.name,
+            registrationPrefix: instance.llm_tool_registration.prefix
+          }
+        ]
+      : []
+  );
 }

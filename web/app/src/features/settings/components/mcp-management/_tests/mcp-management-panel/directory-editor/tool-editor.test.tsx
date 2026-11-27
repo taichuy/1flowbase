@@ -22,7 +22,7 @@ describe('McpManagementPanel', () => {
     const toolsPanel = screen.getByRole('tabpanel', { name: 'Tool 配置' });
 
     expect(
-      within(toolsPanel).getAllByText('create_app').length
+      (await within(toolsPanel).findAllByText('create_app')).length
     ).toBeGreaterThan(0);
   });
 

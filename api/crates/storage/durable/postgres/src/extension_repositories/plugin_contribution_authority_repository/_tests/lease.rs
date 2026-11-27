@@ -193,14 +193,29 @@ async fn system_resource_authority_filters_history_and_projects_provider_metadat
     .await
     .unwrap();
 
+    let projected_provider = json!({
+        "plugin_dependencies":[],"resource_imports":null,
+        "resource_exports":provider_metadata["resource_exports"],"data_models":[],
+        "binding_targets":["system"],"managed_service":{"scope":"system"},
+    });
     let exclusive = store
         .lock_installation_contribution_authority(consumer.id, domain::SYSTEM_SCOPE_ID)
         .await
         .unwrap();
+    // Dependency checks still see disabled versions (missing vs disabled); only the
+    // subject keeps full metadata, other rows keep the keys authority checks read.
     assert_eq!(exclusive.installations().len(), 3);
     assert_eq!(
+        exclusive.installation(consumer.id).unwrap().metadata_json,
+        consumer_metadata
+    );
+    assert_eq!(
         exclusive.installation(provider.id).unwrap().metadata_json,
-        provider_metadata
+        projected_provider
+    );
+    assert_eq!(
+        exclusive.installation(history.id).unwrap().desired_state,
+        domain::PluginDesiredState::Disabled
     );
     exclusive.release().await.unwrap();
     let shared = store
@@ -218,14 +233,7 @@ async fn system_resource_authority_filters_history_and_projects_provider_metadat
         domain::managed_installation_scope(provider, domain::DEFAULT_SCOPE_ID),
         domain::SYSTEM_SCOPE_ID
     );
-    assert_eq!(
-        provider.metadata_json,
-        json!({
-            "plugin_dependencies":[],"resource_imports":null,
-            "resource_exports":provider_metadata["resource_exports"],"data_models":[],
-            "binding_targets":["system"],"managed_service":{"scope":"system"},
-        })
-    );
+    assert_eq!(provider.metadata_json, projected_provider);
     shared.release().await.unwrap();
     store
         .lock_installation_contribution_authority(history.id, domain::SYSTEM_SCOPE_ID)

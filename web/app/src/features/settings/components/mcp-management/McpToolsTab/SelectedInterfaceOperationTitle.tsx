@@ -1,4 +1,4 @@
-import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
+import type { ConsoleMcpInterfaceCapabilitySummary } from '@1flowbase/api-client';
 import { Typography } from 'antd';
 
 import { interfaceOptionLabel } from './tool-editor-model';
@@ -6,7 +6,9 @@ import { interfaceOptionLabel } from './tool-editor-model';
 export function SelectedInterfaceOperationTitle({
   selectedInterface
 }: {
-  selectedInterface: ConsoleMcpInterfaceCapability | undefined;
+  selectedInterface:
+    | Pick<ConsoleMcpInterfaceCapabilitySummary, 'method' | 'path'>
+    | undefined;
 }) {
   if (!selectedInterface) return null;
   return (

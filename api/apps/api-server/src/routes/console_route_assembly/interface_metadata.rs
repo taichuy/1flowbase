@@ -255,8 +255,14 @@ pub(super) fn expand_core_interface_registrations(
             };
             let mut interface = registration.clone();
             interface.authorization_profile_id = Some(registration.operation_id.clone());
-            interface.operation_id = operation_id.clone();
-            interface.order = registration.order * 1000 + route_order as i32;
+            // Before paging was added, the instance list was the only route in this
+            // profile. Preserve its persisted operation ID without changing its OpenAPI ID.
+            if registration.operation_id != "mcp.instances.view"
+                || route.path != "/api/console/mcp/instances"
+            {
+                interface.operation_id = operation_id.clone();
+                interface.order = registration.order * 1000 + route_order as i32;
+            }
             interface.routes = vec![route.clone()];
             expanded.push(interface);
         }

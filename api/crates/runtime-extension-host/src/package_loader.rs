@@ -109,6 +109,47 @@ pub(crate) fn verify_package_activation(
     verify_manifest_fingerprint(&identity.manifest_fingerprint, expected_fingerprint)
 }
 
+type ManagedManifestEntry = (
+    extension_contracts::extension_bus::ManagedArtifactFingerprint,
+    std::sync::Arc<PluginManifestV1>,
+);
+
+/// Activation arrives once per contribution with the same verified manifest bytes. Parsing is
+/// a pure function of those bytes, so the last result is reused by digest (one entry).
+static LAST_MANAGED_MANIFEST: std::sync::Mutex<Option<ManagedManifestEntry>> =
+    std::sync::Mutex::new(None);
+
+pub(crate) fn parse_managed_manifest(
+    fingerprint: &extension_contracts::extension_bus::ManagedArtifactFingerprint,
+    manifest_raw: &str,
+) -> FrameworkResult<std::sync::Arc<PluginManifestV1>> {
+    parse_managed_manifest_with(&LAST_MANAGED_MANIFEST, fingerprint, manifest_raw)
+}
+
+pub(crate) fn parse_managed_manifest_with(
+    last: &std::sync::Mutex<Option<ManagedManifestEntry>>,
+    fingerprint: &extension_contracts::extension_bus::ManagedArtifactFingerprint,
+    manifest_raw: &str,
+) -> FrameworkResult<std::sync::Arc<PluginManifestV1>> {
+    let cached = last
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .filter(|(digest, _)| digest == fingerprint)
+        .map(|(_, manifest)| std::sync::Arc::clone(manifest));
+    if let Some(manifest) = cached {
+        return Ok(manifest);
+    }
+    let manifest = std::sync::Arc::new(extension_package_runtime::parse_plugin_manifest(
+        manifest_raw,
+    )?);
+    *last
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+        Some((fingerprint.clone(), std::sync::Arc::clone(&manifest)));
+    Ok(manifest)
+}
+
 impl PackageLoader {
     pub(crate) fn load_managed(
         package_root: impl AsRef<Path>,
@@ -128,7 +169,8 @@ impl PackageLoader {
                 "managed artifact fingerprint does not match the bound installation",
             ));
         }
-        let manifest = extension_package_runtime::parse_plugin_manifest(&manifest_raw)?;
+        let manifest =
+            parse_managed_manifest(request.identity.artifact_fingerprint(), &manifest_raw)?;
         if manifest.versioned_plugin_id()? != request.plugin_id {
             return Err(PluginFrameworkError::invalid_provider_package(
                 "managed artifact plugin identity does not match activation",

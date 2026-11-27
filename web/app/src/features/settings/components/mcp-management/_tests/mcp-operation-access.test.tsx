@@ -23,7 +23,7 @@ describe('MCP exact operation controls', () => {
     grant(['mcp.instances.view', 'mcp.client_credential.reveal']);
     renderPanelWithMountedTool();
     const panel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-    expect(within(panel).getByText('Ops MCP')).toBeInTheDocument();
+    expect(await within(panel).findByText('Ops MCP')).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: /新增$/ })).toBeDisabled();
     fireEvent.click(within(panel).getByRole('button', { name: '查看' }));
     const editor = await screen.findByRole('dialog', { name: '查看' });

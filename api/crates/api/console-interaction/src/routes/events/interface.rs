@@ -43,7 +43,7 @@ impl Dependencies {
             sources: state.event_sources.clone(),
             api_catalog: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
                 store: state.store.clone(),
-                console_operations: state.console_operation_registry.inventory().clone(),
+                console_operations: state.console_operation_registry.shared_inventory(),
                 interface_registry: None,
                 api_docs: state.api_docs.clone(),
                 template_catalog: state.runtime_engine.template_catalog().clone(),

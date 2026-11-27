@@ -80,29 +80,16 @@ pub fn build_category_operations(
 ) -> DocsCatalogCategoryOperations {
     let mut operations = Vec::new();
     for model in models {
-        let group = if model.title.is_empty() {
-            model.code.clone()
-        } else {
-            model.title.clone()
-        };
         let Some(template) = template_for_model(model, catalog) else {
             continue;
         };
-        for operation in &template.descriptor().operations {
-            operations.push(DocsCatalogOperation {
-                id: operation_id(model.id, &operation.code),
-                method: operation.method.as_str().to_owned(),
-                path: operation_path(model, operation),
-                summary: Some(format!("{} — {}", operation.summary, model.title)),
-                description: Some(format!(
-                    "{} Data Model `{}`.",
-                    operation.description, model.code
-                )),
-                tags: vec!["data-model".to_string(), model.code.clone()],
-                group: group.clone(),
-                deprecated: false,
-            });
-        }
+        operations.extend(
+            template
+                .descriptor()
+                .operations
+                .iter()
+                .map(|operation| docs_operation(model, operation)),
+        );
     }
     DocsCatalogCategoryOperations {
         id: DATA_MODEL_DOCS_CATEGORY_ID.to_string(),
@@ -111,11 +98,51 @@ pub fn build_category_operations(
     }
 }
 
+fn docs_operation(
+    model: &domain::ModelDefinitionRecord,
+    operation: &DataModelTemplateOperation,
+) -> DocsCatalogOperation {
+    DocsCatalogOperation {
+        id: operation_id(model.id, &operation.code),
+        method: operation.method.as_str().to_owned(),
+        path: operation_path(model, operation),
+        summary: Some(format!("{} — {}", operation.summary, model.title)),
+        description: Some(format!(
+            "{} Data Model `{}`.",
+            operation.description, model.code
+        )),
+        tags: vec!["data-model".to_string(), model.code.clone()],
+        group: if model.title.is_empty() {
+            model.code.clone()
+        } else {
+            model.title.clone()
+        },
+        deprecated: false,
+    }
+}
+
+pub(crate) fn operation_metadata(
+    model: &domain::ModelDefinitionRecord,
+    operation_code: &str,
+    catalog: &DataModelTemplateCatalog,
+) -> Option<DocsCatalogOperation> {
+    let template = template_for_model(model, catalog)?;
+    Some(docs_operation(model, template.operation(operation_code)?))
+}
+
 pub fn build_model_openapi(
     model: &domain::ModelDefinitionRecord,
     catalog: &DataModelTemplateCatalog,
 ) -> Option<Value> {
     let template = template_for_model(model, catalog)?;
+    build_openapi(model, &template, template.descriptor().operations.iter())
+}
+
+fn build_openapi<'a>(
+    model: &domain::ModelDefinitionRecord,
+    template: &CompiledDataModelTemplate,
+    operations: impl IntoIterator<Item = &'a DataModelTemplateOperation>,
+) -> Option<Value> {
     let schema_name = record_schema_name(&model.code);
     let create_schema_name = format!("{schema_name}CreateInput");
     let update_schema_name = format!("{schema_name}UpdateInput");
@@ -124,7 +151,7 @@ pub fn build_model_openapi(
     let update_schema_ref = format!("#/components/schemas/{update_schema_name}");
 
     let mut paths = serde_json::Map::new();
-    for operation in &template.descriptor().operations {
+    for operation in operations {
         let path = operation_path(model, operation);
         let method = operation.method.as_str().to_ascii_lowercase();
         let definition = build_operation_definition(
@@ -159,7 +186,7 @@ pub fn build_model_openapi(
                 }
             },
             "schemas": {
-                schema_name: record_schema(model, &template),
+                schema_name: record_schema(model, template),
                 create_schema_name: record_write_schema(model, true),
                 update_schema_name: record_write_schema(model, false)
             }
@@ -291,44 +318,7 @@ pub fn build_operation_openapi(
     catalog: &DataModelTemplateCatalog,
 ) -> Option<Value> {
     let template = template_for_model(model, catalog)?;
-    let operation_descriptor = template.operation(operation_code)?;
-    let full_spec = build_model_openapi(model, catalog)?;
-    let path = operation_path(model, operation_descriptor);
-    let method = operation_descriptor.method.as_str().to_ascii_lowercase();
-    let operation = full_spec
-        .get("paths")
-        .and_then(Value::as_object)
-        .and_then(|paths| paths.get(&path))
-        .and_then(Value::as_object)
-        .and_then(|path_item| path_item.get(&method))
-        .cloned()?;
-    let mut path_item = serde_json::Map::new();
-    path_item.insert(method, operation);
-    let mut paths = serde_json::Map::new();
-    paths.insert(path, Value::Object(path_item));
-
-    Some(json!({
-        "openapi": "3.1.0",
-        "info": full_spec.get("info").cloned().unwrap_or_else(|| json!({})),
-        "security": full_spec.get("security").cloned().unwrap_or_else(|| json!([])),
-        "paths": Value::Object(paths),
-        "components": full_spec
-            .get("components")
-            .cloned()
-            .unwrap_or_else(|| json!({})),
-        "x-data-model": full_spec
-            .get("x-data-model")
-            .cloned()
-            .unwrap_or_else(|| json!({})),
-        "x-scope-permission-note": full_spec
-            .get("x-scope-permission-note")
-            .cloned()
-            .unwrap_or_else(|| Value::String(String::new())),
-        "x-external-source-safety-limits": full_spec
-            .get("x-external-source-safety-limits")
-            .cloned()
-            .unwrap_or_else(|| Value::String(String::new()))
-    }))
+    build_openapi(model, &template, [template.operation(operation_code)?])
 }
 
 fn build_operation_definition(

@@ -35,10 +35,12 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateMcpInstanceGraphInput, CreateMcpInstanceInput, CreateMcpToolBindingInput,
-        CreateMcpToolInput, CreateMcpUpstreamConnectionInput, McpManagementRepository,
-        UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput, UpdateMcpToolBindingInput,
-        UpdateMcpToolInput, UpdateMcpUpstreamConnectionInput, UpsertMcpClientCredentialInput,
-        UpsertMcpGroupInput, UpsertMcpUpstreamSecretInput, UpsertMcpUpstreamToolSourceInput,
+        CreateMcpToolInput, CreateMcpUpstreamConnectionInput, McpInstancePage,
+        McpInstancePageQuery, McpInstanceSummaryRecord, McpManagementRepository, McpToolPage,
+        McpToolPageQuery, UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput,
+        UpdateMcpToolBindingInput, UpdateMcpToolInput, UpdateMcpUpstreamConnectionInput,
+        UpsertMcpClientCredentialInput, UpsertMcpGroupInput, UpsertMcpUpstreamSecretInput,
+        UpsertMcpUpstreamToolSourceInput,
     },
 };
 
@@ -80,10 +82,7 @@ where
             .repository
             .list_mcp_tool_bindings(&instance_record_ids)
             .await?;
-        let mut tools = self.repository.list_mcp_tools(workspace_id).await?;
-        for tool in &mut tools {
-            tool.des_id_required = domain::mcp_management::mcp_des_id_required(&tool.input_mapping);
-        }
+        let tools = self.list_tools_for_actor(actor).await?;
         let discovery_policies = self
             .repository
             .list_mcp_instance_discovery_policies(&instance_record_ids)
@@ -96,6 +95,59 @@ where
             bindings,
             discovery_policies,
         })
+    }
+
+    pub async fn list_instances_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> Result<Vec<domain::McpInstanceRecord>> {
+        self.repository
+            .list_mcp_instances(actor.current_workspace_id)
+            .await
+    }
+
+    pub async fn list_instances_with_counts_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        status: Option<domain::McpInstanceStatus>,
+    ) -> Result<Vec<McpInstanceSummaryRecord>> {
+        self.repository
+            .list_mcp_instances_with_counts(actor.current_workspace_id, status)
+            .await
+    }
+
+    pub async fn list_instances_page_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        query: &McpInstancePageQuery,
+    ) -> Result<McpInstancePage> {
+        self.repository
+            .list_mcp_instances_page(actor.current_workspace_id, query)
+            .await
+    }
+
+    pub async fn list_tools_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> Result<Vec<domain::McpToolRecord>> {
+        let mut tools = self
+            .repository
+            .list_mcp_tools(actor.current_workspace_id)
+            .await?;
+        for tool in &mut tools {
+            tool.des_id_required = domain::mcp_management::mcp_des_id_required(&tool.input_mapping);
+        }
+        Ok(tools)
+    }
+
+    pub async fn list_tools_page_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+        query: &McpToolPageQuery,
+    ) -> Result<McpToolPage> {
+        self.repository
+            .list_mcp_tools_page(actor.current_workspace_id, query)
+            .await
     }
 
     pub async fn create_instance(

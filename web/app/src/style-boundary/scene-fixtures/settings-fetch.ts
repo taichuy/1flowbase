@@ -483,6 +483,98 @@ export function seedStyleBoundarySettingsFetch() {
 
     if (
       method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/mcp/instances/page'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          items: styleBoundaryMcpCatalog.instances,
+          total: styleBoundaryMcpCatalog.instances.length,
+          page: 1,
+          page_size: 20
+        },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/mcp/instances'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: styleBoundaryMcpCatalog.instances,
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/mcp/tools/page'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          items: styleBoundaryMcpCatalog.tools,
+          total: styleBoundaryMcpCatalog.tools.length,
+          page: 1,
+          page_size: 20
+        },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname.startsWith('/api/console/mcp/tools/')
+    ) {
+      const toolId = decodeURIComponent(
+        requestUrl.pathname.slice('/api/console/mcp/tools/'.length)
+      );
+      const tool =
+        styleBoundaryMcpCatalog.tools.find((item) => item.tool_id === toolId) ??
+        styleBoundaryMcpCatalog.tools[0];
+      return createStyleBoundaryJsonResponse({
+        data: tool,
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname === '/api/console/mcp/interface-capabilities/page'
+    ) {
+      return createStyleBoundaryJsonResponse({
+        data: {
+          items: styleBoundaryMcpInterfaceCapabilities,
+          total: styleBoundaryMcpInterfaceCapabilities.length,
+          offset: 0,
+          limit: 20,
+          has_more: false,
+          next_offset: null
+        },
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
+      requestUrl.pathname.startsWith('/api/console/mcp/interface-capabilities/')
+    ) {
+      const interfaceId = decodeURIComponent(
+        requestUrl.pathname.slice(
+          '/api/console/mcp/interface-capabilities/'.length
+        )
+      );
+      const entry =
+        styleBoundaryMcpInterfaceCapabilities.find(
+          (item) => item.interface_id === interfaceId
+        ) ?? styleBoundaryMcpInterfaceCapabilities[0];
+      return createStyleBoundaryJsonResponse({
+        data: entry,
+        meta: null
+      });
+    }
+
+    if (
+      method.toUpperCase() === 'GET' &&
       requestUrl.pathname === '/api/console/mcp/catalog'
     ) {
       return new Response(
