@@ -21,15 +21,6 @@ describe('SettingsPage', () => {
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockReturnValue(
       pendingNavigation
     );
-    // The URL changes before the lazy API-key panel commits its queries.
-    const panelRequested = new Promise<void>((resolve) => {
-      personalAccessTokensApi.fetchSettingsPersonalAccessTokens.mockImplementationOnce(
-        async () => {
-          resolve();
-          return [];
-        }
-      );
-    });
     authenticateWithPermissions(['user.view.all']);
 
     renderApp('/settings/docs');
@@ -58,16 +49,21 @@ describe('SettingsPage', () => {
       resolveNavigation(navigation);
     });
 
-    await waitFor(() => {
-      expect(window.location.pathname).toBe('/settings/api-key-authentication');
-    });
-    await panelRequested;
-    expect(screen.getByTestId('section-page-layout')).toHaveClass(
-      'section-page-layout--viewport'
+    // Navigation, the lazy leaf's query and its controls may commit separately.
+    // Observe all three through RTL rather than awaiting a React effect outside it.
+    await waitFor(
+      () => {
+        expect(window.location.pathname).toBe('/settings/api-key-authentication');
+        expect(
+          personalAccessTokensApi.fetchSettingsPersonalAccessTokens
+        ).toHaveBeenCalled();
+        expect(screen.getByTestId('section-page-layout')).toHaveClass(
+          'section-page-layout--viewport'
+        );
+        expect(screen.getByRole('button', { name: /添加/ })).toBeInTheDocument();
+      },
+      { timeout: 10000 }
     );
-    expect(
-      await screen.findByRole('button', { name: /添加/ })
-    ).toBeInTheDocument();
   });
 
   test('shows 数据源 when state_model.view.all is present', async () => {
