@@ -19,10 +19,11 @@ use axum::{
 use control_plane::ports::{
     CreateModelProviderInstanceInput, CreateNetworkEgressPoolInput,
     CreateNetworkEgressPoolMemberInput, CreateNetworkEgressProviderInput,
-    CreateNetworkEgressRouteInput, ModelProviderRepository, NetworkEgressPoolRepository,
-    NetworkEgressRepository, NetworkEgressRouteRepository, OfficialPluginSourcePort,
-    PluginRepository, ReplaceNetworkEgressProjectionInput, UpsertNetworkEgressProviderSecretInput,
-    UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+    CreateNetworkEgressRouteInput, CreatePluginAssignmentInput, ModelProviderRepository,
+    NetworkEgressPoolRepository, NetworkEgressRepository, NetworkEgressRouteRepository,
+    OfficialPluginSourcePort, PluginRepository, ReplaceNetworkEgressProjectionInput,
+    UpsertNetworkEgressProviderSecretInput, UpsertPluginArtifactInstanceInput,
+    UpsertPluginInstallationInput,
 };
 use domain::{
     NetworkEgressConsumerSelector, NetworkEgressHealthStatus, NetworkEgressProviderLifecycle,
@@ -244,6 +245,17 @@ pub(super) async fn seed_network_egress_resolver(
                 signing_key_id: None,
                 metadata_json: json!({}),
                 is_system_reserved: false,
+                actor_user_id: root.id,
+            },
+        )
+        .await
+        .unwrap();
+        <storage_durable_postgres::MainDurableStore as PluginRepository>::create_assignment(
+            &state.store,
+            &CreatePluginAssignmentInput {
+                installation_id: model_installation_id,
+                workspace_id: state.bootstrap_workspace_id,
+                provider_code: "fixture_provider".into(),
                 actor_user_id: root.id,
             },
         )

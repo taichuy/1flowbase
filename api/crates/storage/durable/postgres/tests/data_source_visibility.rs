@@ -1,6 +1,6 @@
 use control_plane_contracts::ports::{
-    CreateDataSourceInstanceInput, DataSourceInstanceVisibility, DataSourceRepository,
-    PluginRepository, UpsertPluginInstallationInput,
+    CreateDataSourceInstanceInput, CreatePluginAssignmentInput, DataSourceInstanceVisibility,
+    DataSourceRepository, PluginRepository, UpsertPluginInstallationInput,
 };
 use domain::{
     DataSourceDefaults, DataSourceInstanceStatus, LoginEntryRecord, PluginDesiredState,
@@ -141,6 +141,19 @@ async fn ac_005_data_source_visibility_filters_persisted_owner_and_workspace() {
         .upsert_workspace(workspace.tenant_id, &format!("foreign-{}", Uuid::now_v7()))
         .await
         .unwrap();
+    for workspace_id in [workspace.id, foreign_workspace.id] {
+        PluginRepository::create_assignment(
+            &store,
+            &CreatePluginAssignmentInput {
+                installation_id,
+                workspace_id,
+                provider_code: "acme_hubspot_source".into(),
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .unwrap();
+    }
     let own = create_instance(&store, workspace.id, installation_id, actor.id, "Own").await;
     let peer_instance =
         create_instance(&store, workspace.id, installation_id, peer.id, "Peer").await;
