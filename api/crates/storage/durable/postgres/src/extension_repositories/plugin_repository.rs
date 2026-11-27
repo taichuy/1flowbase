@@ -145,6 +145,13 @@ async fn lock_managed_desired_state_scopes_many(
 ) -> Result<()> {
     // SYSTEM_SCOPE_ID is the smallest UUID; the remaining locks follow batch authority order.
     lock_managed_dependency_scope(transaction).await?;
+    lock_managed_workspaces_under_dependency_fence(transaction, installation_ids).await
+}
+
+async fn lock_managed_workspaces_under_dependency_fence(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    installation_ids: &[Uuid],
+) -> Result<()> {
     let workspaces: Vec<Uuid> = sqlx::query_scalar(
         r#"
         select workspace_id from plugin_contribution_authorization_revisions
@@ -305,9 +312,9 @@ impl PluginRepository for PgControlPlaneStore {
                 .bind(&input.plugin_id)
                 .fetch_optional(&mut *transaction)
                 .await?;
-        lock_managed_desired_state_scopes(
+        lock_managed_workspaces_under_dependency_fence(
             &mut transaction,
-            existing_id.unwrap_or(input.installation_id),
+            &[existing_id.unwrap_or(input.installation_id)],
         )
         .await?;
         let before = managed_dependency_facts(&mut transaction).await?;

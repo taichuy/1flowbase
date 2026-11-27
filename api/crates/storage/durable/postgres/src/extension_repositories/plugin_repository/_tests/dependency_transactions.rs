@@ -883,3 +883,98 @@ async fn refresh_uses_the_locked_version_when_readiness_would_ambiguate_a_provid
         Some(before)
     );
 }
+
+#[tokio::test]
+async fn refresh_waits_for_non_bus_to_managed_upsert_before_classifying_the_provider() {
+    // The fixture has its own database. Observe actual blockers, not task-start notifications.
+    async fn next_waiter(pool: &sqlx::PgPool, exclude: i32) -> (i32, Vec<i32>, bool) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let Some(waiter) = sqlx::query_as(
+                    "select pid, pg_blocking_pids(pid), wait_event = 'advisory' from pg_stat_activity
+                     where datname = current_database() and pid <> $1 and wait_event_type = 'Lock'
+                       and cardinality(pg_blocking_pids(pid)) > 0",
+                )
+                .bind(exclude)
+                .fetch_optional(pool)
+                .await
+                .unwrap()
+                {
+                    return waiter;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("expected writer to be blocked in PostgreSQL")
+    }
+
+    let (store, actor) = store().await;
+    seed(&store, &provider(), actor).await;
+    seed(&store, &consumer(), actor).await;
+    let mut other = provider();
+    other.plugin_version = "2.0.0".into();
+    let managed = installation_input(&other, actor);
+    let mut non_bus = installation_input(&other, actor);
+    non_bus.contract_version = "1flowbase.data_source/v1".into();
+    let original = store.upsert_installation(&non_bus).await.unwrap();
+    assert_eq!(original.contract_version, non_bus.contract_version);
+
+    // Stall the real conflict-update on the installation row while it owns the dependency fence.
+    let mut gate = store.pool().begin().await.unwrap();
+    let gate_pid: i32 = sqlx::query_scalar(
+        "select pg_backend_pid() from extension_installations where id=$1 for update",
+    )
+    .bind(other.id)
+    .fetch_one(&mut *gate)
+    .await
+    .unwrap();
+    let writer = store.clone();
+    let upsert = tokio::spawn(async move { writer.upsert_installation(&managed).await });
+    let (upsert_pid, blockers, _) = next_waiter(store.pool(), gate_pid).await;
+    assert!(blockers.contains(&gate_pid));
+
+    // Unfenced classification still sees non-bus and waits on the row instead of the fence.
+    let refresh = RefreshPluginArtifactInstanceInput {
+        installation_id: other.id,
+        node_id: "node-a".into(),
+        observed_artifact: None,
+        touch_checked_at: true,
+        local_version: Some(other.plugin_version.clone()),
+        local_checksum: None,
+        local_path: Some("/fixture/installed".into()),
+        manifest_fingerprint: None,
+        artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+        last_error: None,
+        reset_runtime_status: false,
+        checked_at: time::OffsetDateTime::now_utc(),
+    };
+    let writer = store.clone();
+    let refresh = tokio::spawn(async move { writer.refresh_artifact_instance(&refresh).await });
+    let (_, blockers, advisory) = next_waiter(store.pool(), upsert_pid).await;
+    gate.commit().await.unwrap();
+    let (upsert, refresh) = tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::join!(upsert, refresh)
+    })
+    .await
+    .unwrap();
+    assert!(
+        advisory && blockers.contains(&upsert_pid),
+        "refresh must queue behind the reclassification fence before taking row locks"
+    );
+    let installed = upsert.unwrap().unwrap();
+    assert_eq!(installed.id, other.id);
+    assert_eq!(installed.contract_version, other.contract_version);
+    let error = refresh.unwrap().unwrap_err();
+    assert!(matches!(error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PluginDependency { code, dependents, .. })
+            if code == "plugin_dependency_in_use" && dependents == &["fixture.publisher/consumer@1.0.0"]));
+    assert_eq!(
+        store
+            .get_artifact_instance("node-a", other.id)
+            .await
+            .unwrap(),
+        None,
+        "the refused second ready provider must not leave an artifact row"
+    );
+}

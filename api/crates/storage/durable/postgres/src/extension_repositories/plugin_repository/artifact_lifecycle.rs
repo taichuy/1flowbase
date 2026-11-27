@@ -1283,7 +1283,9 @@ async fn lock_managed_artifact_scopes(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     installation_id: Uuid,
 ) -> Result<bool> {
-    // This probe only routes the lock acquisition. Never carry an artifact version across it.
+    // A same-identity upsert can change contract_version. Take its fence first, then
+    // classify in a separate statement so a committed reclassification is visible.
+    lock_managed_dependency_scope(transaction).await?;
     let managed = sqlx::query_scalar(
         "select exists(select 1 from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1')",
     )
@@ -1291,7 +1293,8 @@ async fn lock_managed_artifact_scopes(
     .fetch_one(&mut **transaction)
     .await?;
     if managed {
-        super::lock_managed_desired_state_scopes(transaction, installation_id).await?;
+        super::lock_managed_workspaces_under_dependency_fence(transaction, &[installation_id])
+            .await?;
     }
     Ok(managed)
 }
