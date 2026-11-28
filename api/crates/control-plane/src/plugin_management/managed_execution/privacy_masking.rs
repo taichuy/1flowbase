@@ -11,8 +11,8 @@ use control_plane_contracts::ports::{
 use extension_contracts::{
     HostServiceError, PrivacyMaskingAgentFlowSubjectDto, PrivacyMaskingBinding,
     PrivacyMaskingFuture, PrivacyMaskingModelInstanceSubjectDto, PrivacyMaskingPort,
-    PrivacyMaskingRequest, PrivacyMaskingResponse, PRIVACY_LOGS_READ_PERMISSION,
-    PRIVACY_POLICY_SYNC_PERMISSION, PRIVACY_SUBJECTS_READ_PERMISSION,
+    PrivacyMaskingRequest, PrivacyMaskingResponse, PrivacyMaskingSubjectKind,
+    PRIVACY_LOGS_READ_PERMISSION, PRIVACY_POLICY_SYNC_PERMISSION, PRIVACY_SUBJECTS_READ_PERMISSION,
 };
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -104,13 +104,40 @@ impl ManagedPrivacyMaskingService {
             }
             Request::SyncPolicy { policy } => {
                 let (workspace_id, actor_user_id) = require_caller_workspace_and_actor(binding)?;
+                let mut policy = policy.clone();
+                for subject in &mut policy.subject_bindings {
+                    let id = parse_uuid(&subject.subject_id)?;
+                    let owned = match subject.subject_kind {
+                        PrivacyMaskingSubjectKind::ModelProviderInstance => self
+                            .model_providers
+                            .get_instance(workspace_id, id)
+                            .await
+                            .map_err(map_storage_error)?
+                            .is_some(),
+                        PrivacyMaskingSubjectKind::AgentFlow => self
+                            .applications
+                            .get_application(workspace_id, id)
+                            .await
+                            .map_err(map_storage_error)?
+                            .is_some_and(|app| {
+                                app.application_type == domain::ApplicationType::AgentFlow
+                            }),
+                    };
+                    if !owned {
+                        let mut error = HostServiceError::new("privacy_subject_not_in_workspace");
+                        error.status = Some(400);
+                        return Err(error);
+                    }
+                    // The runtime matches subjects against UUIDs in canonical text form.
+                    subject.subject_id = id.to_string();
+                }
                 let summary = self
                     .kernel
                     .sync_workspace_policy(
                         installation_id,
                         workspace_id,
                         Some(actor_user_id),
-                        policy,
+                        &policy,
                     )
                     .await
                     .map_err(map_sync_error)?;

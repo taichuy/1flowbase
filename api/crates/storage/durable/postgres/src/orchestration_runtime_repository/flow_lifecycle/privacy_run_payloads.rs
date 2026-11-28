@@ -1,3 +1,18 @@
+// Content fields, not event types, define the legacy event rewrite. Run start,
+// node observations, previews and resume events can all duplicate user input.
+const PRIVACY_EVENT_CONTENT_FIELDS: &[&str] = &[
+    "input_payload",
+    "output_payload",
+    "error_payload",
+    "debug_payload",
+    "response_payload",
+    "query",
+    "prompt",
+    "resolved_inputs",
+    "rendered_templates",
+    "node_output",
+];
+
 impl PgControlPlaneStore {
     pub(crate) async fn rewrite_privacy_run_payloads(
         &self,
@@ -66,14 +81,18 @@ impl PgControlPlaneStore {
             changed = true;
         }
 
-        // The durable node events duplicate input/output. Keep the envelope and
-        // event identities intact; only rewrite the content-bearing snapshots.
+        // Read the lossless payload, then replace both representations in the
+        // same transaction. Keep event identities and envelope metadata intact.
         let legacy_events = sqlx::query_as::<_, (Uuid, Value)>(
             "select id, runtime_original_json(payload,raw_json_payloads,'payload') from flow_run_events
-             where flow_run_id=$1 and event_type in ('node_started','node_finished') for update",
-        ).bind(flow_run_id).fetch_all(&mut *tx).await?;
+             where flow_run_id=$1 and payload ?| $2::text[] order by sequence for update",
+        )
+        .bind(flow_run_id)
+        .bind(PRIVACY_EVENT_CONTENT_FIELDS)
+        .fetch_all(&mut *tx)
+        .await?;
         for (id, original) in legacy_events {
-            let Some(payload) = masked_node_event(original, mask) else {
+            let Some(payload) = masked_payload_fields(original, mask, PRIVACY_EVENT_CONTENT_FIELDS) else {
                 continue;
             };
             sqlx::query(
@@ -82,18 +101,22 @@ impl PgControlPlaneStore {
                  where flow_run_id=$1 and id=$2",
             ).bind(flow_run_id).bind(id).bind(lossless_json_parameter(&payload)).execute(&mut *tx).await?;
         }
-        let runtime_events = sqlx::query_as::<_, (Uuid, Value, Option<Uuid>)>(
-            "select id, runtime_event_original_payload(payload,raw_json_payloads,flow_run_id), observation_body_content_id from runtime_events
-             where flow_run_id=$1 and event_type in ('node_started','node_finished') order by sequence for update",
+        let runtime_events = sqlx::query_as::<_, (Uuid, String, Value, Option<Uuid>)>(
+            "select id, event_type, runtime_event_original_payload(payload,raw_json_payloads,flow_run_id), observation_body_content_id from runtime_events
+             where flow_run_id=$1 and event_type in ('node_started','node_finished','node_preview_started','node_preview_completed','node_preview_failed') order by sequence for update",
         ).bind(flow_run_id).fetch_all(&mut *tx).await?;
         let mut replaced_contents = Vec::new();
-        for (id, original, old_content) in runtime_events {
-            let Some(payload) = masked_node_event(original, mask) else {
+        for (id, event_type, original, old_content) in runtime_events {
+            let Some(payload) = masked_payload_fields(original, mask, PRIVACY_EVENT_CONTENT_FIELDS) else {
                 continue;
             };
             let (payload, content, manifest) =
-                observation_bodies::archive_node_event_payload(&mut tx, flow_run_id, &payload)
-                    .await?;
+                if matches!(event_type.as_str(), "node_started" | "node_finished") {
+                    observation_bodies::archive_node_event_payload(&mut tx, flow_run_id, &payload)
+                        .await?
+                } else {
+                    (payload, None, None)
+                };
             sqlx::query(
                 "update runtime_events set payload=($3::jsonb->0),
                    raw_json_payloads=(raw_json_payloads-'payload') || jsonb_strip_nulls(jsonb_build_object('payload',$3::jsonb->1)),
@@ -165,17 +188,6 @@ impl PgControlPlaneStore {
         tx.commit().await?;
         Ok(())
     }
-}
-
-fn masked_node_event(
-    original: Value,
-    mask: &control_plane_contracts::ports::PrivacyRunPayloadMask<'_>,
-) -> Option<Value> {
-    masked_payload_fields(
-        original,
-        mask,
-        &["input_payload", "output_payload", "error_payload"],
-    )
 }
 
 fn masked_payload_fields(
