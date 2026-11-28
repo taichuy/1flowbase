@@ -227,6 +227,10 @@ async fn authenticate_request(
 
     if user.session_version != session.session_version
         || matches!(user.status, UserStatus::Disabled)
+        || !user.has_effective_role_in_workspace(
+            session.current_workspace_id,
+            &session.active_role_code,
+        )
     {
         state.session_store.delete(&session.session_id).await?;
         return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
@@ -241,10 +245,6 @@ async fn authenticate_request(
             Some(&session.active_role_code),
         )
         .await?;
-    if actor.effective_display_role != session.active_role_code {
-        state.session_store.delete(&session.session_id).await?;
-        return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
-    }
 
     state
         .console_policy_projector

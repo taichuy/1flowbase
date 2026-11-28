@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
@@ -102,16 +102,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-pub(crate) fn is_role_bound_to_current_workspace(
-    role: &domain::BoundRole,
-    current_workspace_id: Uuid,
-) -> bool {
-    match role.scope_kind {
-        domain::RoleScopeKind::System => true,
-        domain::RoleScopeKind::Workspace => role.workspace_id == Some(current_workspace_id),
-    }
-}
-
 pub(crate) fn role_scope_kind_text(role: &domain::BoundRole) -> String {
     match role.scope_kind {
         domain::RoleScopeKind::System => "system".to_string(),
@@ -167,29 +157,17 @@ pub(crate) fn user_api_key_response(
 
 pub(crate) fn role_options_response(
     user: &domain::UserRecord,
-    workspace_roles: Vec<domain::RoleTemplate>,
     actor: &domain::ActorContext,
 ) -> UserApiKeyRoleOptionsResponse {
-    let role_names = workspace_roles
+    let items = user
+        .effective_roles_in_workspace(actor.current_workspace_id)
         .into_iter()
-        .map(|role| (role.code, role.name))
-        .collect::<std::collections::HashMap<_, _>>();
-    let mut seen = BTreeSet::new();
-    let mut items = user
-        .roles
-        .iter()
-        .filter(|role| is_role_bound_to_current_workspace(role, actor.current_workspace_id))
-        .filter(|role| seen.insert(role.code.clone()))
         .map(|role| UserApiKeyRoleOptionResponse {
             code: role.code.clone(),
-            name: role_names
-                .get(&role.code)
-                .cloned()
-                .unwrap_or_else(|| role.code.clone()),
+            name: role.name.clone(),
             scope_kind: role_scope_kind_text(role),
         })
-        .collect::<Vec<_>>();
-    items.sort_by(|left, right| left.code.cmp(&right.code));
+        .collect();
     UserApiKeyRoleOptionsResponse { items }
 }
 

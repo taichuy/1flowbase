@@ -196,6 +196,7 @@ impl MemoryAuthRepository {
             email_login_enabled: true,
             phone_login_enabled: false,
             status: UserStatus::Active,
+            department_roles: Vec::new(),
             session_version: 1,
             roles: vec![BoundRole {
                 code: "root".to_string(),
@@ -223,6 +224,7 @@ impl MemoryAuthRepository {
             email_login_enabled: true,
             phone_login_enabled: false,
             status: UserStatus::Active,
+            department_roles: Vec::new(),
             session_version: 1,
             roles: vec![BoundRole {
                 code: "member".to_string(),

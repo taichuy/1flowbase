@@ -662,15 +662,10 @@ where
             .as_deref()
             .or(user.default_display_role.as_deref())
             .unwrap_or("member");
+        if !user.has_effective_role_in_workspace(api_key.scope_id, role_code) {
+            return Err(ControlPlaneError::NotAuthenticated.into());
+        }
         let actor = if console_projection {
-            // Fallback roles are allowed for sessions, but a PAT must still have its bound role.
-            if !user.roles.iter().any(|role| {
-                role.code == role_code
-                    && (role.scope_kind == domain::RoleScopeKind::System
-                        || (role.code != "root" && role.workspace_id == Some(api_key.scope_id)))
-            }) {
-                return Err(ControlPlaneError::InvalidInput("role_code").into());
-            }
             self.repository
                 .resolve_loaded_user_role(
                     &user,

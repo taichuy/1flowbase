@@ -49,13 +49,9 @@ pub(crate) fn to_session_response(
     session: &domain::SessionRecord,
     cookie_name: &str,
 ) -> SessionResponse {
-    let mut available_roles = user
-        .roles
-        .iter()
-        .filter(|role| {
-            role.scope_kind == domain::RoleScopeKind::System
-                || role.workspace_id == Some(session.current_workspace_id)
-        })
+    let available_roles = user
+        .effective_roles_in_workspace(session.current_workspace_id)
+        .into_iter()
         .map(|role| AvailableRoleResponse {
             code: role.code.clone(),
             name: role.name.clone(),
@@ -66,7 +62,6 @@ pub(crate) fn to_session_response(
             .to_string(),
         })
         .collect::<Vec<_>>();
-    available_roles.dedup_by(|left, right| left.code == right.code);
     SessionResponse {
         actor: serde_json::json!({
             "id": actor.user_id,

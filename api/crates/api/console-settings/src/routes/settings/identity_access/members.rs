@@ -9,6 +9,7 @@ use axum::{
 use control_plane::member::AssignableRoleOption;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
@@ -80,6 +81,7 @@ pub struct MemberResponse {
     pub phone_login_enabled: bool,
     pub status: String,
     pub role_codes: Vec<String>,
+    pub inherited_role_codes: Vec<String>,
     pub department_ids: Vec<String>,
     pub primary_department_id: Option<String>,
 }
@@ -96,8 +98,8 @@ pub(crate) fn hash_password(password: &str) -> Result<String, ApiError> {
         .to_string())
 }
 
-pub(crate) fn to_member_response(user: domain::UserRecord) -> MemberResponse {
-    let resolved_display_role = user.resolved_display_role();
+pub(crate) fn to_member_response(user: domain::UserRecord, workspace_id: Uuid) -> MemberResponse {
+    let resolved_display_role = user.resolved_display_role(workspace_id).map(str::to_owned);
     let domain::UserRecord {
         id,
         account,
@@ -110,11 +112,19 @@ pub(crate) fn to_member_response(user: domain::UserRecord) -> MemberResponse {
         phone_login_enabled,
         status,
         roles,
+        department_roles,
         ..
     } = user;
     let mut role_codes = roles.into_iter().map(|role| role.code).collect::<Vec<_>>();
     role_codes.sort();
     role_codes.dedup();
+    let mut inherited_role_codes: Vec<_> = department_roles
+        .into_iter()
+        .filter(|role| role.workspace_id == Some(workspace_id))
+        .map(|role| role.code)
+        .collect();
+    inherited_role_codes.sort();
+    inherited_role_codes.dedup();
 
     MemberResponse {
         id: id.to_string(),
@@ -132,6 +142,7 @@ pub(crate) fn to_member_response(user: domain::UserRecord) -> MemberResponse {
             domain::UserStatus::Disabled => "disabled".to_string(),
         },
         role_codes,
+        inherited_role_codes,
         department_ids: vec![],
         primary_department_id: None,
     }

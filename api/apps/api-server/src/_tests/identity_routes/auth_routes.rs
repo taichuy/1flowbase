@@ -241,6 +241,169 @@ async fn console_user_api_key_role_options_only_include_current_user_roles() {
 }
 
 #[tokio::test]
+async fn department_only_admin_is_selectable_and_revokes_session_and_pat() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let user_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "department-admin",
+        "temp-pass",
+    )
+    .await;
+    let user_id = Uuid::parse_str(&user_id).unwrap();
+    let workspace_id: Uuid =
+        sqlx::query_scalar("select workspace_id from workspace_memberships where user_id = $1")
+            .bind(user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let (cookie, csrf) = login_and_capture_cookie(&app, "department-admin", "temp-pass").await;
+    assert_eq!(
+        super::session_routes::current_me(&app, &cookie).await["effective_display_role"],
+        "member"
+    );
+    let department_id = Uuid::now_v7();
+    sqlx::query("insert into departments(id, scope_id, tree_partition_id, sibling_rank, name) values ($1, $2, $2, 'a0', 'Admin department')")
+        .bind(department_id).bind(workspace_id).execute(&pool).await.unwrap();
+    sqlx::query("insert into department_role_bindings(id, scope_id, department_id, role_id) select $1, $2, $3, id from roles where workspace_id = $2 and code = 'admin'")
+        .bind(Uuid::now_v7()).bind(workspace_id).bind(department_id).execute(&pool).await.unwrap();
+    sqlx::query("insert into user_department_bindings(id, scope_id, user_id, department_id, is_primary) values ($1, $2, $3, $4, true)")
+        .bind(Uuid::now_v7()).bind(workspace_id).bind(user_id).bind(department_id).execute(&pool).await.unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/session/actions/switch-role")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"role_code":"admin"}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let switched: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(switched["data"]["session"]["active_role_code"], "admin");
+    assert_eq!(
+        super::session_routes::current_me(&app, &cookie).await["effective_display_role"],
+        "admin"
+    );
+
+    for direct_roles in [json!(["member"]), json!([])] {
+        if direct_roles == json!([]) {
+            sqlx::query("delete from user_role_bindings where user_id = $1")
+                .bind(user_id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/console/settings/members")
+                    .header("cookie", &root_cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        let member = payload["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|member| member["id"] == json!(user_id))
+            .unwrap();
+        assert_eq!(member["role_codes"], direct_roles);
+        assert_eq!(member["inherited_role_codes"], json!(["admin"]));
+    }
+
+    let (cookie, csrf) = login_and_capture_cookie(&app, "department-admin", "temp-pass").await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/session")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let session: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let available = session["data"]["available_roles"].as_array().unwrap();
+    assert_eq!(available.len(), 1);
+    assert_eq!(available[0]["code"], "admin");
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/user-api-keys/role-options")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let options: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let items = options["data"]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["code"], "admin");
+    let response = app.clone().oneshot(Request::builder().method("POST")
+        .uri("/api/console/user-api-keys").header("cookie", &cookie).header("x-csrf-token", &csrf)
+        .header("content-type", "application/json").body(Body::from(json!({
+            "name": "Department admin PAT", "role_code": "admin", "expiration_policy": "never"
+        }).to_string())).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let created: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let token = created["data"]["token"].as_str().unwrap();
+    assert_eq!(created["data"]["role_code"], "admin");
+    assert_eq!(
+        get_console_me_with_bearer(&app, token).await,
+        StatusCode::OK
+    );
+
+    sqlx::query("delete from department_role_bindings where department_id = $1")
+        .bind(department_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/session")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        get_console_me_with_bearer(&app, token).await,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
 async fn console_user_api_key_authenticates_console_get_and_mutation_without_csrf() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

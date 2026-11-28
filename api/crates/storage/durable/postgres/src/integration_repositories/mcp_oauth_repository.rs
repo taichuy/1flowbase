@@ -7,7 +7,20 @@ use uuid::Uuid;
 #[async_trait]
 impl McpOAuthRepository for PgControlPlaneStore {
     async fn oauth_authorization_stamp(&self, user_id: Uuid) -> anyhow::Result<Value> {
-        Ok(sqlx::query_scalar(r#"with bound as (select role_id from user_role_bindings where user_id=$1)
+        Ok(sqlx::query_scalar(r#"with bound as (
+          select role_id from user_role_bindings where user_id = $1
+          union
+          select r.id
+          from user_department_bindings membership
+          join departments department on department.id = membership.department_id
+            and department.scope_id = membership.scope_id
+          join department_role_bindings grant_binding on grant_binding.department_id = department.id
+            and grant_binding.scope_id = department.scope_id
+          join roles r on r.id = grant_binding.role_id
+          where membership.user_id = $1 and r.scope_kind = 'workspace'
+            and r.workspace_id = membership.scope_id and r.scope_id = membership.scope_id
+            and r.code <> 'root' and r.system_kind is null
+        )
         select jsonb_build_object(
           'roles',(select jsonb_agg(to_jsonb(r) order by r.id) from roles r where r.id in(select role_id from bound)),
           'permissions',(select jsonb_agg(to_jsonb(p) order by p.role_id,p.permission_id) from role_permissions p where p.role_id in(select role_id from bound)),

@@ -1,4 +1,4 @@
-use domain::{RoleScopeKind, UserStatus};
+use domain::{BoundRole, RoleScopeKind, UserStatus};
 use storage_durable_postgres::mappers::member_mapper::{PgMemberMapper, StoredMemberRow};
 use uuid::Uuid;
 
@@ -21,12 +21,13 @@ fn member_mapper_preserves_roles_and_status() {
         phone_login_enabled: false,
         status: "active".into(),
         session_version: 1,
-        roles: vec![(
-            "member".into(),
-            "Member".into(),
-            RoleScopeKind::Workspace,
-            Some(Uuid::nil()),
-        )],
+        roles: vec![BoundRole {
+            code: "member".into(),
+            name: "Member".into(),
+            scope_kind: RoleScopeKind::Workspace,
+            workspace_id: Some(Uuid::nil()),
+        }],
+        department_roles: Vec::new(),
     };
 
     let user = PgMemberMapper::to_user_record(row);

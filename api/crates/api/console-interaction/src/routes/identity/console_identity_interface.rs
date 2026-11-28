@@ -10,7 +10,7 @@ use control_plane::{
     auth::{
         ApiKeyService, CreateUserApiKeyCommand, ListUserApiKeysCommand, RevokeUserApiKeyCommand,
     },
-    ports::{RoleRepository, SessionStore},
+    ports::SessionStore,
     profile::{ProfileService, UpdateMeCommand, UpdateMeMetaCommand},
     session_security::{
         ChangeOwnPasswordCommand, LogoutCurrentSessionCommand, RevokeAllSessionsCommand,
@@ -522,6 +522,16 @@ impl ConsoleIdentityAdapter {
                     )
                     .into());
                 }
+                let user = self.user(principal).await?;
+                if !user.has_effective_role_in_workspace(
+                    current_session.current_workspace_id,
+                    role_code,
+                ) {
+                    return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                        "role_not_bound",
+                    )
+                    .into());
+                }
                 let mut result = WorkspaceSessionService::new(
                     self.store.clone(),
                     self.store.clone(),
@@ -536,7 +546,6 @@ impl ConsoleIdentityAdapter {
                 self.policy_projector
                     .project(&self.store, &mut result.actor)
                     .await?;
-                let user = self.user(principal).await?;
                 Ok(ConsoleIdentityOutput::Session(
                     session::to_session_response(
                         &user,
@@ -612,9 +621,8 @@ impl ConsoleIdentityAdapter {
             }
             ConsoleIdentityInput::ListUserApiKeyRoleOptions => {
                 let user = self.user(principal).await?;
-                let workspace_roles = self.store.list_roles(actor.current_workspace_id).await?;
                 Ok(ConsoleIdentityOutput::UserApiKeyRoleOptions(
-                    user_api_keys::role_options_response(&user, workspace_roles, actor),
+                    user_api_keys::role_options_response(&user, actor),
                 ))
             }
             ConsoleIdentityInput::CreateUserApiKey(payload) => {
@@ -626,13 +634,7 @@ impl ConsoleIdentityAdapter {
                     .filter(|value| !value.is_empty())
                     .unwrap_or(actor.effective_display_role.as_str())
                     .to_string();
-                if !user.roles.iter().any(|role| {
-                    role.code == role_code
-                        && user_api_keys::is_role_bound_to_current_workspace(
-                            role,
-                            actor.current_workspace_id,
-                        )
-                }) {
+                if !user.has_effective_role_in_workspace(actor.current_workspace_id, &role_code) {
                     return Err(control_plane::errors::ControlPlaneError::InvalidInput(
                         "role_code",
                     )
