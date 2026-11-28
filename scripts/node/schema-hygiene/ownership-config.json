@@ -1,5 +1,15 @@
 {
   "exemptions": {
+    "privacy_masking_logs": {
+      "kind": "workspace_privacy_masking_audit",
+      "reason": "Append-only audit facts use workspace_id and stable row id for both workspace-wide and subject-scoped chronology.",
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "privacy_masking_runtime_policies": {
+      "kind": "installation_workspace_policy_snapshot",
+      "reason": "A mutable policy snapshot is keyed by installation_id and workspace_id; runtime selection uses that key and the workspace updated_at index, not generic row or chronology identity.",
+      "skip": ["managed-table-id", "managed-table-scope-column", "managed-table-scope-time-index"]
+    },
     "communication_message_sends": {
       "kind": "notification_send_owned_receipt",
       "reason": "Each communication send is keyed by its notification_send_logs owner and correlated to optional timeline history; repository status and receipt updates do not use an independent row identity, mutable timestamp, or workspace chronology.",
@@ -1075,6 +1085,24 @@
     }
   },
   "ownedTableContracts": {
+    "privacy_masking_logs": {
+      "primaryKey": ["id"],
+      "ownerColumns": ["workspace_id", "subject_kind", "subject_id"],
+      "requiredColumns": ["created_at", "matched_rules_json"],
+      "unconditionalIndexes": [
+        ["workspace_id", "created_at", "id"],
+        ["workspace_id", "subject_kind", "subject_id", "created_at", "id"]
+      ]
+    },
+    "privacy_masking_runtime_policies": {
+      "primaryKey": ["installation_id", "workspace_id"],
+      "ownerColumns": ["workspace_id"],
+      "requiredColumns": ["policy_version", "policy_json", "created_at", "updated_at"],
+      "foreignKeys": [
+        {"columns": ["installation_id"], "table": "extension_installations", "references": ["id"], "onDelete": "cascade"}
+      ],
+      "unconditionalIndexes": [["workspace_id", "updated_at"]]
+    },
     "system_branding": {
       "primaryKey": [
         "singleton"

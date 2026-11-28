@@ -41,7 +41,7 @@ test('specialized logs and organization tables retain real ownership and lookup 
     for (const columnName of contract.requiredColumns || []) {
       rejected({ ...original, columns: original.columns.filter((column) => column.name !== columnName) }, 'owned-table-required-column');
     }
-    for (const columns of contract.indexes || []) {
+    for (const columns of [...(contract.indexes || []), ...(contract.unconditionalIndexes || [])]) {
       const matches = (index) => columns.every((column, position) => index.columns[position] === column);
       rejected({ ...original,
         primaryKey: matches(original.primaryKey) ? null : original.primaryKey,
