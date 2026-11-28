@@ -13,6 +13,7 @@ export interface ConsoleMember {
   phone_login_enabled: boolean;
   status: 'active' | 'disabled';
   role_codes: string[];
+  readonly inherited_role_codes?: string[];
   department_ids: string[];
   primary_department_id: string | null;
 }

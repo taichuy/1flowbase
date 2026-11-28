@@ -21,7 +21,7 @@ pub struct SessionResponse {
     pub actor: serde_json::Value,
     pub session: serde_json::Value,
     pub available_roles: Vec<AvailableRoleResponse>,
-    pub active_role_permissions: Vec<String>,
+    pub policy_fingerprint: String,
     pub csrf_token: String,
     pub cookie_name: String,
 }
@@ -49,13 +49,9 @@ pub(crate) fn to_session_response(
     session: &domain::SessionRecord,
     cookie_name: &str,
 ) -> SessionResponse {
-    let mut available_roles = user
-        .roles
-        .iter()
-        .filter(|role| {
-            role.scope_kind == domain::RoleScopeKind::System
-                || role.workspace_id == Some(session.current_workspace_id)
-        })
+    let available_roles = user
+        .effective_roles_in_workspace(session.current_workspace_id)
+        .into_iter()
         .map(|role| AvailableRoleResponse {
             code: role.code.clone(),
             name: role.name.clone(),
@@ -66,7 +62,6 @@ pub(crate) fn to_session_response(
             .to_string(),
         })
         .collect::<Vec<_>>();
-    available_roles.dedup_by(|left, right| left.code == right.code);
     SessionResponse {
         actor: serde_json::json!({
             "id": actor.user_id,
@@ -82,7 +77,8 @@ pub(crate) fn to_session_response(
             "active_role_code": session.active_role_code,
         }),
         available_roles,
-        active_role_permissions: actor.permissions.iter().cloned().collect(),
+        policy_fingerprint:
+            api_host_kernel::middleware::console_policy_projection::policy_fingerprint(actor),
         csrf_token: session.csrf_token.clone(),
         cookie_name: cookie_name.to_string(),
     }

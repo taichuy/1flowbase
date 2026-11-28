@@ -50,6 +50,7 @@ import {
 } from '../../features/frontstage/api/startup-block-code-cache';
 import { getFirstTopLevelPageId } from '../../features/frontstage/lib/page-tree';
 import { settingsConsoleNavigationQueryOptions } from '../../features/settings/api/console-navigation';
+import { preloadSettingsRouteByPathname } from '../../features/settings/pages/settings-page/shell/settings-section-loaders';
 import { systemMetadataQueryKey } from '../../shared/api/system-metadata';
 import {
   getSeededPublicSystemMetadata,
@@ -274,7 +275,6 @@ function seedSupportingFrontstageQueries({
 }): () => void {
   const permissionFingerprint =
     createFrontstageBlockCatalogPermissionFingerprint(me);
-  const sortedPermissions = me.permissions.slice().sort().join(',');
   const locale = resolveAppLocale(resolveAuthenticatedLocale(me));
 
   const seededMetadata = getSeededPublicSystemMetadata();
@@ -316,7 +316,7 @@ function seedSupportingFrontstageQueries({
         workspaceId,
         'runtime-i18n',
         actorId,
-        sortedPermissions,
+        permissionFingerprint,
         locale
       ],
       queryFn: () => fetchFrontstageRuntimeI18nCatalog(locale),
@@ -978,6 +978,7 @@ export function prewarmAuthenticatedStartup(
     snapshot.actor,
     scope
   );
+  void preloadSettingsRouteByPathname(pathname).catch(() => undefined);
 
   if (
     snapshot.me &&

@@ -26,6 +26,7 @@ export * from './console/modeling/node-contributions';
 export * from './console/network-center';
 export * from './console/identity/navigation';
 export * from './console/identity/me';
+export * from './console/identity/access';
 export * from './console/identity/members';
 export * from './console/administration/billing';
 export * from './console/identity/permissions';

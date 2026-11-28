@@ -256,6 +256,7 @@ impl RoleAccessAdapter {
             }
             RoleAccessInput::ReplaceRoleConsolePolicy { role_code, body } => {
                 RoleService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .replace_console_policy(
                         ReplaceRoleConsolePolicyCommand {
                             actor_user_id: actor.user_id,
@@ -281,6 +282,7 @@ impl RoleAccessAdapter {
             }
             RoleAccessInput::CreateRole(body) => {
                 RoleService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .create_role(CreateRoleCommand {
                         actor_user_id: actor.user_id,
                         code: body.code.clone(),
@@ -306,6 +308,7 @@ impl RoleAccessAdapter {
             }
             RoleAccessInput::UpdateRole { role_code, body } => {
                 RoleService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .update_role(UpdateRoleCommand {
                         actor_user_id: actor.user_id,
                         role_code,
@@ -319,6 +322,7 @@ impl RoleAccessAdapter {
             }
             RoleAccessInput::DeleteRole { role_code } => {
                 RoleService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .delete_role(DeleteRoleCommand {
                         actor_user_id: actor.user_id,
                         role_code,
@@ -339,6 +343,7 @@ impl RoleAccessAdapter {
             }
             RoleAccessInput::ReplaceRolePermissions { role_code, body } => {
                 RoleService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .replace_permissions(ReplaceRolePermissionsCommand {
                         actor_user_id: actor.user_id,
                         role_code,

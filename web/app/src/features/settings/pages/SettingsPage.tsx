@@ -1,8 +1,9 @@
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import {
   navigationQueryStaleTime,
   selectNavigationQueryScope
 } from '../../../state/navigation-query-scope';
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 import { Navigate } from '@tanstack/react-router';
@@ -19,13 +20,19 @@ import {
   isSettingsSectionKey,
   settingsSectionItemsFromConsoleNavigation
 } from '../lib/settings-sections';
-import { PluginSettingsPage } from './settings-page/PluginSettingsPage';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { SettingsRouteShell } from './settings-page/shell/SettingsRouteShell';
 import { SettingsSectionBody } from './settings-page/shell/SettingsSectionBody';
 import { useSettingsSections } from './settings-page/shell/use-settings-sections';
 import type { RolePermissionTab } from '../components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../api/extensions/extensions';
 import type { NetworkCenterPage } from './network-center/NetworkCenterSection';
+
+const PluginSettingsPage = lazy(() =>
+  import('./settings-page/PluginSettingsPage').then(({ PluginSettingsPage }) => ({
+    default: PluginSettingsPage
+  }))
+);
 
 export function SettingsPage({
   requestedSectionKey,
@@ -47,36 +54,11 @@ export function SettingsPage({
   const navigationScope = useAuthStore(selectNavigationQueryScope);
   const { t } = useTranslation('settings');
   const actor = useAuthStore((state) => state.actor);
-  const me = useAuthStore((state) => state.me);
   const consoleNavigationQuery = useQuery({
     queryKey: [...settingsConsoleNavigationQueryKey, navigationScope],
     staleTime: navigationQueryStaleTime,
     queryFn: fetchSettingsConsoleNavigation
   });
-  const permissions = useMemo(() => me?.permissions ?? [], [me?.permissions]);
-  const permissionSet = useMemo(() => new Set(permissions), [permissions]);
-  const isRoot = actor?.effective_display_role === 'root';
-  const canManageMembers = isRoot || permissionSet.has('user.manage.all');
-  const canManageRoles =
-    isRoot || permissionSet.has('role_permission.manage.all');
-  const canManageHostInfrastructure =
-    isRoot || permissionSet.has('plugin_config.configure.all');
-  const sectionAccess = useMemo(
-    () => ({
-      isRoot,
-      permissions,
-      canManageMembers,
-      canManageRoles,
-      canManageHostInfrastructure
-    }),
-    [
-      canManageHostInfrastructure,
-      canManageMembers,
-      canManageRoles,
-      isRoot,
-      permissions
-    ]
-  );
   const registrySections = useMemo(() => {
     if (consoleNavigationQuery.data) {
       return settingsSectionItemsFromConsoleNavigation(
@@ -98,6 +80,25 @@ export function SettingsPage({
       sections: registrySections
     });
 
+  const can = useConsoleOperationAccess();
+  const isRoot = actor?.effective_display_role === 'root';
+  const canManageMembers = activeSection?.key === 'members' && can('user.manage.all');
+  const canManageRoles = activeSection?.key === 'roles' && can('role_permission.manage.all');
+  const canManageHostInfrastructure = activeSection?.key === 'memory-observation' && can('plugin_config.configure.all');
+  const sectionAccess = useMemo(
+    () => ({
+      isRoot,
+      canManageMembers,
+      canManageRoles,
+      canManageHostInfrastructure
+    }),
+    [
+      canManageHostInfrastructure,
+      canManageMembers,
+      canManageRoles,
+      isRoot
+    ]
+  );
   const registeredPage = registrySections.find(
     (section) => section.key === activeSection?.key
   );
@@ -165,10 +166,12 @@ export function SettingsPage({
           extensionCenterQ={extensionCenterQ}
         />
       ) : registeredPage ? (
-        <PluginSettingsPage
-          key={registeredPage.route_id}
-          route_id={registeredPage.route_id}
-        />
+        <Suspense fallback={<LoadingState compact />}>
+          <PluginSettingsPage
+            key={registeredPage.route_id}
+            route_id={registeredPage.route_id}
+          />
+        </Suspense>
       ) : null}
     </SettingsRouteShell>
   );

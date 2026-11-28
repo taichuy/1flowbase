@@ -1,3 +1,4 @@
+use crate::_tests::support::evaluate_console_access;
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     replace_role_legacy_permissions_only, replace_role_permissions,
@@ -448,23 +449,6 @@ async fn replace_navigation_policy(
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
-async fn navigation_me(app: &axum::Router, cookie: &str) -> Value {
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/api/console/me")
-                .header("cookie", cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    serde_json::from_slice(&body).unwrap()
-}
-
 #[tokio::test]
 async fn mcp_role_permission_navigation_uses_canonical_readonly_policy_not_stale_legacy() {
     let (state, _) = test_api_state_with_database_url().await;
@@ -534,10 +518,20 @@ async fn mcp_role_permission_navigation_uses_canonical_readonly_policy_not_stale
     ] {
         assert!(string_values(&payload, &["data", path], key).contains(&"settings.roles".into()));
     }
-    let me = navigation_me(&app, &cookie).await;
-    let permissions = me["data"]["permissions"].as_array().unwrap();
-    assert!(permissions.contains(&json!("settings_feature.access.system.roles")));
-    assert!(!permissions.contains(&json!("role_permission.manage.all")));
+    let access = evaluate_console_access(
+        &app,
+        &cookie,
+        &csrf,
+        &[
+            "settings_feature.access.system.roles",
+            "role_permission.manage.all",
+        ],
+    )
+    .await;
+    assert_eq!(
+        access["allowed"],
+        json!({"settings_feature.access.system.roles": true, "role_permission.manage.all": false})
+    );
     let read = app
         .clone()
         .oneshot(
@@ -618,17 +612,20 @@ async fn mcp_role_permission_navigation_uses_canonical_readonly_policy_not_stale
         assert!(!ids.contains(&"settings.roles".into()));
         assert!(!ids.contains(&"settings.docs".into()));
     }
-    let me = navigation_me(&app, &cookie).await;
-    assert!(me["data"]["permissions"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|permission| {
-            !permission
-                .as_str()
-                .unwrap()
-                .starts_with("settings_feature.access.")
-        }));
+    let access = evaluate_console_access(
+        &app,
+        &cookie,
+        &csrf,
+        &[
+            "settings_feature.access.system.roles",
+            "settings_feature.access.system.docs",
+        ],
+    )
+    .await;
+    assert_eq!(
+        access["allowed"],
+        json!({"settings_feature.access.system.roles": false, "settings_feature.access.system.docs": false})
+    );
     let denied = app
         .clone()
         .oneshot(
@@ -682,7 +679,7 @@ fn navigation_operation_inventory(row: bool) -> access_control::ConsoleOperation
 
 #[test]
 fn mcp_role_permission_navigation_simple_full_custom_none_and_inactive_invariants() {
-    use crate::middleware::require_session::settings_feature_navigation_permissions;
+    use crate::middleware::console_policy_projection::settings_feature_navigation_permissions;
     use domain::{
         ConsoleOperationId, ConsoleOperationPolicy, ConsolePolicyGroup, RoleConsoleGroupPolicy,
         RoleConsolePolicy,
@@ -765,7 +762,7 @@ fn mcp_role_permission_navigation_simple_full_custom_none_and_inactive_invariant
 
 #[test]
 fn mcp_role_permission_navigation_row_full_custom_none_and_inactive_invariants() {
-    use crate::middleware::require_session::settings_feature_navigation_permissions;
+    use crate::middleware::console_policy_projection::settings_feature_navigation_permissions;
     use domain::{
         ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope, ConsolePolicyGroup,
         RoleConsoleGroupPolicy, RoleConsolePolicy,

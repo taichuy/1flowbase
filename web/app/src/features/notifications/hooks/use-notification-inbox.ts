@@ -6,7 +6,7 @@ import type {
 } from '@1flowbase/api-client';
 import { useAuthStore } from '../../../state/auth-store';
 import {
-  hasConsoleOperationAccess,
+  ensureConsoleOperationAccess,
   useConsoleOperationAccess
 } from '../../../state/console-operation-access';
 import { selectNavigationQueryScope } from '../../../state/navigation-query-scope';
@@ -119,11 +119,7 @@ export function useNotificationInbox(open: boolean) {
       const auth = useAuthStore.getState();
       if (
         auth.sessionStatus !== 'authenticated' ||
-        (operation !== 'read' && !hasConsoleOperationAccess(
-          auth.actor?.effective_display_role,
-          auth.me?.permissions,
-          writeOperations[operation]
-        ))
+        (operation !== 'read' && !(await ensureConsoleOperationAccess([writeOperations[operation]]))[writeOperations[operation]])
       )
         throw new Error('operation access denied');
       if (operation === 'read') await markNotificationRead(id, csrfToken);

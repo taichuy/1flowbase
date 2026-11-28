@@ -1,3 +1,4 @@
+use crate::_tests::support::evaluate_console_access;
 use crate::_tests::support::{
     login_and_capture_cookie, seed_session, seed_workspace, test_api_state_with_database_url,
     test_app, test_app_with_database_url, test_config,
@@ -13,6 +14,34 @@ use serde_json::json;
 use time::OffsetDateTime;
 use tower::ServiceExt;
 use uuid::Uuid;
+
+pub(super) fn assert_fingerprint(data: &serde_json::Value) -> &str {
+    assert!(data.get("active_role_permissions").is_none());
+    let fingerprint = data["policy_fingerprint"]
+        .as_str()
+        .expect("policy fingerprint");
+    assert_eq!(fingerprint.len(), 32);
+    assert!(fingerprint.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    fingerprint
+}
+
+pub(super) async fn current_me(app: &axum::Router, cookie: &str) -> serde_json::Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/me")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    payload["data"].clone()
+}
 
 #[tokio::test]
 async fn production_login_cookie_is_marked_secure() {
@@ -63,12 +92,13 @@ async fn session_route_returns_wrapped_actor_payload_and_csrf_token() {
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
                 .uri("/api/console/session")
                 .header(header::ORIGIN, "http://127.0.0.1:3100")
-                .header("cookie", cookie)
+                .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -94,6 +124,29 @@ async fn session_route_returns_wrapped_actor_payload_and_csrf_token() {
     assert!(payload["data"]["session"]["current_workspace_id"].is_string());
     assert_eq!(payload["data"]["csrf_token"], csrf);
     assert_eq!(payload["data"]["cookie_name"], "flowbase_console_session");
+    let me = current_me(&app, &cookie).await;
+    assert_eq!(
+        assert_fingerprint(&payload["data"]),
+        assert_fingerprint(&me)
+    );
+    let access = evaluate_console_access(
+        &app,
+        &cookie,
+        &csrf,
+        &[
+            "auth_center.overview.view",
+            "auth_center.overview.view",
+            "  ",
+            "unknown.capability",
+        ],
+    )
+    .await;
+    assert_eq!(
+        access["allowed"],
+        json!({"auth_center.overview.view": true, "unknown.capability": true})
+    );
+    assert_eq!(assert_fingerprint(&access), assert_fingerprint(&me));
+    assert!(me.get("permissions").is_none());
     assert_eq!(
         payload["data"]["actor"]["current_workspace_id"],
         payload["data"]["session"]["current_workspace_id"]
@@ -447,6 +500,30 @@ async fn switch_role_replaces_the_session_authorization_scope() {
         "manager"
     );
     assert_eq!(payload["data"]["session"]["active_role_code"], "manager");
+    let me = current_me(&app, &cookie).await;
+    assert_eq!(
+        assert_fingerprint(&payload["data"]),
+        assert_fingerprint(&me)
+    );
+    assert_eq!(me["effective_display_role"], "manager");
+    let access = evaluate_console_access(
+        &app,
+        &cookie,
+        payload["data"]["csrf_token"].as_str().unwrap(),
+        &[
+            "auth_center.overview.view",
+            "auth_center.overview.view",
+            "  ",
+            "unknown.capability",
+        ],
+    )
+    .await;
+    assert_eq!(
+        access["allowed"],
+        json!({"auth_center.overview.view": false, "unknown.capability": false})
+    );
+    assert_eq!(assert_fingerprint(&access), assert_fingerprint(&me));
+    assert!(me.get("permissions").is_none());
     let switch_audit_count: i64 = sqlx::query_scalar(
         "select count(*) from audit_logs where actor_user_id = $1 and event_code = 'session.switch_active_role'",
     )
@@ -528,7 +605,7 @@ async fn switch_role_replaces_the_session_authorization_scope() {
     let body = to_bytes(me_response.into_body(), usize::MAX).await.unwrap();
     let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(payload["data"]["effective_display_role"], "manager");
-    assert_eq!(payload["data"]["permissions"], json!([]));
+    assert!(payload["data"].get("permissions").is_none());
 
     sqlx::query("delete from user_role_bindings where user_id = $1 and role_id = $2")
         .bind(user_id)

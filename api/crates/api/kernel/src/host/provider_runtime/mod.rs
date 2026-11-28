@@ -111,6 +111,7 @@ pub struct ApiRuntimeServices {
         Option<Arc<orchestration_runtime::provider_input_pipeline::ProviderInputPipeline>>,
     provider_distribution_snapshot: Arc<tokio::sync::RwLock<EffectiveProviderDistributionSnapshot>>,
     transport_sessions: Arc<transport_session_lifecycle::TransportSessionCoordinator>,
+    privacy_masking_kernel: Option<Arc<control_plane::privacy_masking::PrivacyMaskingKernel>>,
     // Declared last: runtime/backend/session fields are dropped before fixture cleanup.
     #[cfg(any(test, feature = "test-support"))]
     fixture_resources: Option<Arc<crate::test_support::TestResources>>,
@@ -202,6 +203,20 @@ impl ApiRuntimeServices {
         self
     }
 
+    pub fn with_privacy_masking_kernel(
+        mut self,
+        kernel: Arc<control_plane::privacy_masking::PrivacyMaskingKernel>,
+    ) -> Self {
+        self.privacy_masking_kernel = Some(kernel);
+        self
+    }
+
+    pub fn privacy_masking_kernel(
+        &self,
+    ) -> Option<Arc<control_plane::privacy_masking::PrivacyMaskingKernel>> {
+        self.privacy_masking_kernel.clone()
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn with_workspace_policy_fixture(
@@ -287,6 +302,7 @@ impl ApiRuntimeServices {
                 EffectiveProviderDistributionSnapshot::builtins()?,
             )),
             transport_sessions,
+            privacy_masking_kernel: None,
         })
     }
 
@@ -339,6 +355,7 @@ impl ApiRuntimeServices {
                     .expect("builtin distribution registry must compile"),
             )),
             transport_sessions,
+            privacy_masking_kernel: None,
         }
     }
 
@@ -397,6 +414,7 @@ impl ApiRuntimeServices {
                     .expect("builtin distribution registry must compile"),
             )),
             transport_sessions,
+            privacy_masking_kernel: None,
         }
     }
 

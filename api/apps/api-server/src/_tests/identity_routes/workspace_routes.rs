@@ -1,3 +1,4 @@
+use crate::_tests::support::evaluate_console_access;
 use crate::_tests::support::{
     login_and_capture_cookie, seed_workspace, test_app_with_database_url,
 };
@@ -107,6 +108,9 @@ async fn switch_workspace_route_updates_current_workspace_and_returns_new_csrf()
     let target_workspace_id = seed_workspace(&database_url, "Workspace Switch Target").await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
+    let initial_me = super::session_routes::current_me(&app, &cookie).await;
+    let initial_fingerprint = super::session_routes::assert_fingerprint(&initial_me);
+
     let response = app
         .clone()
         .oneshot(
@@ -130,9 +134,25 @@ async fn switch_workspace_route_updates_current_workspace_and_returns_new_csrf()
     assert_eq!(response.status(), StatusCode::OK);
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let payload: Value = serde_json::from_slice(&body).unwrap();
+    let fingerprint = super::session_routes::assert_fingerprint(&payload["data"]);
+    assert_ne!(fingerprint, initial_fingerprint);
+    let me = super::session_routes::current_me(&app, &cookie).await;
+    assert_eq!(fingerprint, super::session_routes::assert_fingerprint(&me));
+    assert!(me.get("permissions").is_none());
     let next_csrf = payload["data"]["csrf_token"].as_str().unwrap().to_string();
 
     assert_ne!(next_csrf, csrf);
+    let access = evaluate_console_access(
+        &app,
+        &cookie,
+        &next_csrf,
+        &["auth_center.overview.view", "patch_me"],
+    )
+    .await;
+    assert_eq!(
+        access["allowed"],
+        serde_json::json!({"auth_center.overview.view": false, "patch_me": true})
+    );
     assert_eq!(
         payload["data"]["actor"]["current_workspace_id"],
         target_workspace_id.to_string()
@@ -162,6 +182,10 @@ async fn switch_workspace_route_updates_current_workspace_and_returns_new_csrf()
         target_workspace_id.to_string()
     );
     assert_eq!(payload["data"]["csrf_token"], next_csrf);
+    assert_eq!(
+        super::session_routes::assert_fingerprint(&payload["data"]),
+        fingerprint
+    );
 }
 
 #[tokio::test]

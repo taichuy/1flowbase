@@ -254,7 +254,8 @@ function authenticate() {
       introduction: '',
       preferred_locale: null,
       effective_display_role: 'root',
-      permissions: [],
+      policy_fingerprint: 'fixture-policy',
+
       meta: {}
     }
   });

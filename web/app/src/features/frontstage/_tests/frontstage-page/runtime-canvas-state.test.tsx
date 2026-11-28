@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { i18nText } from '../../../../shared/i18n/text';
 import type { FrontstageNativePreparedRuntime } from '../../lib/page-canvas/native-runtime-preparation';
 import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
@@ -148,9 +149,10 @@ function authenticate(permissions: string[]) {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'developer',
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 function createBackendPage(pageId: string): TestFrontStageTreeNode {

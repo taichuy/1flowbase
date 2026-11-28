@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../test/fixtures/console-access';
 import {
   act,
   fireEvent,
@@ -37,9 +38,10 @@ function authenticate(role: string, permissions: string[]) {
       avatar_url: null,
       introduction: '',
       effective_display_role: role,
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 beforeEach(async () => {

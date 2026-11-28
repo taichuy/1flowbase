@@ -84,7 +84,7 @@ describe('McpManagementPanel', () => {
       const { actor, me } = useAuthStore.getState();
       useAuthStore.setState({
         actor: { ...actor!, effective_display_role: 'readonly' },
-        me: { ...me!, effective_display_role: 'readonly', permissions: [] }
+        me: { ...me!, effective_display_role: 'readonly', policy_fingerprint: 'fixture-policy' }
       });
     }
     await renderSettled(
@@ -217,7 +217,7 @@ describe('McpManagementPanel', () => {
     await domEvents.click(
       within(dialog).getByRole('button', { name: '获取返回结构' })
     );
-    expect(within(dialog).getByDisplayValue('run_id')).toBeInTheDocument();
+    expect(await within(dialog).findByDisplayValue('run_id')).toBeInTheDocument();
     expect(within(dialog).queryByDisplayValue('type')).not.toBeInTheDocument();
     expect(
       within(dialog).queryByDisplayValue('required')

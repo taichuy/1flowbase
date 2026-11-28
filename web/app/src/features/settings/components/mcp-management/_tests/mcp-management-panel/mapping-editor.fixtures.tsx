@@ -415,7 +415,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: []
+      policy_fingerprint: 'fixture-policy'
     }
   });
 }

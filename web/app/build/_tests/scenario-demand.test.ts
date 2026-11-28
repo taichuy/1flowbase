@@ -70,3 +70,57 @@ describe('compiler scenario demand graph', () => {
     })).toThrow(/workspaceShell eagerly includes canvas\/runtime/);
   });
 });
+
+const settingsPage = '/src/features/settings/pages/SettingsPage.tsx';
+const memberTabs = '/src/features/settings/pages/settings-page/MemberSettingsTabs.tsx';
+const loginStudio = '/src/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx';
+
+test('Settings closures allow lazy studios and billing but reject compiler-owned static leaks', () => {
+  const clean = {
+    'settings.js': chunk('settings.js', settingsPage, [], ['members.js']),
+    'members.js': chunk('members.js', memberTabs, [], ['billing.js']),
+    'billing.js': chunk('billing.js', '/repo/web/packages/api-client/src/console/administration/billing.ts'),
+    'login-studio.js': chunk('login-studio.js', loginStudio)
+  };
+  const { scenes } = collectScenarioDemandManifest(clean);
+  expect(scenes.settingsShell.staticClosure).toEqual(['settings.js']);
+  expect(scenes.settingsMembers.staticClosure).toEqual(['members.js']);
+  expect(scenes.loginStudio.roots).toEqual(['login-studio.js']);
+  expect(() => collectScenarioDemandManifest({
+    ...clean,
+    'members.js': chunk('members.js', memberTabs, ['billing.js'])
+  })).toThrow(/settingsMembers eagerly includes.*billing/);
+});
+
+test('protected startup scenes reject Settings grouping and Splitter even via shared chunks', () => {
+  const startup = '/src/app/bootstrap/AuthenticatedStartup.tsx';
+  for (const dependency of [
+    { ...chunk('shared.js', '/shared/settings-primitive.ts'), name: 'settings-shared~2' },
+    chunk('shared.js', '/repo/node_modules/antd/es/splitter/hooks/useResize.js')
+  ]) {
+    expect(() => collectScenarioDemandManifest({
+      'startup.js': chunk('startup.js', startup, ['shared.js']),
+      'shared.js': dependency
+    })).toThrow(/authenticatedStartup eagerly includes/);
+  }
+});
+
+
+test.each([
+  ['settingsShell', settingsPage, '/src/FrontstageNativeTrustedBlockPortalHost.tsx'],
+  ['settingsMembers', memberTabs, '/src/DepartmentManagementPanel.tsx'],
+  ['settingsAuthCenter', '/features/settings/pages/settings-page/SettingsAuthCenterSection.tsx', '/repo/node_modules/monaco-editor/esm/vs/editor.js'],
+  ['settingsUiManagement', '/features/settings/components/ui-management/UiManagementPanel.tsx', '/repo/node_modules/vditor/dist/index.js'],
+  ['settingsMcp', '/features/settings/pages/settings-page/SettingsMcpManagementSection.tsx', '/src/shared/code-block/monaco-runtime.ts']
+])('%s rejects a transitive static leak while allowing a dynamic edge', (scene, owner, dependency) => {
+  const lazy = {
+    'root.js': chunk('root.js', owner, ['shared.js']),
+    'shared.js': chunk('shared.js', '/src/shared.ts', [], ['deferred.js']),
+    'deferred.js': chunk('deferred.js', dependency)
+  };
+  expect(collectScenarioDemandManifest(lazy).scenes[scene].staticClosure).toEqual(['root.js', 'shared.js']);
+  expect(() => collectScenarioDemandManifest({
+    ...lazy,
+    'shared.js': chunk('shared.js', '/src/shared.ts', ['deferred.js'])
+  })).toThrow(`${scene} eagerly includes`);
+});

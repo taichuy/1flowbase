@@ -1,3 +1,4 @@
+import { useConsoleOperationAccessStatus } from '../state/console-operation-access';
 import type { PropsWithChildren } from 'react';
 
 import type { AppRouteId } from '@1flowbase/shared-types';
@@ -14,8 +15,7 @@ export function RouteGuard({
 }: PropsWithChildren<{ routeId: AppRouteId }>) {
   const route = getRouteDefinition(routeId);
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
-  const actor = useAuthStore((state) => state.actor);
-  const me = useAuthStore((state) => state.me);
+  const access = useConsoleOperationAccessStatus(route.permissionKey ?? '');
 
   if (sessionStatus === 'unknown') {
     return <LoadingState fullscreen />;
@@ -48,11 +48,9 @@ export function RouteGuard({
     return <>{children}</>;
   }
 
-  const hasPermission =
-    actor?.effective_display_role === 'root' ||
-    Boolean(me?.permissions.includes(route.permissionKey));
+  if (access === 'loading') return <LoadingState fullscreen />;
 
-  if (!hasPermission) {
+  if (access === 'denied') {
     return <PermissionDeniedState />;
   }
 

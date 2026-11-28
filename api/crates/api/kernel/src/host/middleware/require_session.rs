@@ -122,7 +122,63 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
     raw.strip_prefix("Bearer ")
 }
 
+struct IdentityRequestSnapshot {
+    user: UserRecord,
+    session: Option<SessionRecord>,
+}
+
+tokio::task_local! {
+    static IDENTITY_REQUEST_CONTEXT: std::cell::OnceCell<IdentityRequestSnapshot>;
+}
+
+/// Reuse the validated user and session only within this identity invocation.
+pub async fn with_identity_request_context<F: Future>(future: F) -> F::Output {
+    IDENTITY_REQUEST_CONTEXT
+        .scope(std::cell::OnceCell::new(), future)
+        .await
+}
+
+pub fn identity_request_user(user_id: Uuid) -> Option<UserRecord> {
+    IDENTITY_REQUEST_CONTEXT
+        .try_with(|snapshot| {
+            snapshot
+                .get()
+                .filter(|entry| entry.user.id == user_id)
+                .map(|entry| entry.user.clone())
+        })
+        .ok()
+        .flatten()
+}
+
+pub fn identity_request_session(session_id: &str) -> Option<SessionRecord> {
+    IDENTITY_REQUEST_CONTEXT
+        .try_with(|snapshot| {
+            snapshot
+                .get()?
+                .session
+                .as_ref()
+                .filter(|session| session.session_id == session_id)
+                .cloned()
+        })
+        .ok()
+        .flatten()
+}
+
 pub async fn require_session(
+    state: &ApiState,
+    headers: &HeaderMap,
+) -> Result<RequestContext, ApiError> {
+    let context = authenticate_request(state, headers).await?;
+    let _ = IDENTITY_REQUEST_CONTEXT.try_with(|snapshot| {
+        snapshot.get_or_init(|| IdentityRequestSnapshot {
+            user: context.user.clone(),
+            session: context.cookie_session().ok().cloned(),
+        });
+    });
+    Ok(context)
+}
+
+async fn authenticate_request(
     state: &ApiState,
     headers: &HeaderMap,
 ) -> Result<RequestContext, ApiError> {
@@ -140,20 +196,20 @@ pub async fn require_session(
     }
 
     if let Some(token) = extract_bearer_token(headers) {
-        let user_api_key = ApiKeyService::new(state.store.clone())
-            .authenticate_user_api_key(token)
+        let mut user_api_key = ApiKeyService::new(state.store.clone())
+            .authenticate_console_api_key(token)
             .await?;
-        return apply_console_policy_permissions(
-            state,
-            RequestContext {
-                credential: RequestCredential::UserApiKey {
-                    api_key_id: user_api_key.api_key.id,
-                },
-                user: user_api_key.user,
-                actor: user_api_key.actor,
+        state
+            .console_policy_projector
+            .project(&state.store, &mut user_api_key.actor)
+            .await?;
+        return Ok(RequestContext {
+            credential: RequestCredential::UserApiKey {
+                api_key_id: user_api_key.api_key.id,
             },
-        )
-        .await;
+            user: user_api_key.user,
+            actor: user_api_key.actor,
+        });
     }
 
     let session_id = extract_cookie(headers, &state.cookie_name)
@@ -171,43 +227,34 @@ pub async fn require_session(
 
     if user.session_version != session.session_version
         || matches!(user.status, UserStatus::Disabled)
+        || !user.has_effective_role_in_workspace(
+            session.current_workspace_id,
+            &session.active_role_code,
+        )
     {
         state.session_store.delete(&session.session_id).await?;
         return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
     }
 
-    let actor = state
+    let mut actor = state
         .store
-        .load_actor_context(
-            user.id,
+        .resolve_loaded_user_role(
+            &user,
             session.tenant_id,
             session.current_workspace_id,
             Some(&session.active_role_code),
         )
         .await?;
-    state
-        .store
-        .verify_workspace_access(
-            actor.user_id,
-            session.tenant_id,
-            actor.current_workspace_id,
-            actor.is_root,
-        )
-        .await?;
-    if actor.effective_display_role != session.active_role_code {
-        state.session_store.delete(&session.session_id).await?;
-        return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
-    }
 
-    apply_console_policy_permissions(
-        state,
-        RequestContext {
-            credential: RequestCredential::CookieSession(session),
-            user,
-            actor,
-        },
-    )
-    .await
+    state
+        .console_policy_projector
+        .project(&state.store, &mut actor)
+        .await?;
+    Ok(RequestContext {
+        credential: RequestCredential::CookieSession(session),
+        user,
+        actor,
+    })
 }
 
 /// Navigation, design-mode visibility and the existing frontstage service guard are
@@ -224,182 +271,8 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
     state: &ApiState,
     actor: &mut ActorContext,
 ) -> Result<(), ApiError> {
-    let outside_bootstrap = actor.current_workspace_id != state.bootstrap_workspace_id;
-    let inventory = state.console_operation_registry.inventory();
-    let features = &state.settings_feature_registry.inventory().features;
-    if actor.is_root {
-        if outside_bootstrap {
-            remove_platform_permissions(actor, inventory, features);
-        } else {
-            // Clients must use the explicit projection, not the root role alone,
-            // to distinguish platform operations available in this session.
-            actor.permissions.extend(
-                inventory
-                    .operations
-                    .iter()
-                    .filter(|operation| {
-                        operation.root_workspace_only
-                            && operation.lifecycle
-                                == access_control::SettingsFeatureLifecycle::Active
-                    })
-                    .map(|operation| operation.operation_id.clone()),
-            );
-        }
-        return Ok(());
-    }
-    let policies = state
-        .console_policy_reader
-        .load_role_console_policies_for_user(actor)
-        .await?;
-    // Project the same effective operations consumed by the invocation boundary. Legacy
-    // role grants cannot retain stale operation IDs after a group or operation is revoked.
-    actor
-        .permissions
-        .retain(|permission| !permission.starts_with("settings_feature.access."));
-    actor.permissions.remove("frontstage.page.design");
-    for operation in &inventory.operations {
-        actor.permissions.remove(&operation.operation_id);
-    }
-    let permissions = console_operation_permissions(inventory, &policies);
-    if inventory.operations.iter().any(|operation| {
-        permissions.contains(&operation.operation_id)
-            && operation
-                .authorization_profile_id
-                .starts_with("frontstage.")
-            && operation
-                .routes
-                .iter()
-                .any(|route| matches!(route.method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE"))
-    }) {
-        actor
-            .permissions
-            .insert("frontstage.page.design".to_string());
-    }
-    actor.permissions.extend(permissions);
-    actor
-        .permissions
-        .extend(settings_feature_navigation_permissions(
-            inventory,
-            &policies,
-            &state.settings_feature_registry.inventory().features,
-        ));
-    if outside_bootstrap {
-        remove_platform_permissions(actor, inventory, features);
-    }
-    Ok(())
-}
-
-fn remove_platform_permissions(
-    actor: &mut ActorContext,
-    inventory: &access_control::ConsoleOperationCompiledInventory,
-    features: &[access_control::SettingsFeatureInventoryEntry],
-) {
-    for operation in inventory
-        .operations
-        .iter()
-        .filter(|op| op.root_workspace_only)
-    {
-        actor.permissions.remove(&operation.operation_id);
-    }
-    for feature in features
-        .iter()
-        .filter(|feature| feature.root_workspace_only)
-    {
-        actor.permissions.remove(&feature.permission_code);
-    }
-}
-
-/// A settings surface is discoverable if at least one active operation is granted.
-/// Row visibility is not a row-data grant: the request's resource/workspace checks still apply.
-pub fn settings_feature_navigation_permissions(
-    inventory: &access_control::ConsoleOperationCompiledInventory,
-    policies: &[domain::RoleConsolePolicy],
-    settings_features: &[access_control::SettingsFeatureInventoryEntry],
-) -> std::collections::BTreeSet<String> {
-    let mut permissions = std::collections::BTreeSet::new();
-    for operation in &inventory.operations {
-        if operation.lifecycle != access_control::SettingsFeatureLifecycle::Active {
-            continue;
-        }
-        let (group, feature_ids) = match &operation.policy_group {
-            access_control::ConsolePolicyGroup::SettingsFeature(id) => (
-                domain::ConsolePolicyGroup::settings_feature(id),
-                vec![id.as_str()],
-            ),
-            access_control::ConsolePolicyGroup::Plugin(id) => (
-                domain::ConsolePolicyGroup::plugin(id),
-                settings_features
-                    .iter()
-                    .filter(|feature| feature.owner == operation.owner)
-                    .map(|feature| feature.feature_id.as_str())
-                    .collect(),
-            ),
-            access_control::ConsolePolicyGroup::Other(_) => continue,
-        };
-        let (Ok(group), Ok(id)) = (
-            group,
-            domain::ConsoleOperationId::try_from(operation.operation_id.as_str()),
-        ) else {
-            continue;
-        };
-        let granted = match operation.authorization {
-            access_control::ConsoleAuthorization::Simple => {
-                domain::effective_console_simple_operation(policies, &group, &id)
-            }
-            access_control::ConsoleAuthorization::ResourceAction { .. } => {
-                domain::effective_console_row_scope(policies, &group, &id)
-                    != domain::ConsoleOperationRowScope::Disabled
-            }
-            access_control::ConsoleAuthorization::Authenticated => false,
-        };
-        if granted {
-            permissions.extend(
-                feature_ids
-                    .into_iter()
-                    .map(|id| format!("settings_feature.access.{id}")),
-            );
-        }
-    }
-    permissions
-}
-
-fn console_operation_permissions(
-    inventory: &access_control::ConsoleOperationCompiledInventory,
-    policies: &[domain::RoleConsolePolicy],
-) -> std::collections::BTreeSet<String> {
-    inventory
-        .operations
-        .iter()
-        .filter(|operation| operation.lifecycle == access_control::SettingsFeatureLifecycle::Active)
-        .filter(|operation| {
-            let group = match &operation.policy_group {
-                access_control::ConsolePolicyGroup::SettingsFeature(id) => {
-                    domain::ConsolePolicyGroup::settings_feature(id)
-                }
-                access_control::ConsolePolicyGroup::Plugin(id) => {
-                    domain::ConsolePolicyGroup::plugin(id)
-                }
-                access_control::ConsolePolicyGroup::Other(id) => {
-                    domain::ConsolePolicyGroup::other(id)
-                }
-            };
-            let (Ok(group), Ok(id)) = (
-                group,
-                domain::ConsoleOperationId::try_from(operation.operation_id.as_str()),
-            ) else {
-                return false;
-            };
-            match operation.authorization {
-                access_control::ConsoleAuthorization::Simple => {
-                    domain::effective_console_simple_operation(policies, &group, &id)
-                }
-                access_control::ConsoleAuthorization::ResourceAction { .. } => {
-                    domain::effective_console_row_scope(policies, &group, &id)
-                        != domain::ConsoleOperationRowScope::Disabled
-                }
-                access_control::ConsoleAuthorization::Authenticated => false,
-            }
-        })
-        .map(|operation| operation.operation_id.clone())
-        .collect()
+    Ok(state
+        .console_policy_projector
+        .project_existing(actor)
+        .await?)
 }

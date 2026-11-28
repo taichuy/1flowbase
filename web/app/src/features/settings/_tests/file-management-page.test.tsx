@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Grid } from 'antd';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -184,9 +185,10 @@ function authenticateWithPermissions(
       avatar_url: null,
       introduction: '',
       effective_display_role: effectiveDisplayRole,
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 function renderApp(pathname: string) {

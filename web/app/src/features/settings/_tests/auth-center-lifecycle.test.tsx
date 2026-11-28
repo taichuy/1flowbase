@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import {
   fireEvent,
   render,
@@ -137,9 +138,10 @@ function authenticate(permissions = managerOperations) {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'member',
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 const baseOverview = {

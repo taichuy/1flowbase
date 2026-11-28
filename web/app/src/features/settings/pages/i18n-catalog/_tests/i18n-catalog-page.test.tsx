@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { ApiClientError } from '@1flowbase/api-client';
 import {
   fireEvent,
@@ -65,7 +66,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: []
+      policy_fingerprint: 'fixture-policy'
     }
   });
 }
@@ -442,6 +443,7 @@ function setOperations(permissions: string[]) {
   const { actor, me } = useAuthStore.getState();
   useAuthStore.setState({
     actor: { ...actor!, effective_display_role: 'member' },
-    me: { ...me!, effective_display_role: 'member', permissions }
+    me: { ...me!, effective_display_role: 'member', policy_fingerprint: 'fixture-policy' }
   });
+  seedAccessFixture(permissions);
 }

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { useAuthStore } from '../../../../state/auth-store';
 
 /** Authoring scenarios state their grants explicitly; permission scenarios override them. */
@@ -23,7 +24,8 @@ export function authenticateEditor(
       avatar_url: null,
       introduction: '',
       effective_display_role: role,
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }

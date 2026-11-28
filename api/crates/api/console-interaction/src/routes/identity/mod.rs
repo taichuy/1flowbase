@@ -1,3 +1,4 @@
+pub mod access;
 pub mod auth;
 pub mod console_identity_interface;
 pub mod external_auth;

@@ -1,8 +1,11 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
   fetchPublicSystemMetadata: vi.fn(),
   fetchSettingsConsoleNavigation: vi.fn(),
+  loadSettingsShell: vi.fn(),
+  loadSettingsMembers: vi.fn(),
   fetchFrontstageBlockCatalog: vi.fn(),
   fetchFrontstageRuntimeI18nCatalog: vi.fn(),
   fetchFrontstagePageTree: vi.fn(),
@@ -12,6 +15,15 @@ const apiMocks = vi.hoisted(() => ({
   getConsoleFrontstageBlockNodeCode: vi.fn(),
   getConsoleFrontstageBootstrap: vi.fn()
 }));
+
+vi.mock('../../../features/settings/pages/SettingsPage', () => {
+  apiMocks.loadSettingsShell();
+  return { SettingsPage: () => null };
+});
+vi.mock('../../../features/settings/pages/settings-page/MemberSettingsTabs', () => {
+  apiMocks.loadSettingsMembers();
+  return { MemberSettingsTabs: () => null };
+});
 
 vi.mock('@1flowbase/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@1flowbase/api-client')>();
@@ -162,9 +174,10 @@ function authenticateWithMe() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: ['frontstage.page.design']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['frontstage.page.design']);
 }
 
 describe('frontstage startup prefetch', () => {
@@ -368,6 +381,34 @@ describe('frontstage startup prefetch', () => {
     stopNullMe();
   });
 
+  test('prewarms the Settings shell and pathname section during session discovery, before navigation resolves', async () => {
+    let completeNavigation!: (result: { navigation_items: []; route_definitions: [] }) => void;
+    apiMocks.fetchSettingsConsoleNavigation.mockReturnValueOnce(
+      new Promise((resolve) => { completeNavigation = resolve; })
+    );
+    try {
+      prewarmAuthenticatedStartup({
+        csrfToken: 'csrf-1',
+        actor: {
+          id: 'actor-1',
+          account: 'root',
+          current_workspace_id: 'workspace-1',
+          effective_display_role: 'root'
+        },
+        me: null
+      }, { getPathname: () => '/settings/members' });
+
+      expect(apiMocks.fetchSettingsConsoleNavigation).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(apiMocks.loadSettingsShell).toHaveBeenCalledTimes(1);
+        expect(apiMocks.loadSettingsMembers).toHaveBeenCalledTimes(1);
+      });
+      expect(apiMocks.getConsoleFrontstageBootstrap).not.toHaveBeenCalled();
+    } finally {
+      completeNavigation({ navigation_items: [], route_definitions: [] });
+    }
+  });
+
   test('prewarmAuthenticatedStartup uses 1-RTT /frontstage/bootstrap and hands the same QueryClient to AuthenticatedStartup without duplicate or legacy waterfall requests', async () => {
     clearStartupPrefetchedBlockNodeCodes();
     apiMocks.getConsoleFrontstageBootstrap.mockResolvedValue({
@@ -456,7 +497,7 @@ describe('frontstage startup prefetch', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'root' as const,
-        permissions: ['frontstage.page.design']
+        policy_fingerprint: 'fixture-policy'
       }
     };
     const preloadWorkspaceRoute = vi.fn(async () => ({}));

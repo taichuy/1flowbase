@@ -30,8 +30,8 @@ fn valid_stable_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "String")]
 pub struct ConsolePolicyGroupId(String);
 
 impl ConsolePolicyGroupId {
@@ -58,8 +58,8 @@ impl TryFrom<String> for ConsolePolicyGroupId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(try_from = "String")]
 pub struct ConsoleOperationId(String);
 
 impl ConsoleOperationId {
@@ -113,7 +113,7 @@ impl ConsolePolicyGroupKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ConsolePolicyGroup {
     kind: ConsolePolicyGroupKind,
     group_id: ConsolePolicyGroupId,
@@ -209,7 +209,7 @@ impl ConsoleOperationRowScope {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ConsoleOperationPolicy {
     Simple {
@@ -272,7 +272,7 @@ impl ConsoleOperationPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RoleConsoleGroupPolicy {
     group: ConsolePolicyGroup,
     enabled: bool,
@@ -341,7 +341,7 @@ impl RoleConsoleGroupPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RoleConsolePolicy {
     role_id: Uuid,
     groups: Vec<RoleConsoleGroupPolicy>,

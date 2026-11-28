@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -232,9 +233,10 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: ['system.extension-center.manage.all']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['system.extension-center.manage.all']);
 }
 
 async function renderSection(

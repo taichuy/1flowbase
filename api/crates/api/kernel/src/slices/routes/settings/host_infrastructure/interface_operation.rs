@@ -62,15 +62,22 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
             if request.principal().actor().is_root {
                 return Ok(());
             }
-            let policies = policy_reader
-                .load_role_console_policies_for_user(request.principal().actor())
-                .await
-                .map_err(|error| {
-                    InterfaceAuthorizationError::with_source(
-                        "console_authorization_unavailable",
-                        crate::error_response::ApiError::from(error),
-                    )
-                })?;
+            let policies = if matches!(
+                access.authorization,
+                access_control::ConsoleAuthorization::Authenticated
+            ) {
+                Vec::new()
+            } else {
+                policy_reader
+                    .load_role_console_policies_for_user(request.principal().actor())
+                    .await
+                    .map_err(|error| {
+                        InterfaceAuthorizationError::with_source(
+                            "console_authorization_unavailable",
+                            crate::error_response::ApiError::from(error),
+                        )
+                    })?
+            };
             if crate::middleware::require_settings_feature_permission::authorize_compiled_console_access(
                 &access,
                 request.principal().actor(),

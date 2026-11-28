@@ -318,7 +318,17 @@ async fn workspace_policy_controls_registration_redemption_and_fallback() {
     let next_csrf = redeemed["data"]["csrf_token"].as_str().unwrap();
     assert_ne!(next_csrf, csrf);
     assert!(redeemed["data"]["available_roles"].is_array());
-    assert!(redeemed["data"]["active_role_permissions"].is_array());
+    let fingerprint = super::session_routes::assert_fingerprint(&redeemed["data"]);
+    let (me_status, me, _) = call(
+        &app,
+        Method::GET,
+        "/api/console/me",
+        Value::Null,
+        &[("cookie", &cookie)],
+    )
+    .await;
+    assert_eq!(me_status, StatusCode::OK);
+    assert_eq!(me["data"]["policy_fingerprint"], fingerprint);
     let (status, redeemed_again, _) = call(
         &app,
         Method::POST,

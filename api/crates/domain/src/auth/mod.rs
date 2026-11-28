@@ -43,22 +43,50 @@ pub struct UserRecord {
     pub phone_login_enabled: bool,
     pub status: UserStatus,
     pub session_version: i64,
+    /// Direct bindings only; this list may be submitted back to the role editor.
     pub roles: Vec<BoundRole>,
+    #[serde(default)]
+    pub department_roles: Vec<BoundRole>,
 }
 
 impl UserRecord {
-    pub fn resolved_display_role(&self) -> Option<String> {
-        if let Some(default_display_role) = &self.default_display_role {
-            if self
-                .roles
-                .iter()
-                .any(|role| role.code == *default_display_role)
-            {
-                return Some(default_display_role.clone());
-            }
-        }
+    fn role_candidates_in_workspace(&self, workspace_id: Uuid) -> impl Iterator<Item = &BoundRole> {
+        let is_workspace_role = move |role: &&BoundRole| {
+            role.scope_kind == RoleScopeKind::Workspace
+                && role.workspace_id == Some(workspace_id)
+                && role.code != "root"
+        };
+        self.roles
+            .iter()
+            .filter(move |role| role.scope_kind == RoleScopeKind::System || is_workspace_role(role))
+            .chain(self.department_roles.iter().filter(is_workspace_role))
+    }
 
-        self.roles.first().map(|role| role.code.clone())
+    pub fn effective_roles_in_workspace(&self, workspace_id: Uuid) -> Vec<&BoundRole> {
+        let mut roles: Vec<_> = self.role_candidates_in_workspace(workspace_id).collect();
+        roles.sort_by(|left, right| {
+            (left.scope_kind != RoleScopeKind::System, &left.code)
+                .cmp(&(right.scope_kind != RoleScopeKind::System, &right.code))
+        });
+        let mut seen = HashSet::new();
+        roles.retain(|&role| seen.insert(role.code.as_str()));
+        roles
+    }
+
+    pub fn has_effective_role_in_workspace(&self, workspace_id: Uuid, role_code: &str) -> bool {
+        self.role_candidates_in_workspace(workspace_id)
+            .any(|role| role.code == role_code)
+    }
+
+    pub fn resolved_display_role(&self, workspace_id: Uuid) -> Option<&str> {
+        self.default_display_role
+            .as_deref()
+            .filter(|code| self.has_effective_role_in_workspace(workspace_id, code))
+            .or_else(|| {
+                self.effective_roles_in_workspace(workspace_id)
+                    .first()
+                    .map(|role| role.code.as_str())
+            })
     }
 }
 
@@ -70,6 +98,9 @@ pub struct ActorContext {
     pub effective_display_role: String,
     pub is_root: bool,
     pub permissions: HashSet<String>,
+    /// Request-local console projection metadata, not part of the actor wire contract.
+    #[serde(skip)]
+    pub console_policy_fingerprint: Option<String>,
 }
 
 impl ActorContext {
@@ -94,6 +125,7 @@ impl ActorContext {
             current_workspace_id,
             effective_display_role: effective_display_role.to_string(),
             is_root: true,
+            console_policy_fingerprint: None,
             permissions: HashSet::new(),
         }
     }
@@ -126,6 +158,7 @@ impl ActorContext {
             current_workspace_id,
             effective_display_role: effective_display_role.to_string(),
             is_root: false,
+            console_policy_fingerprint: None,
             permissions: permissions.into_iter().collect(),
         }
     }

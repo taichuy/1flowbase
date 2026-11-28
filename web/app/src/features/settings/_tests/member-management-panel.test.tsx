@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import {
   fireEvent,
   render,
@@ -69,9 +70,10 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: ['user.view.all', 'user.manage.all']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['user.view.all', 'user.manage.all']);
 }
 
 function renderPanel(withDepartments = false, canCreateDepartments = false) {

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   act,
@@ -499,9 +500,10 @@ describe('ApplicationApiPage', () => {
           avatar_url: null,
           introduction: '',
           effective_display_role: 'member',
-          permissions
+          policy_fingerprint: 'fixture-policy'
         }
       });
+      seedAccessFixture(permissions);
       publicApi.fetchApplicationApiKeys.mockResolvedValue([
         {
           id: 'key-1',

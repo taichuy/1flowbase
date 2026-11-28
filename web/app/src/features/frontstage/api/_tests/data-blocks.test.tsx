@@ -27,14 +27,14 @@ const binding = {
 };
 const clients = new Set<QueryClient>();
 function createContext(
-  permissions: readonly string[] = ['records.list', 'records.get'],
+  policyFingerprint = 'granted-policy',
   isRoot = false,
   userId = 'user-A',
   workspaceId = 'workspace-A'
 ) {
   return {
     workspace: { id: workspaceId },
-    currentUser: { id: userId, permissions, isRoot },
+    currentUser: { id: userId, policy_fingerprint: policyFingerprint, isRoot },
     api: {
       get: vi.fn(),
       post: vi.fn(),
@@ -204,10 +204,10 @@ describe('data block query transport', () => {
 });
 
 describe('effective permission cache isolation', () => {
-  it('scopes both metadata and records to workspace, user, permissions and root status', () => {
+  it('scopes both metadata and records to workspace, user, policy fingerprint and root status', () => {
     const base = createContext();
     const variants = [
-      createContext(['records.list']),
+      createContext('read-only-policy'),
       createContext(undefined, true),
       createContext(undefined, false, 'user-B'),
       createContext(undefined, false, 'user-A', 'workspace-B')
@@ -226,31 +226,6 @@ describe('effective permission cache isolation', () => {
     expect(dataBlockMetadataKey(base, 'orders')).not.toEqual(
       dataBlockMetadataKey(base, 'customers')
     );
-  });
-
-  it('normalizes permission order without mutating the host-owned permission array', () => {
-    const permissions = Object.freeze([
-      'records.update',
-      'records.get',
-      'records.list'
-    ]);
-    const reordered = createContext([
-      'records.list',
-      'records.update',
-      'records.get'
-    ]);
-    const original = createContext(permissions);
-    expect(dataBlockRecordsKey(original, 'orders')).toEqual(
-      dataBlockRecordsKey(reordered, 'orders')
-    );
-    expect(dataBlockMetadataKey(original, 'orders')).toEqual(
-      dataBlockMetadataKey(reordered, 'orders')
-    );
-    expect(permissions).toEqual([
-      'records.update',
-      'records.get',
-      'records.list'
-    ]);
   });
 
   it('never exposes cached metadata, list rows or record details after permissions change and the backend denies access', async () => {
@@ -286,7 +261,7 @@ describe('effective permission cache isolation', () => {
     vi.mocked(ctx.api.get).mockRejectedValue(failure);
     mocks.metadata.mockRejectedValue(failure);
     rerender({
-      context: { ...ctx, currentUser: { ...ctx.currentUser!, permissions: [] } }
+      context: { ...ctx, currentUser: { ...ctx.currentUser!, policy_fingerprint: 'revoked-policy' } }
     });
     expect(result.current.metadata.data).toBeUndefined();
     expect(result.current.list.data).toBeUndefined();
@@ -311,7 +286,7 @@ describe('canonical data writes and cache refresh', () => {
     const unrelated = seedRecordList(client, ctx, 'products');
     const otherPermissions = seedRecordList(
       client,
-      createContext(['records.list']),
+      createContext('read-only-policy'),
       'orders'
     );
     const otherUser = seedRecordList(

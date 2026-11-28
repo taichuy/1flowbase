@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import '../../../test/fixtures/rc-util-unique-ids';
 import {
   act,
@@ -76,7 +77,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: []
+      policy_fingerprint: 'fixture-policy'
     }
   });
 }
@@ -411,7 +412,8 @@ describe('billing settings panels', () => {
     [['billing.pricing_catalog.sync'], false, true]
   ])('pricing catalog isolates import and sync grants %j', async (permissions, canImport, canSync) => {
     const state = useAuthStore.getState();
-    useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', permissions: permissions as string[] } });
+    useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', policy_fingerprint: 'fixture-policy' } });
+    seedAccessFixture(permissions as string[]);
     await renderWithProviders(<PricingCatalogPanel />);
     await screen.findByText('zero');
     if (canImport) expect(screen.getByRole('button', { name: /安装当前页/ })).toBeEnabled();

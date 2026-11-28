@@ -1,12 +1,19 @@
 use super::*;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+};
 
 #[derive(Default)]
 struct MemoryCache {
     values: Mutex<HashMap<String, (Value, Option<time::Duration>)>>,
     unavailable: bool,
+    reject_generation_rotation: AtomicBool,
 }
 
 #[async_trait]
@@ -22,6 +29,11 @@ impl CacheStore for MemoryCache {
     }
     async fn set_json(&self, key: &str, value: Value, ttl: Option<time::Duration>) -> Result<()> {
         anyhow::ensure!(!self.unavailable, "cache offline");
+        anyhow::ensure!(
+            !key.ends_with(":generation")
+                || !self.reject_generation_rotation.load(Ordering::SeqCst),
+            "generation overwrite rejected"
+        );
         self.values
             .lock()
             .unwrap()
@@ -231,4 +243,125 @@ async fn unavailable_or_corrupt_cache_reads_durable_source_and_never_caches_sour
             .unwrap(),
         json!([3])
     );
+}
+
+#[tokio::test]
+async fn role_policy_cache_reuses_reads_and_rotates_on_mutation() {
+    use crate::ports::RoleConsolePolicyReader;
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+
+    #[derive(Default)]
+    struct PolicySource {
+        reads: AtomicUsize,
+        revoked: AtomicBool,
+    }
+    #[async_trait]
+    impl RoleConsolePolicyReader for PolicySource {
+        async fn load_role_console_policies_for_user(
+            &self,
+            actor: &domain::ActorContext,
+        ) -> Result<Vec<domain::RoleConsolePolicy>> {
+            self.reads.fetch_add(1, SeqCst);
+            let group = domain::ConsolePolicyGroup::settings_feature("system.roles").unwrap();
+            let operation = domain::ConsoleOperationId::try_from("roles.list").unwrap();
+            Ok(vec![domain::RoleConsolePolicy::new(
+                actor.user_id,
+                vec![domain::RoleConsoleGroupPolicy::custom(
+                    group,
+                    vec![domain::ConsoleOperationPolicy::simple(
+                        operation,
+                        !self.revoked.load(SeqCst),
+                    )],
+                )],
+            )])
+        }
+    }
+
+    let store = Arc::new(MemoryCache::default());
+    let cache = NavigationCache(store.clone());
+    let source = Arc::new(PolicySource::default());
+    let reader = CachedRoleConsolePolicyReader::new(source.clone(), cache.clone());
+    let actor = domain::ActorContext::scoped(Uuid::now_v7(), Uuid::now_v7(), "reader", []);
+    let first = reader
+        .load_role_console_policies_for_user(&actor)
+        .await
+        .unwrap();
+    assert_eq!(
+        reader
+            .load_role_console_policies_for_user(&actor)
+            .await
+            .unwrap(),
+        first
+    );
+    assert_eq!(source.reads.load(SeqCst), 1);
+
+    let mut other = actor.clone();
+    other.user_id = Uuid::now_v7();
+    let other_policy = reader
+        .load_role_console_policies_for_user(&other)
+        .await
+        .unwrap();
+    assert_eq!(other_policy[0].role_id(), other.user_id);
+    assert_eq!(source.reads.load(SeqCst), 2);
+
+    source.revoked.store(true, SeqCst);
+    cache
+        .invalidate(
+            NavigationCacheDomain::ConsoleRoutes,
+            actor.current_workspace_id,
+        )
+        .await;
+    let updated = reader
+        .load_role_console_policies_for_user(&actor)
+        .await
+        .unwrap();
+    assert_ne!(updated, first);
+    assert_eq!(
+        updated[0].groups()[0].operations()[0].simple_enabled(),
+        Some(false)
+    );
+    assert_eq!(source.reads.load(SeqCst), 3);
+    assert_eq!(
+        reader
+            .load_role_console_policies_for_user(&actor)
+            .await
+            .unwrap(),
+        updated
+    );
+    assert_eq!(source.reads.load(SeqCst), 3);
+
+    // Failed generation replacement must not keep the readable old policy alive.
+    store.reject_generation_rotation.store(true, SeqCst);
+    source.revoked.store(false, SeqCst);
+    cache
+        .invalidate(
+            NavigationCacheDomain::ConsoleRoutes,
+            actor.current_workspace_id,
+        )
+        .await;
+    assert_eq!(
+        reader
+            .load_role_console_policies_for_user(&actor)
+            .await
+            .unwrap(),
+        first
+    );
+    assert_eq!(source.reads.load(SeqCst), 4);
+    source.revoked.store(true, SeqCst);
+
+    let offline = CachedRoleConsolePolicyReader::new(
+        source.clone(),
+        NavigationCache(Arc::new(MemoryCache {
+            unavailable: true,
+            ..Default::default()
+        })),
+    );
+    assert_eq!(
+        offline
+            .load_role_console_policies_for_user(&actor)
+            .await
+            .unwrap(),
+        updated
+    );
+    assert_eq!(source.reads.load(SeqCst), 5);
 }

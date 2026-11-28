@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../test/fixtures/console-access';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -104,9 +105,10 @@ describe('App shell', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'member',
-        permissions: ['embedded_app.view.all']
+        policy_fingerprint: 'fixture-policy'
       }
     });
+    seedAccessFixture(['embedded_app.view.all']);
   });
 
   test(

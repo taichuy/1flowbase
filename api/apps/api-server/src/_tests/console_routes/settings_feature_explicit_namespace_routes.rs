@@ -1,3 +1,4 @@
+use crate::_tests::support::evaluate_console_access;
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     replace_role_legacy_permissions_only, replace_role_permissions, seed_workspace,
@@ -573,6 +574,24 @@ async fn platform_feature_requires_both_bootstrap_workspace_and_console_grant() 
     let (_, nav) = request(&app, &member, &member_csrf, "GET", NAV, Value::Null).await;
     assert!(nav.to_string().contains("settings.auth-center"));
 
+    let granted_me =
+        evaluate_console_access(&app, &member, &member_csrf, &[OP, AUTH_CENTER_FEATURE]).await;
+    assert_eq!(granted_me["allowed"][OP], true);
+    let (status, body) = request(
+        &app, &root, &root_csrf, "PUT", "/api/console/settings/roles/platform_reader/console-policy",
+        json!({"groups":[{"kind":"settings_feature", "group_id":GROUP, "enabled":false, "strategy":"full", "operations":[]}]}),
+    ).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let (status, _) = request(&app, &member, &member_csrf, "GET", ROUTE, Value::Null).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let revoked_me =
+        evaluate_console_access(&app, &member, &member_csrf, &[OP, AUTH_CENTER_FEATURE]).await;
+    assert_eq!(revoked_me["allowed"][OP], false);
+    assert_ne!(
+        revoked_me["policy_fingerprint"],
+        granted_me["policy_fingerprint"]
+    );
+
     let customer = store
         .provision_workspace(&ProvisionWorkspaceInput {
             tenant: ProvisionWorkspaceTenant::New {
@@ -615,12 +634,11 @@ async fn platform_feature_requires_both_bootstrap_workspace_and_console_grant() 
         let (status, error) = request(&app, &cookie, csrf, "GET", ROUTE, Value::Null).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{error}");
         assert_eq!(error["code"], "permission_denied");
-        let (status, me) =
-            request(&app, &cookie, csrf, "GET", "/api/console/me", Value::Null).await;
-        assert_eq!(status, StatusCode::OK, "{me}");
-        let permissions = me["data"]["permissions"].as_array().unwrap();
-        assert!(!permissions.contains(&json!(OP)));
-        assert!(!permissions.contains(&json!(AUTH_CENTER_FEATURE)));
+        let access = evaluate_console_access(&app, &cookie, csrf, &[OP, AUTH_CENTER_FEATURE]).await;
+        assert_eq!(
+            access["allowed"],
+            json!({(OP): false, (AUTH_CENTER_FEATURE): false})
+        );
         let (status, nav) = request(&app, &cookie, csrf, "GET", NAV, Value::Null).await;
         assert_eq!(status, StatusCode::OK);
         assert!(!nav.to_string().contains("settings.auth-center"));

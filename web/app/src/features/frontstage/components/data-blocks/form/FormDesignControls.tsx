@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { BlockDesignButton } from '../../../lib/native-modules/block-design/runtime';
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
@@ -40,6 +41,7 @@ type Props = {
 export function FormDesignControls(props: Props) {
   const popupContainer = useDataBlockPopupContainer();
   const { ctx, config, fields, saving, onSave, dialog, setDialog } = props;
+  const can = useConsoleOperationAccess();
   const [creatingField, setCreatingField] = useState(false);
   const [search, setSearch] = useState('');
   const fieldMenu = fields.flatMap((field) => {
@@ -140,9 +142,7 @@ export function FormDesignControls(props: Props) {
                 label: i18nText('frontstage', 'data_blocks.form.add_group'),
                 onClick: () => setDialog(newFormItem('group'))
               },
-              ...(ctx.currentUser?.permissions?.includes(
-                'model_fields.create'
-              ) || ctx.currentUser?.isRoot
+              ...(can('model_fields.create')
                 ? [
                     {
                       key: '__create',

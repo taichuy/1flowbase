@@ -1,3 +1,4 @@
+import { useConsoleOperationAccessStatus } from '../state/console-operation-access';
 import { useSystemMetadata } from '../shared/api/system-metadata';
 import {
   navigationQueryStaleTime,
@@ -309,11 +310,7 @@ export function Navigation({
     workspaceId ?? '',
     Boolean(workspaceId && runtimeI18nReady)
   );
-  const canUseDesignMode = useAuthStore(
-    (state) =>
-      state.actor?.effective_display_role === 'root' ||
-      Boolean(state.me?.permissions.includes('frontstage.page.design'))
-  );
+  const canUseDesignMode = useConsoleOperationAccessStatus('frontstage.page.design') === 'allowed';
   const isDesignMode = useFrontstageDesignModeStore(
     (state) => state.isDesignMode
   ) && canUseDesignMode;

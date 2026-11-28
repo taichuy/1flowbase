@@ -175,20 +175,7 @@ async fn creator_identity(
     if workspace.tenant_id != run.tenant_id {
         return Ok(None);
     }
-    let role = user
-        .default_display_role
-        .as_deref()
-        .filter(|code| has_bound_role(&user, run.workspace_id, code))
-        .or_else(|| {
-            user.roles
-                .iter()
-                .find(|role| {
-                    role.scope_kind == domain::RoleScopeKind::System
-                        || role.workspace_id == Some(run.workspace_id)
-                })
-                .map(|role| role.code.as_str())
-        });
-    let Some(role) = role else {
+    let Some(role) = user.resolved_display_role(run.workspace_id) else {
         return Ok(None);
     };
     Ok(Some(WorkflowCredentialIdentity {
@@ -200,20 +187,13 @@ async fn creator_identity(
     }))
 }
 
-fn has_bound_role(user: &domain::UserRecord, workspace_id: Uuid, role_code: &str) -> bool {
-    user.roles.iter().any(|role| {
-        role.code == role_code
-            && (role.scope_kind == domain::RoleScopeKind::System
-                || role.workspace_id == Some(workspace_id))
-    })
-}
-
 fn validate_user(identity: &WorkflowCredentialIdentity, user: &domain::UserRecord) -> Result<()> {
     ensure!(
         user.id == identity.user_id
             && user.status == domain::UserStatus::Active
             && user.session_version == identity.session_version
-            && has_bound_role(user, identity.workspace_id, &identity.active_role_code),
+            && user
+                .has_effective_role_in_workspace(identity.workspace_id, &identity.active_role_code),
         "workflow_credential_identity_revoked"
     );
     Ok(())

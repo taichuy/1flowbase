@@ -85,6 +85,16 @@ pub(super) async fn app_and_runtime_host_from_config(
             .activate(&active_host_extensions)?,
         )?;
     let store = store.with_lifecycle_publication_catalog(lifecycle_publication_catalog.clone());
+    let privacy_masking_kernel = Arc::new(
+        control_plane::privacy_masking::PrivacyMaskingKernel::new(
+            Arc::new(store.clone()),
+            &config.provider_secret_master_key,
+        )?,
+    );
+    let store = store.with_privacy_masking_invalidation_observer(
+        privacy_masking_kernel.clone()
+            as Arc<dyn control_plane::ports::PrivacyMaskingInvalidationObserver>,
+    );
     notification_publication.activate(Arc::new(store.clone()))?;
     let session_store = infrastructure
         .session_store()
@@ -208,12 +218,21 @@ pub(super) async fn app_and_runtime_host_from_config(
                 )?),
             ),
         )).with_workspace_governance(Arc::new(
-            control_plane::plugin_management::ManagedWorkspaceGovernanceService::new(Arc::new(store.clone()), Arc::new(store.clone())),
+            control_plane::plugin_management::ManagedWorkspaceGovernanceService::new(Arc::new(store.clone()), Arc::new(store.clone()))
+                .with_navigation_cache(control_plane::navigation_cache::NavigationCache(infrastructure.cache_store())),
         )).with_execution_gate(Arc::new(
             control_plane::plugin_management::ManagedPluginExecutionGateAuthority::new(Arc::new(store.clone())),
         )).with_plugin_ephemeral(Arc::new(
             control_plane::plugin_management::ManagedPluginEphemeralService::new(
                 Arc::new(store.clone()), infrastructure.ephemeral_kv_store(),
+            ),
+        )).with_privacy_masking(Arc::new(
+            control_plane::plugin_management::ManagedPrivacyMaskingService::new(
+                Arc::new(store.clone()),
+                Arc::new(store.clone()),
+                Arc::new(store.clone()),
+                Arc::new(store.clone()),
+                Arc::clone(&privacy_masking_kernel),
             ),
         )),
     );
@@ -230,7 +249,8 @@ pub(super) async fn app_and_runtime_host_from_config(
                     runtime_backend,
                     Arc::clone(&extension_graph),
                     config.transport_session_registry.clone(),
-                )?,
+                )?
+                .with_privacy_masking_kernel(Arc::clone(&privacy_masking_kernel)),
             ),
             store.clone(),
             config.api_node_id.clone(),
@@ -446,10 +466,18 @@ pub(super) async fn app_and_runtime_host_from_config(
     }
     runtime_extension_host.mark_ready()?;
 
+    let policy_cache = control_plane::navigation_cache::NavigationCache(infrastructure.cache_store());
+    let console_policy_reader: Arc<dyn control_plane::ports::RoleConsolePolicyReader> = Arc::new(
+        control_plane::navigation_cache::CachedRoleConsolePolicyReader::new(Arc::new(store.clone()), policy_cache.clone()),
+    );
+    let console_policy_projector = api_host_kernel::middleware::console_policy_projection::ConsolePolicyProjector::new(
+        bootstrap_result.workspace_id, compiled_console_plan.console_operation_registry.clone(), compiled_console_plan.settings_feature_registry.clone(), console_policy_reader.clone(), policy_cache,
+    );
     let state = Arc::new(ApiState {
         #[cfg(any(test,feature="test-support"))]
         test_resources: None,
-        console_policy_reader: Arc::new(store.clone()),
+        console_policy_reader,
+        console_policy_projector,
         store: store.clone(),
         system_backup,
         system_maintenance,

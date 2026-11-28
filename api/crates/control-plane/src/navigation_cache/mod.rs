@@ -1,4 +1,4 @@
-//! Ephemeral navigation inputs, never cached authorization decisions.
+//! Ephemeral navigation and console policy inputs, never cached invocation decisions.
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -7,6 +7,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::ports::{CacheStore, FrontstagePageRepository};
+
+mod role_policy;
+pub use role_policy::{role_policy_variant, CachedRoleConsolePolicyReader};
 
 const TTL: time::Duration = time::Duration::minutes(1);
 
@@ -56,7 +59,7 @@ impl NavigationCache {
         Ok(format!("{prefix}:{generation}"))
     }
 
-    async fn load<T, F>(
+    pub async fn load<T, F>(
         &self,
         domain: NavigationCacheDomain,
         workspace_id: Uuid,
@@ -110,7 +113,10 @@ impl NavigationCache {
             .set_json(&key, serde_json::json!(Uuid::now_v7()), None)
             .await
         {
-            tracing::warn!(%workspace_id, %error, "navigation cache invalidation failed; TTL bounds stale data");
+            // Dropping the pointer also makes the old generation unreachable.
+            if let Err(delete_error) = self.0.delete(&key).await {
+                tracing::warn!(%workspace_id, %error, %delete_error, "navigation cache invalidation failed; TTL bounds stale data");
+            }
         }
     }
 

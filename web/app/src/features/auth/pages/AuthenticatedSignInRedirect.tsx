@@ -36,7 +36,7 @@ export function AuthenticatedSignInRedirect({
   const normalizedInvite = invite?.trim() || undefined;
   const queryClient = useQueryClient();
   const { message } = App.useApp();
-  const { csrfToken, me, setAuthenticated } = useAuthStore();
+  const { csrfToken, setAuthenticated } = useAuthStore();
   const [completed, setCompleted] = useState(!normalizedInvite);
 
   useEffect(() => {
@@ -56,15 +56,7 @@ export function AuthenticatedSignInRedirect({
           normalizedInvite,
           csrfToken
         );
-        const refreshedMe = await fetchCurrentMe().catch(() =>
-          me
-            ? {
-                ...me,
-                effective_display_role: session.actor.effective_display_role,
-                permissions: session.active_role_permissions
-              }
-            : null
-        );
+        const refreshedMe = await fetchCurrentMe().catch(() => null);
         if (cancelled) return;
         setAuthenticated({
           csrfToken: session.csrf_token,
@@ -102,7 +94,7 @@ export function AuthenticatedSignInRedirect({
     return () => {
       cancelled = true;
     };
-  }, [csrfToken, me, message, normalizedInvite, queryClient, setAuthenticated]);
+  }, [csrfToken, message, normalizedInvite, queryClient, setAuthenticated]);
 
   if (!normalizedInvite || completed) {
     return <Navigate to="/" replace />;

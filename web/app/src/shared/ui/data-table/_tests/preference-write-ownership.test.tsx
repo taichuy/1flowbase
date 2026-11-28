@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { act, renderHook } from '@testing-library/react';
 import type { ConsoleMe } from '@1flowbase/api-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,7 +34,8 @@ const profile = (visibleColumnKeys: string[]): ConsoleMe => ({
   avatar_url: null,
   introduction: '',
   effective_display_role: 'member',
-  permissions: ['patch_me_meta'],
+  policy_fingerprint: 'fixture-policy',
+
   meta: { ui: { data_tables: { first: table(visibleColumnKeys) } } }
 });
 
@@ -43,7 +45,12 @@ describe('data table preference write ownership', () => {
     resetAuthStore();
     window.localStorage.clear();
     patchUserPreferences.mockReset();
-    useAuthStore.setState({ csrfToken: 'csrf', me: profile(['name']) });
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf',
+      actor: { id: 'user-1', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace' },
+      me: profile(['name'])
+    });
+    seedAccessFixture(['patch_me_meta']);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -139,8 +146,9 @@ describe('data table preference write ownership', () => {
   )(
     'keeps table edits temporary with unrelated grants $permissions',
     async ({ permissions }) => {
-      const me = { ...profile(['name']), permissions };
+      const me = { ...profile(['name']) };
       useAuthStore.setState({ me });
+      seedAccessFixture(permissions);
       const write = vi.spyOn(Storage.prototype, 'setItem');
       const { result, unmount } = renderHook(() => ({
         server: useUserPreferenceDataTableConfiguration({
@@ -172,7 +180,7 @@ describe('data table preference write ownership', () => {
   );
 
   it('lets root persist table preferences without explicit grants', async () => {
-    const me = { ...profile(['name']), permissions: [] };
+    const me = { ...profile(['name']) };
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf',
       actor: {
@@ -207,7 +215,7 @@ describe('data table preference write ownership', () => {
     );
     act(() => result.current.setVisibleColumnKeys(['owner']));
     act(() =>
-      useAuthStore.getState().setMe({ ...profile(['name']), permissions: [] })
+      useAuthStore.getState().setMe({ ...profile(['name']), policy_fingerprint: 'revoked-policy' })
     );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);

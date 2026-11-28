@@ -189,6 +189,29 @@ pub trait AuthRepository: Send + Sync {
         workspace_id: Uuid,
         display_role: Option<&str>,
     ) -> anyhow::Result<ActorContext>;
+    /// Validate workspace access and resolve the current role without loading legacy grants.
+    async fn resolve_actor_role(
+        &self,
+        user_id: Uuid,
+        tenant_id: Uuid,
+        workspace_id: Uuid,
+        display_role: Option<&str>,
+    ) -> anyhow::Result<ActorContext> {
+        self.load_actor_context(user_id, tenant_id, workspace_id, display_role)
+            .await
+    }
+
+    async fn resolve_loaded_user_role(
+        &self,
+        user: &UserRecord,
+        tenant_id: Uuid,
+        workspace_id: Uuid,
+        display_role: Option<&str>,
+    ) -> anyhow::Result<ActorContext> {
+        self.resolve_actor_role(user.id, tenant_id, workspace_id, display_role)
+            .await
+    }
+
     async fn load_actor_context_for_bound_role(
         &self,
         user_id: Uuid,

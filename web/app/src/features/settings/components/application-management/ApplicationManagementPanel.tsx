@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { ApiClientError } from '@1flowbase/api-client';
 import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
@@ -118,7 +119,6 @@ function managementFilter(
 
 export function ApplicationManagementPanel() {
   const actor = useAuthStore((state) => state.actor);
-  const me = useAuthStore((state) => state.me);
   const csrfToken = useAuthStore((state) => state.csrfToken) ?? '';
   const queryClient = useQueryClient();
   const { message: messageApi } = App.useApp();
@@ -370,13 +370,12 @@ export function ApplicationManagementPanel() {
     ? revertToDraftMutation.variables
     : null;
 
-  const permissions = me?.permissions ?? [];
-  const isRoot = actor?.effective_display_role === 'root';
-  const canCreate = isRoot || permissions.includes('application.create.all');
-  const canEditAny = isRoot || permissions.includes('application.edit.all');
-  const canEditOwn = permissions.includes('application.edit.own');
-  const canDeleteAny = isRoot || permissions.includes('application.delete.all');
-  const canDeleteOwn = permissions.includes('application.delete.own');
+  const can = useConsoleOperationAccess();
+  const canCreate = can('application.create.all');
+  const canEditAny = can('application.edit.all');
+  const canEditOwn = can('application.edit.own');
+  const canDeleteAny = can('application.delete.all');
+  const canDeleteOwn = can('application.delete.own');
   const canEdit = useCallback(
     (application: SettingsApplicationManagementItem) =>
       canEditAny || (canEditOwn && application.created_by === actor?.id),

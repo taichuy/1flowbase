@@ -22,6 +22,7 @@ export {
   type ConsoleWorkspaceSummary
 } from '../console/session';
 export { fetchConsoleMe, type ConsoleMe } from '../console/identity/me';
+export { evaluateConsoleAccess, type EvaluateConsoleAccessResponse } from '../console/identity/access';
 export {
   fetchPublicLoginEntries,
   signInWithPassword,

@@ -5,11 +5,19 @@ pub(super) async fn archive(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     input: &AppendRuntimeEventInput,
 ) -> Result<(Value, Option<Uuid>, Option<Uuid>)> {
-    let Some(fields) = input.payload.as_object() else {
-        return Ok((input.payload.clone(), None, None));
+    archive_node_event_payload(tx, input.flow_run_id, &input.payload).await
+}
+
+pub(in crate::orchestration_runtime_repository) async fn archive_node_event_payload(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    flow_run_id: Uuid,
+    payload: &Value,
+) -> Result<(Value, Option<Uuid>, Option<Uuid>)> {
+    let Some(fields) = payload.as_object() else {
+        return Ok((payload.clone(), None, None));
     };
     if fields.keys().any(|key| key.contains('\0')) || fields.contains_key("_node_payload_ref") {
-        return Ok((input.payload.clone(), None, None));
+        return Ok((payload.clone(), None, None));
     }
     let names = [
         "input_payload",
@@ -26,7 +34,7 @@ pub(super) async fn archive(
         })
         .collect();
     if body.is_empty() {
-        return Ok((input.payload.clone(), None, None));
+        return Ok((payload.clone(), None, None));
     }
     // JSON text operators in PostgreSQL cannot inspect NUL-bearing metadata.
     // Keep this exceptional shape inline; archived field values use source strings.
@@ -35,12 +43,12 @@ pub(super) async fn archive(
         metadata.remove(name);
     }
     if lossless_json_value(&Value::Object(metadata))[1].is_string() {
-        return Ok((input.payload.clone(), None, None));
+        return Ok((payload.clone(), None, None));
     }
     let (scope, application) = sqlx::query_as::<_, (Uuid, Uuid)>(
         "select scope_id,application_id from flow_runs where id=$1",
     )
-    .bind(input.flow_run_id)
+    .bind(flow_run_id)
     .fetch_one(&mut **tx)
     .await?;
     let (content, _, _, created) =

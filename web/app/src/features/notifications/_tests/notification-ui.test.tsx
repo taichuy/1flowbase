@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import type { ReactNode } from 'react';
 import { App } from 'antd';
 import {
@@ -902,9 +903,10 @@ function setInboxAccess(permissions: string[]) {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'member',
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 const unrelatedInboxGrants = [

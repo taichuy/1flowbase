@@ -168,6 +168,8 @@ pub struct ApiState {
     pub authenticator_registry: Arc<control_plane::auth::AuthenticatorRegistry>,
     pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
     pub console_operation_registry: Arc<access_control::ConsoleOperationRegistry>,
+    pub console_policy_projector:
+        crate::middleware::console_policy_projection::ConsolePolicyProjector,
     pub console_policy_reader: Arc<dyn RoleConsolePolicyReader>,
     pub infrastructure: Arc<HostInfrastructureRegistry>,
     pub event_center: control_plane::event_center::EventCenterRuntime,

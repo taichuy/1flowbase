@@ -723,4 +723,8 @@ pub(crate) use client_collector::_tests::collector_fixture_archive;
 mod managed_workspace_governance;
 pub use managed_workspace_governance::ManagedWorkspaceGovernanceService;
 
+#[path = "managed_execution/privacy_masking.rs"]
+mod managed_privacy_masking;
+pub use managed_privacy_masking::ManagedPrivacyMaskingService;
+
 pub(crate) use family::node_installation_runtime_lock;

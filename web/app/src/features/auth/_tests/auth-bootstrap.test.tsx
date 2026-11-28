@@ -70,7 +70,7 @@ describe('AuthBootstrap', () => {
         active_role_code: 'root'
       },
       available_roles: [{ code: 'root', name: 'Root', scope_kind: 'system' }],
-      active_role_permissions: [],
+      policy_fingerprint: 'fixture-policy',
       csrf_token: 'csrf-123',
       cookie_name: 'flowbase_console_session'
     });
@@ -84,7 +84,7 @@ describe('AuthBootstrap', () => {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: []
+      policy_fingerprint: 'fixture-policy'
     });
 
     await waitFor(() =>
@@ -109,7 +109,7 @@ describe('AuthBootstrap', () => {
         active_role_code: 'root'
       },
       available_roles: [{ code: 'root', name: 'Root', scope_kind: 'system' }],
-      active_role_permissions: [],
+      policy_fingerprint: 'fixture-policy',
       csrf_token: 'csrf-123',
       cookie_name: 'flowbase_console_session'
     });
@@ -123,7 +123,7 @@ describe('AuthBootstrap', () => {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: []
+      policy_fingerprint: 'fixture-policy'
     });
 
     render(

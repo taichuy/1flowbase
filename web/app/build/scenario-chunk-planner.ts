@@ -30,7 +30,8 @@ const SCENARIO_CHUNK_NAMES = new Set([
   'assistant-core',
   'assistant-activity',
   'assistant-markdown',
-  'monaco-runtime'
+  'monaco-runtime',
+  'settings-shared'
 ]);
 
 /**
@@ -93,10 +94,10 @@ const ANTD_SHELL_EQUIVALENCE_GROUPS = new Set([
 ]);
 
 const ANTD_DEMAND_PRIORITIES: ReadonlyArray<readonly [string, number]> = [
-  ['antd-form', 3],
-  ['antd-display', 2],
-  ['antd-data', 1],
-  ['antd-picker', 0]
+  ['antd-form', 6.4],
+  ['antd-display', 6.3],
+  ['antd-data', 6.2],
+  ['antd-picker', 6.1]
 ];
 
 // Rolldown assigns a static dependency closure to its highest-priority consumer.
@@ -137,10 +138,11 @@ export const scenarioCodeSplitting = {
       priority: 7
     },
     // Layer 1: Quotient equivalence class for authenticated startup + Topbar shell + route frame
+    // Own the shared section layout here: Settings must not import the Frontstage workspace chunk for it.
     // (priority 5.5 < antd-core 8 so shell-core never swallows AntD widget groups).
     {
       name: 'shell-core',
-      test: /[\\/]packages[\\/]ui[\\/]src[\\/]|[\\/]src[\\/](?:app[\\/](?:bootstrap[\\/]|AuthenticatedAppRuntime|AppProviders|AppI18nProvider|router)|app-shell[\\/](?!TopbarNavigationDesigner\.tsx$|_tests[\\/])|routes[\\/](?!LazyRouteResult\.tsx$|_tests[\\/])|state[\\/]navigation-query-scope\.ts$|features[\\/](?:auth[\\/](?:api[\\/]session-actions\.ts$|components[\\/]anonymous-loading[\\/]WorkspaceShellSkeleton\.tsx$)|frontstage[\\/](?:api[\\/]|(?:hooks|lib)[\\/]runtime-i18n[\\/])|settings[\\/]api[\\/]console-navigation\.ts$)|shared[\\/](?:api[\\/]system-metadata\.ts$|i18n[\\/](?:text|app-i18n|application-i18n-demand|application-i18n-resources|application-resource-loader)\.ts$|ui[\\/]window-workspace[\\/](?:WindowWorkspaceProvider|window-workspace-context)))/u,
+      test: /[\\/]packages[\\/]ui[\\/]src[\\/]|[\\/]src[\\/](?:app[\\/](?:bootstrap[\\/]|AuthenticatedAppRuntime|AppProviders|AppI18nProvider|router)|app-shell[\\/](?!TopbarNavigationDesigner\.tsx$|_tests[\\/])|routes[\\/](?!LazyRouteResult\.tsx$|_tests[\\/])|state[\\/]navigation-query-scope\.ts$|features[\\/](?:auth[\\/](?:api[\\/]session-actions\.ts$|components[\\/]anonymous-loading[\\/]WorkspaceShellSkeleton\.tsx$)|frontstage[\\/](?:api[\\/]|(?:hooks|lib)[\\/]runtime-i18n[\\/])|settings[\\/]api[\\/]console-navigation\.ts$)|shared[\\/](?:api[\\/]system-metadata\.ts$|i18n[\\/](?:text|app-i18n|application-i18n-demand|application-i18n-resources|application-resource-loader)\.ts$|ui[\\/](?:section-page-layout[\\/](?!_tests)|window-workspace[\\/](?:WindowWorkspaceProvider|window-workspace-context))))/u,
       priority: 5.5
     },
     // Layer 2: Quotient equivalence class for Frontstage Left Sidebar + Page Tree shell
@@ -149,6 +151,14 @@ export const scenarioCodeSplitting = {
       name: 'frontstage-shell',
       test: /[\\/]src[\\/]features[\\/]frontstage[\\/](?:pages[\\/](?:FrontstageWorkspacePage\.tsx$|frontstage-page[\\/](?:workspace-shell[\\/]|runtime-session[\\/]|use-page-tree-workspace\.ts$|page-tree-operations\.ts$|page-tree-form-modal\.tsx$|refresh-current-page\.ts$|page-constants\.ts$))|hooks[\\/]use-frontstage-page-tree-mutations\.ts$|components[\\/](?:FrontStagePageTreeSidebar\.tsx$|FrontstageNodeActionButton\.tsx$)|lib[\\/](?:page-tree\.ts$|page-tree-(?:icons[\\/]registry\.tsx$|state[\\/])|navigation-drag[\\/]|api-errors\.ts$|page-canvas[\\/](?:runtime-activity|runtime-assembly)\.ts$))/u,
       priority: 5
+    },
+    // Keep ResizableDrawer independent of native-host so Settings drawers
+    // never pull frontstage-shell / native-host just for a shared drawer primitive.
+    {
+      name: 'resizable-drawer',
+      test: /[\\/]src[\\/]shared[\\/]ui[\\/]resizable-drawer[\\/](?!_tests)/u,
+      includeDependenciesRecursively: false,
+      priority: 4.5
     },
     // Layer 3a: Quotient equivalence class for browser-side Native React host, cache,
     // lightweight host overlay/style facades, and virtual product/icon loader tables
@@ -198,6 +208,15 @@ export const scenarioCodeSplitting = {
           : planned;
       },
       debugName: 'scenario-fallback'
+    },
+    // Settings tables and their dialogs co-occur. Keep the lightweight section
+    // surface and JSON/clipboard UI independent of the table demand class.
+    // Do not capture transitive vendors shared by unrelated style/runtime roots.
+    {
+      name: 'settings-shared',
+      test: /[\\/]src[\\/]shared[\\/](?:ui[\\/](?:data-table|fixed-height-modal)[\\/](?!_tests)|i18n[\\/]format\.ts$)/u,
+      includeDependenciesRecursively: false,
+      priority: -1
     }
   ]
 };

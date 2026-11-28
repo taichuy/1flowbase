@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { modelProviderManagerOperations } from './operation-permission-fixture';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -189,9 +190,10 @@ function authenticateWithPermissions(
       avatar_url: null,
       introduction: '',
       effective_display_role: effectiveDisplayRole,
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 function authenticateAsModelProviderManager() {

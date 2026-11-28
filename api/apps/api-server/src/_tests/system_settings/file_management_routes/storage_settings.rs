@@ -1,4 +1,5 @@
 use super::*;
+use crate::_tests::support::evaluate_console_access;
 
 #[tokio::test]
 async fn file_management_settings_routes_enforce_root_only_storage_and_binding_rules() {
@@ -444,12 +445,8 @@ async fn customer_sessions_manage_workspace_tables_but_cannot_access_host_storag
     let app = crate::app_with_state_and_config(state, &test_config());
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let root = (root_cookie.as_str(), root_csrf.as_str());
-    let (status, me) = request(&app, root, "GET", "/api/console/me", Value::Null).await;
-    assert_eq!(status, StatusCode::OK, "{me}");
-    assert!(me["data"]["permissions"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("file_storages.list")));
+    let access = evaluate_console_access(&app, root.0, root.1, &["file_storages.list"]).await;
+    assert_eq!(access["allowed"]["file_storages.list"], true);
     let (status, storages) = request(&app, root, "GET", STORAGES, Value::Null).await;
     assert_eq!(status, StatusCode::OK, "{storages}");
     let storage = storages["data"]
@@ -528,7 +525,11 @@ async fn customer_sessions_manage_workspace_tables_but_cannot_access_host_storag
             // An existing authorized binding remains readable via its table, not via storage settings.
             store
                 .update_file_table_binding(&UpdateFileStorageBindingInput {
-                    actor_user_id: me["data"]["id"].as_str().unwrap().parse().unwrap(),
+                    actor_user_id: switched["data"]["actor"]["id"]
+                        .as_str()
+                        .unwrap()
+                        .parse()
+                        .unwrap(),
                     file_table_id: id.parse().unwrap(),
                     bound_storage_id: Some(storage_id.parse().unwrap()),
                 })
@@ -590,12 +591,16 @@ async fn customer_sessions_manage_workspace_tables_but_cannot_access_host_storag
                 "{account} {method} {path}"
             );
         }
-        let (status, me) = request(&app, acme_session, "GET", "/api/console/me", Value::Null).await;
-        assert_eq!(status, StatusCode::OK, "{me}");
-        let permissions = me["data"]["permissions"].as_array().unwrap();
+        let access = evaluate_console_access(
+            &app,
+            acme_session.0,
+            acme_session.1,
+            &["file_storages.list", "file_tables.list"],
+        )
+        .await;
         if account == "alice" {
-            assert!(permissions.contains(&json!("file_tables.list")), "{me}");
+            assert_eq!(access["allowed"]["file_tables.list"], true);
         }
-        assert!(!permissions.contains(&json!("file_storages.list")));
+        assert_eq!(access["allowed"]["file_storages.list"], false);
     }
 }

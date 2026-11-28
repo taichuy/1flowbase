@@ -386,11 +386,28 @@ async fn test_state_with_runtime_profile_state(
         config.event_center_policy,
     )
     .unwrap();
+    let policy_cache =
+        control_plane::navigation_cache::NavigationCache(infrastructure.cache_store());
+    let console_policy_reader: Arc<dyn control_plane::ports::RoleConsolePolicyReader> = Arc::new(
+        control_plane::navigation_cache::CachedRoleConsolePolicyReader::new(
+            Arc::new(store.clone()),
+            policy_cache.clone(),
+        ),
+    );
+    let console_policy_projector =
+        api_host_kernel::middleware::console_policy_projection::ConsolePolicyProjector::new(
+            bootstrap.workspace_id,
+            console_operation_registry.clone(),
+            settings_feature_registry.clone(),
+            console_policy_reader.clone(),
+            policy_cache,
+        );
     let state = Arc::new(ApiState {
         #[cfg(any(test, feature = "test-support"))]
         test_resources: Some(test_resources),
         store: store.clone(),
-        console_policy_reader: Arc::new(store.clone()),
+        console_policy_reader,
+        console_policy_projector,
         system_backup,
         system_maintenance,
         authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),
@@ -755,4 +772,39 @@ pub use api_host_kernel::test_support::profiles::{sample_api_profile, sample_run
 pub fn runtime_event_stream_projection(
 ) -> std::sync::Arc<dyn api_host_kernel::debug_stream_contract::RuntimeEventSsePort> {
     std::sync::Arc::new(crate::interaction_assembly::RuntimeEventSseAdapter)
+}
+
+pub async fn evaluate_console_access(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    codes: &[&str],
+) -> serde_json::Value {
+    let response = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/console/access/evaluate")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::json!({"codes":codes}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(
+        status,
+        axum::http::StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bytes)
+    );
+    serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["data"].take()
 }

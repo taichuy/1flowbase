@@ -149,6 +149,7 @@ impl AuthRepository for InstanceAwareAuthRepository {
         display_role: Option<&str>,
     ) -> Result<ActorContext> {
         Ok(ActorContext {
+            console_policy_fingerprint: None,
             user_id,
             tenant_id,
             current_workspace_id: workspace_id,
@@ -276,6 +277,7 @@ fn test_user() -> UserRecord {
         email_login_enabled: true,
         phone_login_enabled: false,
         status: UserStatus::Active,
+        department_roles: Vec::new(),
         session_version: 1,
         roles: vec![BoundRole {
             code: "root".to_string(),

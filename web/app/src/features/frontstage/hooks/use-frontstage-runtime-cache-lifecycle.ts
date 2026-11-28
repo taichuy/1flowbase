@@ -56,9 +56,6 @@ export function useFrontstageRuntimeCacheLifecycle(
         const currentPermissionFingerprint = state.me
           ? createFrontstageBlockCatalogPermissionFingerprint(state.me)
           : null;
-        const currentSortedPermissions = state.me
-          ? state.me.permissions.slice().sort().join(',')
-          : null;
         queryClient.removeQueries({
           predicate: (query) =>
             query.queryKey[0] === 'frontstage' &&
@@ -76,11 +73,11 @@ export function useFrontstageRuntimeCacheLifecycle(
                     query.queryKey[2] === actor.current_workspace_id &&
                     query.queryKey[3] === actor.id &&
                     query.queryKey[4] === currentPermissionFingerprint) ||
-                  (currentSortedPermissions !== null &&
+                  (currentPermissionFingerprint !== null &&
                     query.queryKey[1] === actor.current_workspace_id &&
                     query.queryKey[2] === 'runtime-i18n' &&
                     query.queryKey[3] === actor.id &&
-                    query.queryKey[4] === currentSortedPermissions))
+                    query.queryKey[4] === currentPermissionFingerprint))
               )
             )
         });

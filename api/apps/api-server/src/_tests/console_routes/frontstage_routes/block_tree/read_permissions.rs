@@ -1,4 +1,5 @@
 use super::*;
+use crate::_tests::support::evaluate_console_access;
 
 #[tokio::test]
 async fn custom_block_read_permissions_allow_page_use_without_design_or_writes() {
@@ -146,13 +147,14 @@ async fn custom_block_read_permissions_allow_page_use_without_design_or_writes()
         let (status, payload) = get_json(&app, &format!("{base}{suffix}"), &viewer_cookie).await;
         assert_eq!(status, StatusCode::OK, "{suffix}: {payload}");
     }
-    let (status, me) = get_json(&app, "/api/console/me", &viewer_cookie).await;
-    assert_eq!(status, StatusCode::OK, "{me}");
-    assert!(!me["data"]["permissions"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|permission| permission == "frontstage.page.design"));
+    let access = evaluate_console_access(
+        &app,
+        &viewer_cookie,
+        &viewer_csrf,
+        &["frontstage.page.design"],
+    )
+    .await;
+    assert_eq!(access["allowed"]["frontstage.page.design"], false);
 
     // A stored block executes with the caller's identity; target APIs still own authorization.
     let dispatch = format!(

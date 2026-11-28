@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct ManagedWorkspaceGovernanceService {
     authority: Arc<dyn PluginContributionAuthorityRepository>,
     repository: Arc<dyn WorkspaceGovernanceRepository>,
+    navigation_cache: Option<crate::navigation_cache::NavigationCache>,
 }
 
 impl ManagedWorkspaceGovernanceService {
@@ -18,6 +19,26 @@ impl ManagedWorkspaceGovernanceService {
         Self {
             authority,
             repository,
+            navigation_cache: None,
+        }
+    }
+
+    pub fn with_navigation_cache(
+        mut self,
+        cache: crate::navigation_cache::NavigationCache,
+    ) -> Self {
+        self.navigation_cache = Some(cache);
+        self
+    }
+
+    async fn invalidate_console_routes(&self, workspace_id: Uuid) {
+        if let Some(cache) = &self.navigation_cache {
+            cache
+                .invalidate(
+                    crate::navigation_cache::NavigationCacheDomain::ConsoleRoutes,
+                    workspace_id,
+                )
+                .await;
         }
     }
 
@@ -178,6 +199,7 @@ impl ManagedWorkspaceGovernanceService {
                         (result.user_id, false)
                     }
                 };
+                self.invalidate_console_routes(workspace_id).await;
                 Response::MembershipGranted {
                     user_id: user_id.to_string(),
                     workspace_id: workspace_id.to_string(),
@@ -223,6 +245,9 @@ impl ManagedWorkspaceGovernanceService {
                         authenticated_actor(binding, actor_user_id.as_deref())?,
                     )
                     .await?;
+                for workspace_id in &workspace_ids {
+                    self.invalidate_console_routes(*workspace_id).await;
+                }
                 Response::WorkspaceAdminsAssigned {
                     user: user_dto(user),
                     workspace_ids: workspace_ids.into_iter().map(|id| id.to_string()).collect(),
@@ -244,6 +269,7 @@ impl ManagedWorkspaceGovernanceService {
                         authenticated_actor(binding, actor_user_id.as_deref())?,
                     )
                     .await?;
+                self.invalidate_console_routes(workspace_id).await;
                 Response::WorkspaceAdminRevoked {
                     workspace_id: workspace_id.to_string(),
                     user_id: user_id.to_string(),

@@ -1,4 +1,4 @@
-import { hasUserPreferenceWriteAccess } from '../../../../../shared/user-preferences/user-preferences';
+import { withUserPreferenceWriteAccess } from '../../../../../shared/user-preferences/user-preferences';
 import {
   ARCHIVE_IMPORT_TARGET_KEY,
   EMPTY_APPLICATIONS,
@@ -114,12 +114,12 @@ export function ApplicationLogsWorkspace({
           }))}
           onChange={(targetApplicationId) => {
             setArchiveApplicationId(targetApplicationId);
-            if (hasUserPreferenceWriteAccess()) {
+            withUserPreferenceWriteAccess(() => {
               window.localStorage.setItem(
                 ARCHIVE_IMPORT_TARGET_KEY,
                 targetApplicationId
               );
-            }
+            });
           }}
         />
       </Modal>

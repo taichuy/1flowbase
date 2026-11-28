@@ -1,3 +1,4 @@
+pub mod console_policy_projection;
 pub mod console_response_cache;
 pub mod require_csrf;
 pub mod require_session;

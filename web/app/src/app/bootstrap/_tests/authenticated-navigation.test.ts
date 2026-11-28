@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
+import { waitFor } from '@testing-library/react';
+
 import { selectNavigationQueryScope } from '../../../state/navigation-query-scope';
 import { frontstagePageTreeQueryOptions } from '../../../features/frontstage/api/page-tree';
 import { settingsConsoleNavigationQueryOptions } from '../../../features/settings/api/console-navigation';
@@ -20,6 +22,24 @@ vi.mock('@1flowbase/api-client', () => ({
   moveFrontstagePageNode: vi.fn(),
   updateFrontstagePageNodeTitle: vi.fn()
 }));
+
+const settingsFlight = vi.hoisted(() => ({
+  shell: vi.fn(),
+  network: vi.fn(),
+  members: vi.fn()
+}));
+vi.mock('../../../features/settings/pages/SettingsPage', async () => {
+  await settingsFlight.shell();
+  return { SettingsPage: () => null };
+});
+vi.mock('../../../features/settings/pages/network-center/NetworkCenterSection', () => {
+  settingsFlight.network();
+  return { NetworkCenterSection: () => null };
+});
+vi.mock('../../../features/settings/pages/settings-page/MemberSettingsTabs', () => {
+  settingsFlight.members();
+  return { MemberSettingsTabs: () => null };
+});
 
 function authenticate(
   id = 'actor-a',
@@ -156,7 +176,8 @@ test('permission changes invalidate private caches; locale and permission orderi
     avatar_url: null,
     introduction: '',
     effective_display_role: 'developer',
-    permissions: ['read', 'write'],
+    policy_fingerprint: 'fixture-policy',
+
     preferred_locale: 'en_US'
   };
   useAuthStore.getState().setMe(me);
@@ -175,12 +196,11 @@ test('permission changes invalidate private caches; locale and permission orderi
     .getState()
     .setMe({
       ...me,
-      permissions: ['write', 'read'],
       preferred_locale: 'zh_Hans'
     });
   expect(api.pages).toHaveBeenCalledTimes(1);
   expect(client.getQueryData(oldKey)).toBeDefined();
-  useAuthStore.getState().setMe({ ...me, permissions: ['read'] });
+  useAuthStore.getState().setMe({ ...me, policy_fingerprint: 'revoked-policy' });
   expect(client.getQueryData(oldKey)).toBeUndefined();
   expect(api.pages).toHaveBeenCalledTimes(2);
 });
@@ -196,4 +216,52 @@ test('bootstrap owners do not share a singleton or a public-auth cache', () => {
     false
   );
   second.clear();
+});
+
+
+test('only caches stable Settings families and leaves live query freshness intact', () => {
+  const client = createApplicationQueryClient();
+  const defaults = (queryKey: string[]) => client.defaultQueryOptions({ queryKey });
+  expect(defaults(['settings', 'docs', 'catalog'])).toMatchObject({
+    refetchOnWindowFocus: false,
+    staleTime: 30_000
+  });
+  for (const key of [
+    ['settings', 'system-runtime'],
+    ['settings', 'system-runtime', 'processes'],
+    ['settings', 'departments', 'access'],
+    ['notifications', 'scope', 'unread-count']
+  ]) {
+    expect(defaults(key).staleTime ?? 0).toBe(0);
+  }
+  expect(client.defaultQueryOptions(settingsConsoleNavigationQueryOptions('scope')).staleTime).toBe(30_000);
+});
+
+
+test('starts the Settings shell and matching section before navigation or the shell module resolves', async () => {
+  const previousPath = window.location.pathname;
+  let finishShell!: () => void;
+  let finishNavigation!: (value: { navigation_items: []; route_definitions: [] }) => void;
+  settingsFlight.shell.mockReturnValueOnce(new Promise<void>((resolve) => {
+    finishShell = resolve;
+  }));
+  api.navigation.mockReturnValueOnce(new Promise((resolve) => {
+    finishNavigation = resolve;
+  }));
+  try {
+    start();
+    expect(settingsFlight.shell).not.toHaveBeenCalled();
+    window.history.replaceState({}, '', '/settings/network-center/proxy-pools');
+    authenticate();
+    expect(api.navigation).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(settingsFlight.shell).toHaveBeenCalledTimes(1);
+      expect(settingsFlight.network).toHaveBeenCalledTimes(1);
+    });
+    expect(settingsFlight.members).not.toHaveBeenCalled();
+  } finally {
+    finishShell();
+    finishNavigation({ navigation_items: [], route_definitions: [] });
+    window.history.replaceState({}, '', previousPath);
+  }
 });

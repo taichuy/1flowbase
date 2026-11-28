@@ -151,3 +151,16 @@ pub use workspace_governance::*;
 mod workspace_policy;
 pub use extension_contracts::workspace_policy_contract::*;
 pub use workspace_policy::{workspace_policy_input, workspace_policy_output};
+
+#[path = "host_services/privacy_masking.rs"]
+mod privacy_masking;
+pub use extension_contracts::{
+    PrivacyMaskingAgentFlowSubjectDto, PrivacyMaskingBuiltinRuleDescriptorDto,
+    PrivacyMaskingCallerDto, PrivacyMaskingLogEntryDto, PrivacyMaskingLogMatchDto,
+    PrivacyMaskingModelInstanceSubjectDto, PrivacyMaskingPreviewHitDto, PrivacyMaskingRequest,
+    PrivacyMaskingResponse, PrivacyMaskingRuleDto, PrivacyMaskingRuleKind, PrivacyMaskingRuleMode,
+    PrivacyMaskingSubjectBindingDto, PrivacyMaskingSubjectKind, PrivacyMaskingWorkspacePolicyDto,
+    PRIVACY_LOGS_READ_PERMISSION, PRIVACY_MASKING_CONTRACT_ID, PRIVACY_MASKING_CONTRACT_V1,
+    PRIVACY_POLICY_SYNC_PERMISSION, PRIVACY_SUBJECTS_READ_PERMISSION,
+};
+pub use privacy_masking::*;

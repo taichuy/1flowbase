@@ -35,6 +35,7 @@ pub(crate) struct ManagedHostServices {
     pub(crate) plugin_data: Arc<dyn extension_contracts::PluginDataPort>,
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
     pub(crate) workspace_governance: Option<Arc<dyn extension_contracts::WorkspaceGovernancePort>>,
+    pub(crate) privacy_masking: Option<Arc<dyn extension_contracts::PrivacyMaskingPort>>,
     pub(crate) execution_gate: Option<(
         crate::execution_gate_host::ExecutionGateRegistry,
         Arc<dyn extension_contracts::PluginExecutionGateAuthority>,
@@ -233,6 +234,7 @@ impl ManagedWorkers {
             plugin_credentials,
             execution_gate,
             workspace_governance,
+            privacy_masking,
             plugin_ephemeral,
             file_import,
             file_read,
@@ -395,6 +397,30 @@ impl ManagedWorkers {
                             can_read,
                             can_manage,
                             caller: binding::workspace_governance_caller(&request.principal),
+                            deadline_unix_ms: request.principal.deadline_unix_ms,
+                        },
+                        port,
+                    )
+                })
+            }),
+            privacy_masking: privacy_masking.and_then(|port| {
+                let can_read_subjects =
+                    permissions.contains(extension_contracts::PRIVACY_SUBJECTS_READ_PERMISSION);
+                let can_sync_policy =
+                    permissions.contains(extension_contracts::PRIVACY_POLICY_SYNC_PERMISSION);
+                let can_read_logs =
+                    permissions.contains(extension_contracts::PRIVACY_LOGS_READ_PERMISSION);
+                (can_read_subjects || can_sync_policy || can_read_logs).then(|| {
+                    (
+                        extension_contracts::PrivacyMaskingBinding {
+                            subject: request.handle.identity().subject().clone(),
+                            publisher_namespace: binding.publisher_namespace.clone(),
+                            plugin_code: binding.plugin_code.clone(),
+                            plugin_version: binding.plugin_version.clone(),
+                            can_read_subjects,
+                            can_sync_policy,
+                            can_read_logs,
+                            caller: binding::privacy_masking_caller(&request.principal),
                             deadline_unix_ms: request.principal.deadline_unix_ms,
                         },
                         port,

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import type { ReactNode } from 'react';
 import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -34,8 +35,9 @@ function wrapper({ children }: { children: ReactNode }) {
 function setOperations(role: string, permissions: string[]) {
   useAuthStore.setState({ csrfToken: 'csrf',
     actor: { id: 'actor', account: 'actor', effective_display_role: role, current_workspace_id: 'workspace-1' },
-    me: { id: 'actor', account: 'actor', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: role, permissions }
+    me: { id: 'actor', account: 'actor', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: role, policy_fingerprint: 'fixture-policy' }
   });
+  seedAccessFixture(permissions);
 }
 
 test.each([

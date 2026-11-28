@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
@@ -171,9 +172,10 @@ function authenticate(permissions: string[]) {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'developer',
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 function createBackendPage(pageId: string): TestFrontStageTreeNode {

@@ -116,6 +116,7 @@ include!("application_run_monitoring_methods.rs");
 include!("application_run_logs/monitoring_usage.rs");
 include!("context_storage/debug_variable_cache_methods.rs");
 include!("flow_lifecycle/flow_run_methods.rs");
+include!("flow_lifecycle/privacy_run_payloads.rs");
 include!("flow_lifecycle/flow_run_callback_resume_attempt_methods.rs");
 include!("context_storage/storage_foundation_methods.rs");
 include!("context_storage/internal_compaction_methods.rs");

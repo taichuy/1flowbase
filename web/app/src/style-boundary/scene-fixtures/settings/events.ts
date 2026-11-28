@@ -3,7 +3,7 @@ import type {
   EventCatalogEntry
 } from '@1flowbase/api-client';
 
-import { useAuthStore } from '../../../state/auth-store';
+import { seedConsoleOperationAccessForTests } from '../../../state/console-operation-access';
 import {
   createStyleBoundaryJsonResponse,
   getStyleBoundaryMethod,
@@ -120,21 +120,12 @@ const events: EventCatalogEntry[] = [
 
 /** Apply after renderRouterScene, which seeds common fetch and auth again. */
 export function seedStyleBoundaryEventsFetch() {
-  const me = useAuthStore.getState().me;
-  if (me) {
-    useAuthStore.setState({
-      me: {
-        ...me,
-        permissions: [
-          ...me.permissions,
-          'events.catalog.list',
-          'events.definitions.create',
-          'events.definitions.update',
-          'events.runtime.get'
-        ]
-      }
-    });
-  }
+  seedConsoleOperationAccessForTests({
+    'events.catalog.list': true,
+    'events.definitions.create': true,
+    'events.definitions.update': true,
+    'events.runtime.get': true
+  });
 
   const fallbackFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = async (input, init) => {

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import '../../../../test/fixtures/rc-util-unique-ids';
 import {
   act,
@@ -35,9 +36,10 @@ beforeEach(() => {
     me: {
       id: 'root-1', account: 'root', email: '', phone: null, nickname: '', name: '',
       avatar_url: null, introduction: '', effective_display_role: 'root',
-      permissions: ['file_storages.list']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['file_storages.list']);
   vi.mocked(fetchSettingsFileStorages).mockResolvedValue([
     {
       id: 'storage-1',

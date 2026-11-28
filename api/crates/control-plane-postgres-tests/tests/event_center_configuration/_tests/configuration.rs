@@ -128,6 +128,7 @@ async fn definitions_roundtrip_with_workspace_scoped_identity_and_namespace_cons
         .await
         .unwrap();
     let other = ActorContext {
+        console_policy_fingerprint: None,
         current_workspace_id: other_workspace.id,
         ..owner.clone()
     };
@@ -227,6 +228,7 @@ async fn workflow_configuration_reloads_and_cannot_write_another_workspace_appli
         .await
         .unwrap();
     let other = ActorContext {
+        console_policy_fingerprint: None,
         current_workspace_id: other_workspace.id,
         ..owner.clone()
     };

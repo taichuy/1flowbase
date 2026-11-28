@@ -944,3 +944,36 @@ async fn mcp_role_permission_openapi_documents_canonical_ids_security_and_no_con
         "create_role"
     );
 }
+
+#[tokio::test]
+async fn console_access_evaluation_is_documented_without_legacy_identity_permissions() {
+    let response = test_app()
+        .await
+        .oneshot(
+            Request::builder()
+                .uri("/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let document: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let operation = &document["paths"]["/api/console/access/evaluate"]["post"];
+    assert_eq!(operation["summary"], "Evaluate console access");
+    assert!(operation["description"].is_string());
+    let schemas = &document["components"]["schemas"];
+    let me = schemas["MeResponse"]["properties"].as_object().unwrap();
+    assert!(me.contains_key("policy_fingerprint"));
+    assert!(!me.contains_key("permissions"));
+    let session = schemas["SessionResponse"]["properties"]
+        .as_object()
+        .unwrap();
+    assert!(!session.contains_key("active_role_permissions"));
+    assert_eq!(
+        schemas["EvaluateConsoleAccessResponse"]["properties"]["allowed"]["additionalProperties"]
+            ["type"],
+        "boolean"
+    );
+}

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
@@ -54,7 +55,7 @@ const original: ConsoleMe = {
   avatar_url: null,
   introduction: '',
   effective_display_role: 'member',
-  permissions: ['patch_me']
+  policy_fingerprint: 'fixture-policy'
 };
 
 afterEach(() => { resetAuthStore(); updateMyProfile.mockReset(); });
@@ -64,7 +65,7 @@ describe('profile cache coherence', () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } }
     });
-    const grantedProfile = { ...original, permissions: grant === 'root' ? [] : original.permissions };
+    const grantedProfile = { ...original };
     client.setQueryData(['me', 'profile'], grantedProfile);
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf',
@@ -76,6 +77,7 @@ describe('profile cache coherence', () => {
       },
       me: grantedProfile
     });
+    seedAccessFixture(grant === 'root' ? [] : ['patch_me']);
     const saved = { ...grantedProfile, name: 'Saved profile' };
     updateMyProfile.mockResolvedValue(saved);
     const wrapper = ({ children }: PropsWithChildren) => (
@@ -105,13 +107,14 @@ describe('profile cache coherence', () => {
     'rejects a direct profile mutation with unrelated grants %j',
     async ({ permissions }) => {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-      const me = { ...original, permissions };
+      const me = { ...original };
       client.setQueryData(['me', 'profile'], me);
       useAuthStore.getState().setAuthenticated({
         csrfToken: 'csrf',
         actor: { id: me.id, account: me.account, effective_display_role: 'member', current_workspace_id: 'workspace' },
         me
       });
+      seedAccessFixture(permissions);
       const view = render(<QueryClientProvider client={client}><MePage requestedSectionKey="profile" /></QueryClientProvider>);
       // The form stub deliberately invokes the mutation despite UI access restrictions.
       fireEvent.click(screen.getByRole('button', { name: 'Save profile' }));

@@ -129,12 +129,8 @@ pub async fn require_settings_feature_permission(
     }
 
     let policies = state
-        .store
-        .load_console_policy_for_bound_role(
-            context.actor.user_id,
-            context.actor.current_workspace_id,
-            &context.actor.effective_display_role,
-        )
+        .console_policy_reader
+        .load_role_console_policies_for_user(&context.actor)
         .await?;
     if authorize_compiled_console_access(&access, &context.actor, &policies) {
         return Ok(next.run(request).await);

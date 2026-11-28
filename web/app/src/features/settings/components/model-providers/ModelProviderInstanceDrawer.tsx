@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   CONFIGURED_MODEL_GRID_TEMPLATE_COLUMNS,
@@ -29,8 +30,13 @@ import { ResizableDrawer } from '../../../../shared/ui/resizable-drawer/Resizabl
 import { CachedModelSelect } from './CachedModelSelect';
 
 import { i18nText } from '../../../../shared/i18n/text';
-import { ModelProviderConfiguredModelModal } from './ModelProviderConfiguredModelModal';
 import { ModelProviderAccountOperationsCard } from './ModelProviderAccountOperationsCard';
+
+const ModelProviderConfiguredModelModal = lazy(() =>
+  import('./ModelProviderConfiguredModelModal').then(
+    ({ ModelProviderConfiguredModelModal }) => ({ default: ModelProviderConfiguredModelModal })
+  )
+);
 
 export function ModelProviderInstanceDrawer(
   props: ModelProviderInstanceDrawerProps
@@ -564,20 +570,24 @@ function ModelProviderInstanceDrawerContent({
           )}
         </Form>
       </ResizableDrawer>
-      <ModelProviderConfiguredModelModal
-        open={configuredModelEditor !== null}
-        editing={Boolean(configuredModelEditor?.rowKey)}
-        initialValue={configuredModelEditor?.initialValue ?? null}
-        modelIds={previewModels.map((model) => model.model_id)}
-        reservedModelIds={configuredModels.reduce<string[]>((reserved, row) => {
-          if (row.key !== configuredModelEditor?.rowKey) {
-            reserved.push(row.model_id);
-          }
-          return reserved;
-        }, [])}
-        onCancel={() => setConfiguredModelEditor(null)}
-        onSave={saveConfiguredModel}
-      />
+      {configuredModelEditor ? (
+        <Suspense fallback={null}>
+          <ModelProviderConfiguredModelModal
+            open
+            editing={Boolean(configuredModelEditor?.rowKey)}
+            initialValue={configuredModelEditor?.initialValue ?? null}
+            modelIds={previewModels.map((model) => model.model_id)}
+            reservedModelIds={configuredModels.reduce<string[]>((reserved, row) => {
+              if (row.key !== configuredModelEditor?.rowKey) {
+                reserved.push(row.model_id);
+              }
+              return reserved;
+            }, [])}
+            onCancel={() => setConfiguredModelEditor(null)}
+            onSave={saveConfiguredModel}
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 }

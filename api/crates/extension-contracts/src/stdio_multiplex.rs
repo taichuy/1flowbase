@@ -74,6 +74,7 @@ pub enum MultiplexHostService {
     FileReadV1,
     ApplicationLogsV1,
     HttpEgressV1,
+    PrivacyMaskingV1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

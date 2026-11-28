@@ -76,6 +76,7 @@ fn host_call_context(port: Arc<CapturingPluginDataPort>) -> ProviderHostCallCont
         plugin_credentials: None,
         execution_gate: None,
         workspace_governance: None,
+        privacy_masking: None,
         plugin_ephemeral: None,
     }
 }

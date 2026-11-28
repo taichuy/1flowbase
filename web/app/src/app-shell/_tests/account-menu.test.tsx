@@ -42,7 +42,8 @@ function buildMe(overrides: Partial<ConsoleMe> = {}): ConsoleMe {
     avatar_url: null,
     introduction: '',
     effective_display_role: 'root',
-    permissions: [],
+    policy_fingerprint: 'fixture-policy',
+
     ...overrides
   };
 }
@@ -270,6 +271,48 @@ describe('AccountMenuBase', () => {
     expect(useAuthStore.getState().sessionStatus).toBe('anonymous');
   });
 
+  test('switches active role and stores the projected me response', async () => {
+    const queryClient = new QueryClient();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-token',
+      actor,
+      me: buildMe({ policy_fingerprint: 'root-policy' }),
+      availableRoles: [
+        { code: 'root', name: 'Root', scope_kind: 'system' },
+        { code: 'manager', name: 'Manager', scope_kind: 'workspace' }
+      ]
+    });
+    sessionApi.fetchAccessibleWorkspaces.mockResolvedValue([]);
+    sessionApi.switchActiveRole.mockResolvedValue({
+      actor: { ...actor, effective_display_role: 'manager' },
+      csrf_token: 'next-csrf',
+      policy_fingerprint: 'manager-policy',
+      available_roles: [{ code: 'manager', name: 'Manager', scope_kind: 'workspace' }]
+    });
+    const nextMe = buildMe({
+      effective_display_role: 'manager',
+      policy_fingerprint: 'manager-policy'
+    });
+    sessionApi.fetchCurrentMe.mockResolvedValue(nextMe);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App>
+          <AccountMenu />
+        </App>
+      </QueryClientProvider>
+    );
+
+    fireEvent.mouseEnter(screen.getByLabelText('Root User'));
+    fireEvent.mouseEnter(await screen.findByText('当前角色'));
+    fireEvent.click(await screen.findByText('Manager'));
+
+    await waitFor(() => expect(useAuthStore.getState().me).toEqual(nextMe));
+    expect(sessionApi.switchActiveRole).toHaveBeenCalledWith('manager', 'csrf-token');
+    expect(sessionApi.fetchCurrentMe).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().csrfToken).toBe('next-csrf');
+  });
+
   test('AC-002 switches workspace, refreshes me and csrf, clears query cache, and returns home', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } }
@@ -314,14 +357,14 @@ describe('AccountMenuBase', () => {
       available_roles: [
         { code: 'member', name: 'Member', scope_kind: 'workspace' }
       ],
-      active_role_permissions: ['applications.read'],
+      policy_fingerprint: 'fixture-policy',
       csrf_token: 'csrf-token-ws2',
       cookie_name: 'flowbase_console_session'
     });
     sessionApi.fetchCurrentMe.mockResolvedValue(
       buildMe({
         effective_display_role: 'member',
-        permissions: ['applications.read']
+        policy_fingerprint: 'fixture-policy'
       })
     );
 

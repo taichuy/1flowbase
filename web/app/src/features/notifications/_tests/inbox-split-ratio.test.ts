@@ -1,3 +1,5 @@
+import { waitFor } from '@testing-library/react';
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import {
@@ -25,9 +27,10 @@ function authenticate(role: string, permissions: string[]) {
       avatar_url: null,
       introduction: '',
       effective_display_role: role,
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 beforeEach(() => {
   resetAuthStore();
@@ -80,12 +83,22 @@ describe('notification layout preference persistence', () => {
     }
   );
 
+  test('persists the first resize after the cold access decision resolves', async () => {
+    authenticate('member', []);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      data: { policy_fingerprint: 'fixture-policy', allowed: { patch_me_meta: true } }
+    }), { headers: { 'content-type': 'application/json' } }));
+    persistInboxSplitRatio(0.5);
+    expect(readInboxSplitRatio()).toBe(0.35);
+    await waitFor(() => expect(readInboxSplitRatio()).toBe(0.5));
+  });
+
   test('checks the current grant when a delayed resize ends after revocation', () => {
     authenticate('member', ['patch_me_meta']);
     const finishResize = () => persistInboxSplitRatio(0.5);
     useAuthStore
       .getState()
-      .setMe({ ...useAuthStore.getState().me!, permissions: [] });
+      .setMe({ ...useAuthStore.getState().me!, policy_fingerprint: 'revoked-policy' });
     finishResize();
     expect(readInboxSplitRatio()).toBe(0.35);
   });

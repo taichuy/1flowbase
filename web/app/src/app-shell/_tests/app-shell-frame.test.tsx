@@ -1,3 +1,5 @@
+import { seedAccessFixture } from '../../test/fixtures/console-access';
+import { seedConsoleOperationAccessForTests } from '../../state/console-operation-access';
 const { publicMetadataMock } = vi.hoisted(() => ({
   publicMetadataMock: vi.fn()
 }));
@@ -107,7 +109,8 @@ describe('AppShellFrame', () => {
       introduction: '',
       preferred_locale: null,
       effective_display_role: 'root',
-      permissions: [],
+      policy_fingerprint: 'fixture-policy',
+
       meta: {
         ui: {
           locale: {
@@ -136,7 +139,7 @@ describe('AppShellFrame', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'root',
-        permissions: []
+        policy_fingerprint: 'fixture-policy'
       }
     });
   });
@@ -246,7 +249,7 @@ describe('AppShellFrame', () => {
         preferred_locale: null,
         meta: {},
         effective_display_role: 'root',
-        permissions: []
+        policy_fingerprint: 'fixture-policy'
       }
     });
 
@@ -281,7 +284,7 @@ describe('AppShellFrame', () => {
   });
 
   test('hides UI without backend design access and exits design mode when access is revoked', async () => {
-    const me = { ...useAuthStore.getState().me!, effective_display_role: 'viewer', permissions: [] as string[] };
+    const me = { ...useAuthStore.getState().me!, effective_display_role: 'viewer', policy_fingerprint: 'fixture-policy' };
     useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf-token',
       actor: { id: 'user-1', account: 'viewer', effective_display_role: 'viewer', current_workspace_id: 'workspace-1' },
@@ -289,11 +292,11 @@ describe('AppShellFrame', () => {
     });
     await renderShell('/');
     expect(screen.queryByText('UI')).not.toBeInTheDocument();
-    await act(async () => { useAuthStore.getState().setMe({ ...me, permissions: ['frontstage.page.design'] }); });
+    await act(async () => { useAuthStore.getState().setMe({ ...me, policy_fingerprint: 'granted-policy' }); seedAccessFixture(['frontstage.page.design']); });
     expect(screen.getByLabelText('Enter design mode')).toBeInTheDocument();
     await domEvents.click(screen.getByLabelText('Enter design mode'));
     expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(true);
-    await act(async () => { useAuthStore.getState().setMe(me); });
+    await act(async () => { useAuthStore.getState().setMe(me); seedConsoleOperationAccessForTests({ 'frontstage.page.design': false }); });
     expect(screen.queryByText('UI')).not.toBeInTheDocument();
     expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(false);
   });

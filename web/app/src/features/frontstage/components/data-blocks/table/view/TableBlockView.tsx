@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../../state/console-operation-access';
 import { useState, type CSSProperties } from 'react';
 import { Alert, ConfigProvider, Typography, theme } from 'antd';
 import type { BlockContext } from '@1flowbase/page-protocol';
@@ -49,12 +50,8 @@ export function TableBlockView({
   const { token } = theme.useToken();
   const design = Boolean(host?.design_mode);
   const disabled = saving || Boolean(host?.saving) || !metadata.data;
-  const canCreateField =
-    design &&
-    Boolean(
-      ctx.currentUser?.isRoot ||
-      ctx.currentUser?.permissions?.includes('model_fields.create')
-    );
+  const can = useConsoleOperationAccess();
+  const canCreateField = design && can('model_fields.create');
   const fieldMenu = design && (
     <TableFieldMenu
       fields={fields}

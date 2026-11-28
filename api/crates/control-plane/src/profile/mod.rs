@@ -1,5 +1,5 @@
 use anyhow::Result;
-use domain::{ActorContext, UserRecord};
+use domain::UserRecord;
 use runtime_profile::{normalize_supported_locale, SUPPORTED_LOCALES};
 use uuid::Uuid;
 
@@ -11,15 +11,8 @@ use crate::{
 /// Feature-owned preferences are written by the validated assistant settings use case.
 pub const ASSISTANT_META_KEY: &str = "embedded_assistant";
 
-pub struct MeProfile {
-    pub user: UserRecord,
-    pub actor: ActorContext,
-}
-
 pub struct UpdateMeCommand {
     pub actor_user_id: Uuid,
-    pub tenant_id: Uuid,
-    pub workspace_id: Uuid,
     pub name: String,
     pub nickname: String,
     pub email: String,
@@ -31,8 +24,6 @@ pub struct UpdateMeCommand {
 
 pub struct UpdateMeMetaCommand {
     pub actor_user_id: Uuid,
-    pub tenant_id: Uuid,
-    pub workspace_id: Uuid,
     pub meta_patch: serde_json::Value,
 }
 
@@ -48,44 +39,9 @@ where
         Self { repository }
     }
 
-    async fn load_profile(
-        &self,
-        user: UserRecord,
-        tenant_id: Uuid,
-        workspace_id: Uuid,
-    ) -> Result<MeProfile> {
-        let actor = self
-            .repository
-            .load_actor_context(
-                user.id,
-                tenant_id,
-                workspace_id,
-                user.default_display_role.as_deref(),
-            )
-            .await?;
-
-        Ok(MeProfile { user, actor })
-    }
-
-    pub async fn get_me(
-        &self,
-        user_id: Uuid,
-        tenant_id: Uuid,
-        workspace_id: Uuid,
-    ) -> Result<MeProfile> {
-        let user = self
-            .repository
-            .find_user_by_id(user_id)
-            .await?
-            .ok_or(crate::errors::ControlPlaneError::NotFound("user"))?;
-
-        self.load_profile(user, tenant_id, workspace_id).await
-    }
-
-    pub async fn update_me(&self, command: UpdateMeCommand) -> Result<MeProfile> {
+    pub async fn update_me(&self, command: UpdateMeCommand) -> Result<UserRecord> {
         let preferred_locale = normalize_locale(command.preferred_locale)?;
-        let user = self
-            .repository
+        self.repository
             .update_profile(&UpdateProfileInput {
                 actor_user_id: command.actor_user_id,
                 user_id: command.actor_user_id,
@@ -97,13 +53,10 @@ where
                 introduction: command.introduction,
                 preferred_locale,
             })
-            .await?;
-
-        self.load_profile(user, command.tenant_id, command.workspace_id)
             .await
     }
 
-    pub async fn update_me_preferences(&self, command: UpdateMeMetaCommand) -> Result<MeProfile> {
+    pub async fn update_me_preferences(&self, command: UpdateMeMetaCommand) -> Result<UserRecord> {
         if command.meta_patch.get(ASSISTANT_META_KEY).is_some() {
             return Err(ControlPlaneError::InvalidInput(
                 "assistant_preferences_require_settings_interface",
@@ -113,7 +66,7 @@ where
         self.update_me_meta(command).await
     }
 
-    pub async fn update_me_meta(&self, command: UpdateMeMetaCommand) -> Result<MeProfile> {
+    pub async fn update_me_meta(&self, command: UpdateMeMetaCommand) -> Result<UserRecord> {
         if !command.meta_patch.is_object() {
             return Err(ControlPlaneError::InvalidInput("meta").into());
         }
@@ -126,16 +79,12 @@ where
         let mut next_meta = current_user.meta;
         merge_json_patch(&mut next_meta, command.meta_patch);
 
-        let user = self
-            .repository
+        self.repository
             .update_user_meta(&UpdateUserMetaInput {
                 actor_user_id: command.actor_user_id,
                 user_id: command.actor_user_id,
                 meta: next_meta,
             })
-            .await?;
-
-        self.load_profile(user, command.tenant_id, command.workspace_id)
             .await
     }
 }

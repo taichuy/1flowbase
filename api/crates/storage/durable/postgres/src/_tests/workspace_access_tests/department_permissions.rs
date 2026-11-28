@@ -1,5 +1,8 @@
 use super::*;
-use control_plane_contracts::ports::{FrontstagePageRepository, ModelDefinitionRepository};
+use control_plane_contracts::ports::{
+    mcp_oauth::McpOAuthRepository, FrontstagePageRepository, ModelDefinitionRepository,
+};
+use control_plane_contracts::ControlPlaneContractError;
 
 async fn department(
     store: &PgControlPlaneStore,
@@ -30,7 +33,7 @@ async fn join_department(
 }
 
 #[tokio::test]
-async fn department_permissions_add_to_active_role_and_revoke_only_the_removed_source() {
+async fn department_roles_are_selectable_isolated_and_revoked_after_the_last_source() {
     let schema = isolated_database().await;
     let pool = schema.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
@@ -47,7 +50,6 @@ async fn department_permissions_add_to_active_role_and_revoke_only_the_removed_s
     let ancestor_role = insert_workspace_role(&store, scope, "ancestor").await;
     let foreign_role = insert_workspace_role(&store, other_scope, "foreign").await;
     bind_role(&store, user, member).await;
-    bind_role(&store, user, reader).await;
     grant_permission(&store, scope, member, "department.test.base").await;
     grant_permission(&store, scope, reader, "department.test.read").await;
     grant_permission(&store, scope, ancestor_role, "department.test.ancestor").await;
@@ -76,15 +78,56 @@ async fn department_permissions_add_to_active_role_and_revoke_only_the_removed_s
         .unwrap();
     assert_eq!(actor.effective_display_role, "member");
     assert!(actor.has_permission("department.test.base"));
-    assert!(actor.has_permission("department.test.read"));
+    assert!(!actor.has_permission("department.test.read"));
     assert!(!actor.has_permission("department.test.ancestor"));
     assert!(!actor.has_permission("department.test.foreign"));
     assert!(!actor.is_root);
     let bound = store
-        .load_actor_context_for_bound_role(user, tenant, scope, "member")
+        .load_actor_context_for_bound_role(user, tenant, scope, "reader")
         .await
         .unwrap();
     assert!(bound.has_permission("department.test.read"));
+    assert!(!bound.has_permission("department.test.base"));
+    assert_eq!(
+        store
+            .effective_role_ids(user, scope, "reader")
+            .await
+            .unwrap(),
+        vec![reader]
+    );
+    assert!(store
+        .effective_role_ids(user, scope, "foreign")
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(store
+        .effective_role_ids(user, scope, "root")
+        .await
+        .unwrap()
+        .is_empty());
+    let root_id =
+        match sqlx::query_scalar("select id from roles where scope_kind='system' and code='root'")
+            .fetch_optional(store.pool())
+            .await
+            .unwrap()
+        {
+            Some(id) => id,
+            None => insert_root_role(&store).await,
+        };
+    let denied = sqlx::query("insert into department_role_bindings(id,scope_id,department_id,role_id) values($1,$2,$3,$4)")
+        .bind(Uuid::now_v7()).bind(scope).bind(first).bind(root_id).execute(store.pool()).await.unwrap_err();
+    assert_eq!(
+        denied.as_database_error().unwrap().code().as_deref(),
+        Some("23514")
+    );
+    let in_use = store
+        .delete_team_role(user, scope, "reader")
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        in_use.downcast_ref::<ControlPlaneContractError>(),
+        Some(ControlPlaneContractError::Conflict("role_in_use"))
+    ));
     assert!(store
         .load_actor_context_for_bound_role(user, tenant, scope, "ancestor")
         .await
@@ -94,11 +137,8 @@ async fn department_permissions_add_to_active_role_and_revoke_only_the_removed_s
         .load_console_policy_for_bound_role(user, scope, "member")
         .await
         .unwrap();
-    assert_eq!(
-        console.len(),
-        2,
-        "same role through two departments must be deduplicated"
-    );
+    assert_eq!(console.len(), 1);
+    assert_eq!(console[0].role_id(), member);
     assert!(store
         .load_console_policy_for_bound_role(user, scope, "missing")
         .await
@@ -112,10 +152,8 @@ async fn department_permissions_add_to_active_role_and_revoke_only_the_removed_s
         .list_actor_role_data_policies(user, scope, "member", Uuid::now_v7())
         .await
         .unwrap();
-    assert_eq!(data.len(), 2);
-    assert!(data
-        .iter()
-        .all(|(policy, _)| [member, reader].contains(&policy.role_id)));
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0].0.role_id, member);
 
     for role in [member, reader, ancestor_role] {
         sqlx::query("insert into frontstage_page_visibility_rules(id,workspace_id,role_id,visibility) values($1,$2,$3,'visible')")
@@ -125,65 +163,117 @@ async fn department_permissions_add_to_active_role_and_revoke_only_the_removed_s
         .list_frontstage_page_visibility_rules_for_actor_roles(user, scope, "member")
         .await
         .unwrap();
-    assert_eq!(visibility.len(), 2);
-    assert!(visibility
-        .iter()
-        .all(|rule| [member, reader].contains(&rule.role_id)));
-    assert!(console
-        .iter()
-        .all(|policy| [member, reader].contains(&policy.role_id())));
+    assert_eq!(visibility.len(), 1);
+    assert_eq!(visibility[0].role_id, member);
 
-    // Changing the department's configured roles also revokes on the next read.
+    let stamp = store.oauth_authorization_stamp(user).await.unwrap();
+    assert!(stamp["roles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|role| role["id"] == serde_json::json!(reader)));
+
+    // Losing all department grants revokes the selected role immediately.
     sqlx::query("delete from department_role_bindings where scope_id=$1 and role_id=$2")
         .bind(scope)
         .bind(reader)
         .execute(store.pool())
         .await
         .unwrap();
-    assert!(!store
-        .load_actor_context(user, tenant, scope, Some("member"))
+    assert!(store
+        .effective_role_ids(user, scope, "reader")
         .await
         .unwrap()
-        .has_permission("department.test.read"));
+        .is_empty());
+    assert_ne!(store.oauth_authorization_stamp(user).await.unwrap(), stamp);
     department_role(&store, scope, first, reader).await;
     department_role(&store, scope, second, reader).await;
 
-    // Remove one source: the other department still grants the same permission.
+    // Dropping the direct binding still permits the department-only role to be selected.
+    sqlx::query("delete from user_role_bindings where user_id=$1")
+        .bind(user)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let loaded = store.find_user_by_id(user).await.unwrap().unwrap();
+    assert!(loaded.roles.is_empty());
+    assert_eq!(
+        store
+            .resolve_actor_role(user, tenant, scope, None)
+            .await
+            .unwrap()
+            .effective_display_role,
+        "reader"
+    );
+    assert_eq!(
+        store
+            .resolve_loaded_user_role(&loaded, tenant, scope, Some("reader"))
+            .await
+            .unwrap()
+            .effective_display_role,
+        "reader"
+    );
+    for actor in [
+        store
+            .load_actor_context(user, tenant, scope, Some("reader"))
+            .await
+            .unwrap(),
+        store
+            .load_actor_context_for_bound_role(user, tenant, scope, "reader")
+            .await
+            .unwrap(),
+    ] {
+        assert_eq!(actor.effective_display_role, "reader");
+        assert!(actor.has_permission("department.test.read"));
+        assert!(!actor.has_permission("department.test.base"));
+    }
+
     sqlx::query("delete from user_department_bindings where user_id=$1 and department_id=$2")
         .bind(user)
         .bind(second)
         .execute(store.pool())
         .await
         .unwrap();
-    assert!(store
-        .load_actor_context(user, tenant, scope, Some("member"))
-        .await
-        .unwrap()
-        .has_permission("department.test.read"));
-    // Remove the final department grant: inactive direct assignment survives, but no longer adds permission.
+    assert_eq!(
+        store
+            .effective_role_ids(user, scope, "reader")
+            .await
+            .unwrap(),
+        vec![reader]
+    );
+    bind_role(&store, user, reader).await;
+    assert_eq!(
+        store
+            .effective_role_ids(user, scope, "reader")
+            .await
+            .unwrap(),
+        vec![reader]
+    );
     sqlx::query("delete from user_department_bindings where user_id=$1 and scope_id=$2")
         .bind(user)
         .bind(scope)
         .execute(store.pool())
         .await
         .unwrap();
-    let revoked = store
-        .load_actor_context(user, tenant, scope, Some("member"))
-        .await
-        .unwrap();
-    assert!(!revoked.has_permission("department.test.read"));
     assert_eq!(
         store
-            .load_console_policy_for_bound_role(user, scope, "member")
+            .effective_role_ids(user, scope, "reader")
             .await
-            .unwrap()
-            .len(),
-        1
+            .unwrap(),
+        vec![reader]
     );
-    let selected = store
-        .load_actor_context(user, tenant, scope, Some("reader"))
+    sqlx::query("delete from user_role_bindings where user_id=$1")
+        .bind(user)
+        .execute(store.pool())
         .await
         .unwrap();
-    assert!(selected.has_permission("department.test.read"));
-    assert!(!selected.has_permission("department.test.base"));
+    assert!(store
+        .effective_role_ids(user, scope, "reader")
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(store
+        .load_actor_context_for_bound_role(user, tenant, scope, "reader")
+        .await
+        .is_err());
 }

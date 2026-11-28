@@ -11,6 +11,6 @@ export function selectNavigationQueryScope(
     state.actor?.id ?? null,
     state.actor?.current_workspace_id ?? null,
     state.actor?.effective_display_role ?? null,
-    [...(state.me?.permissions ?? [])].sort()
+    state.me?.policy_fingerprint ?? null
   ]);
 }

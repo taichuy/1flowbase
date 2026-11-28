@@ -28,6 +28,9 @@ use uuid::Uuid;
 struct PgContributionAuthorityLease {
     lifecycle_observer:
         Option<std::sync::Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>>,
+    privacy_masking_invalidation_observer: Option<
+        std::sync::Arc<dyn control_plane_contracts::ports::PrivacyMaskingInvalidationObserver>,
+    >,
     managed_operations:
         std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     transaction: Transaction<'static, Postgres>,
@@ -141,6 +144,11 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
                     transaction, self.current, None, None,
                     control_plane_contracts::ports::LifecycleDeliveryPauseReason::InstallationInactive,
                 ).await?;
+                crate::privacy_masking_repository::delete_policies_for_installations_in_tx(
+                    transaction,
+                    &[self.current],
+                )
+                .await?;
             }
             if self.system_service {
                 let installation = self
@@ -195,7 +203,16 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
             let mut audit_log = audit_log;
             audit_log.payload["migrated_instance_count"] = serde_json::json!(migrated_instances);
             append_audit(transaction, &audit_log, revision).await?;
+            let privacy_observer = self
+                .authority
+                .privacy_masking_invalidation_observer
+                .clone();
+            let retired_installation = retire_current.then_some(self.current);
             self.authority.transaction.commit().await?;
+            if let (Some(observer), Some(installation_id)) = (privacy_observer, retired_installation)
+            {
+                observer.invalidate_installation(installation_id);
+            }
             Ok(migrated_instances)
         })
     }
@@ -937,6 +954,7 @@ async fn read_resource_authority(
     };
     Ok(Box::new(PgContributionAuthorityLease {
         lifecycle_observer: store.lifecycle_observer.clone(),
+        privacy_masking_invalidation_observer: store.privacy_masking_invalidation_observer.clone(),
         managed_operations: store.managed_operations.clone(),
         transaction,
         snapshots: vec![snapshot],
@@ -1098,6 +1116,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         Ok(Box::new(PgManagedInstallationSwitchLease {
             authority: PgContributionAuthorityLease {
                 lifecycle_observer: self.lifecycle_observer.clone(),
+            privacy_masking_invalidation_observer: self
+                .privacy_masking_invalidation_observer
+                .clone(),
                 managed_operations: self.managed_operations.clone(),
                 transaction,
                 snapshots,
@@ -1194,6 +1215,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         }
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
+            privacy_masking_invalidation_observer: self
+                .privacy_masking_invalidation_observer
+                .clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots,
@@ -1224,6 +1248,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         };
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
+            privacy_masking_invalidation_observer: self
+                .privacy_masking_invalidation_observer
+                .clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
@@ -1281,12 +1308,14 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         if updated.rows_affected() != 1 {
             return Err(Error::NotFound("active_contribution_authorization").into());
         }
-        let contribution_id: String = sqlx::query_scalar(
-            "select contribution_id from plugin_contribution_authorizations where id=$1",
+        let row = sqlx::query(
+            "select contribution_id, permission from plugin_contribution_authorizations where id=$1",
         )
         .bind(input.authorization_id)
         .fetch_one(&mut *transaction)
         .await?;
+        let contribution_id: String = row.try_get("contribution_id")?;
+        let revoked_permission: String = row.try_get("permission")?;
         crate::lifecycle_outbox_repository::pause_managed_installation_deliveries(
             &mut transaction,
             input.installation_id,
@@ -1295,6 +1324,14 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             control_plane_contracts::ports::LifecycleDeliveryPauseReason::AuthorityRevoked,
         )
         .await?;
+        let invalidate_privacy = revoked_permission == extension_contracts::PRIVACY_POLICY_SYNC_PERMISSION;
+        if invalidate_privacy {
+            crate::privacy_masking_repository::delete_policies_for_installations_in_tx(
+                &mut transaction,
+                &[input.installation_id],
+            )
+            .await?;
+        }
         append_audit(&mut transaction, &input.audit_log, revision).await?;
         let snapshot = snapshot(
             &mut transaction,
@@ -1304,6 +1341,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         )
         .await?;
         transaction.commit().await?;
+        if invalidate_privacy {
+            self.observe_privacy_installation_invalidation(input.installation_id);
+        }
         Ok(snapshot)
     }
 
@@ -1345,6 +1385,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
+            privacy_masking_invalidation_observer: self
+                .privacy_masking_invalidation_observer
+                .clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
@@ -1412,6 +1455,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         };
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
+            privacy_masking_invalidation_observer: self
+                .privacy_masking_invalidation_observer
+                .clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],

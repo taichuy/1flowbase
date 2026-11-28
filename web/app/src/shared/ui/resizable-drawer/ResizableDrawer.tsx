@@ -2,7 +2,7 @@ import { Drawer, type DrawerProps } from 'antd';
 import type { ReactNode } from 'react';
 import { useEffect, useId, useState } from 'react';
 
-import { hasUserPreferenceWriteAccess } from '../../user-preferences/user-preferences';
+import { withUserPreferenceWriteAccess } from '../../user-preferences/user-preferences';
 
 import './resizable-drawer.css';
 
@@ -204,13 +204,15 @@ function readStoredWidth(storageKey: string | null) {
 }
 
 function writeStoredWidth(storageKey: string | null, width: number) {
-  if (!storageKey || !hasUserPreferenceWriteAccess()) {
+  if (!storageKey) {
     return;
   }
 
-  try {
-    window.localStorage.setItem(storageKey, String(width));
-  } catch {
-    // Browser privacy settings must not disable local resizing.
-  }
+  withUserPreferenceWriteAccess(() => {
+    try {
+      window.localStorage.setItem(storageKey, String(width));
+    } catch {
+      // Browser privacy settings must not disable local resizing.
+    }
+  });
 }

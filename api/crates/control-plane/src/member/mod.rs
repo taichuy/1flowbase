@@ -79,6 +79,7 @@ pub struct AssignableRoleOption {
 
 pub struct MemberService<R> {
     repository: R,
+    navigation_cache: Option<crate::navigation_cache::NavigationCache>,
 }
 
 impl<R> MemberService<R>
@@ -86,7 +87,29 @@ where
     R: MemberRepository + RoleConsolePolicyReader,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            navigation_cache: None,
+        }
+    }
+
+    pub fn with_navigation_cache(
+        mut self,
+        cache: crate::navigation_cache::NavigationCache,
+    ) -> Self {
+        self.navigation_cache = Some(cache);
+        self
+    }
+
+    async fn invalidate_console_routes(&self, workspace_id: Uuid) {
+        if let Some(cache) = &self.navigation_cache {
+            cache
+                .invalidate(
+                    crate::navigation_cache::NavigationCacheDomain::ConsoleRoutes,
+                    workspace_id,
+                )
+                .await;
+        }
     }
 
     pub async fn list_members(
@@ -132,6 +155,8 @@ where
                 },
             )
             .await?;
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),
@@ -239,6 +264,8 @@ where
         self.repository
             .delete_member_in_scope(&actor, command.target_user_id)
             .await?;
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),
@@ -290,6 +317,8 @@ where
                 &command.role_codes,
             )
             .await?;
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),

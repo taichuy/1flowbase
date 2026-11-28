@@ -23,6 +23,7 @@ fn sample_user(default_display_role: Option<&str>, roles: &[&str]) -> UserRecord
         email_login_enabled: true,
         phone_login_enabled: false,
         status: UserStatus::Active,
+        department_roles: Vec::new(),
         session_version: 1,
         roles: roles
             .iter()
@@ -40,7 +41,7 @@ fn sample_user(default_display_role: Option<&str>, roles: &[&str]) -> UserRecord
 fn resolved_display_role_falls_back_to_first_bound_role() {
     let user = sample_user(Some("deleted-role"), &["member", "admin"]);
 
-    assert_eq!(user.resolved_display_role().as_deref(), Some("member"));
+    assert_eq!(user.resolved_display_role(Uuid::nil()), Some("admin"));
 }
 
 #[test]

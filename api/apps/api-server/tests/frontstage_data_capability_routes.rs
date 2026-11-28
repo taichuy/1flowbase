@@ -246,6 +246,14 @@ async fn fixture_state() -> (
     let state = Arc::new(ApiState {
         test_resources: None,
         store: store.clone(),
+        console_policy_projector:
+            api_host_kernel::middleware::console_policy_projection::ConsolePolicyProjector::new(
+                bootstrap.workspace_id,
+                console_operation_registry.clone(),
+                settings_feature_registry.clone(),
+                std::sync::Arc::new(store.clone()),
+                control_plane::navigation_cache::NavigationCache(infrastructure.cache_store()),
+            ),
         console_policy_reader: Arc::new(store.clone()),
         system_backup,
         system_maintenance,

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { act, fireEvent, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ConsoleAssistantSettings } from '@1flowbase/api-client';
@@ -42,6 +43,7 @@ function settings(model: string): ConsoleAssistantSettings {
 }
 function setAccess(role: string, permissions: string[]) {
   useAuthStore.setState({
+    csrfToken: 'csrf',
     actor: {
       id: 'user-1',
       account: 'member',
@@ -58,9 +60,10 @@ function setAccess(role: string, permissions: string[]) {
       avatar_url: null,
       introduction: '',
       effective_display_role: role,
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 const props = {
   open: true,

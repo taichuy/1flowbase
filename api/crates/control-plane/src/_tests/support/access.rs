@@ -106,6 +106,7 @@ impl MemberRepository for MemoryMemberRepository {
             email_login_enabled: true,
             phone_login_enabled: false,
             status: UserStatus::Active,
+            department_roles: Vec::new(),
             session_version: 1,
             roles: vec![BoundRole {
                 name: default_role_code.clone(),
@@ -133,6 +134,7 @@ impl MemberRepository for MemoryMemberRepository {
             email_login_enabled: true,
             phone_login_enabled: false,
             status: UserStatus::Active,
+            department_roles: Vec::new(),
             session_version: 1,
             roles: vec![BoundRole {
                 code: "member".to_string(),

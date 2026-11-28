@@ -67,10 +67,12 @@ describe('McpManagementPanel', () => {
     const endpoint = `${window.location.origin}/api/mcp/ops_mcp`;
 
     await domEvents.click(within(dialog).getByRole('tab', { name: 'Codex' }));
-    const codexInstallPreview = within(dialog).getByRole('region', {
-      name: '安装 / 更新命令预览'
-    });
-    const codexRemovePreview = within(dialog).getByRole('region', {
+    const codexInstallPreview = await within(dialog).findByRole(
+      'region',
+      { name: '安装 / 更新命令预览' },
+      { timeout: 10_000 }
+    );
+    const codexRemovePreview = await within(dialog).findByRole('region', {
       name: '移除命令预览'
     });
     expect(codexInstallPreview).toHaveClass('mcp-client-command-preview');
@@ -170,9 +172,11 @@ describe('McpManagementPanel', () => {
     expect(
       within(dialog).queryByRole('region', { name: '安装 / 更新命令预览' })
     ).not.toBeInTheDocument();
-    const removePreview = within(dialog).getByRole('region', {
-      name: '移除命令预览'
-    });
+    const removePreview = await within(dialog).findByRole(
+      'region',
+      { name: '移除命令预览' },
+      { timeout: 10_000 }
+    );
     expect(removePreview).toHaveTextContent("codex mcp remove 'ops_mcp'");
     expect(removePreview).not.toHaveTextContent('test-secret-key');
 

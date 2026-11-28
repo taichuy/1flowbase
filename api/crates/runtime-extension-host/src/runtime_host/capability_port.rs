@@ -113,6 +113,7 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
                     plugin_data: Arc::clone(&self.plugin_data),
                     plugin_credentials: self.plugin_credentials.clone(),
                     workspace_governance: self.workspace_governance.clone(),
+                    privacy_masking: self.privacy_masking.clone(),
                     execution_gate: self
                         .execution_gate
                         .clone()

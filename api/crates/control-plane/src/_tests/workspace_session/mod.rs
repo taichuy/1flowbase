@@ -33,6 +33,7 @@ fn test_user(source_workspace_id: Uuid, target_workspace_id: Uuid) -> UserRecord
         email_login_enabled: true,
         phone_login_enabled: false,
         status: UserStatus::Active,
+        department_roles: Vec::new(),
         session_version: 3,
         roles: vec![
             BoundRole {

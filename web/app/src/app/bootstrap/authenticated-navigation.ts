@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 
 import { frontstagePageTreeQueryOptions } from '../../features/frontstage/api/page-tree';
 import { settingsConsoleNavigationQueryOptions } from '../../features/settings/api/console-navigation';
+import { preloadSettingsRouteByPathname } from '../../features/settings/pages/settings-page/shell/settings-section-loaders';
 import { useAuthStore } from '../../state/auth-store';
 import { selectNavigationQueryScope } from '../../state/navigation-query-scope';
 
@@ -12,6 +13,10 @@ export function createApplicationQueryClient() {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
   });
   client.setQueryDefaults(['frontstage'], { refetchOnWindowFocus: false });
+  client.setQueryDefaults(['settings'], { refetchOnWindowFocus: false });
+  // Extension changes invalidate the API documentation family. Do not extend
+  // freshness for permissions, operational state, or other mutable data.
+  client.setQueryDefaults(['settings', 'docs'], { staleTime: 30_000 });
   return client;
 }
 
@@ -44,6 +49,10 @@ export function startAuthenticatedNavigation(
     if (scope === null) return;
     void queryClient.prefetchQuery(
       settingsConsoleNavigationQueryOptions(scope)
+    );
+    // Speculative code only; route guards still own authorization and rendering.
+    void preloadSettingsRouteByPathname(window.location.pathname).catch(
+      () => undefined
     );
     const workspaceId = state.actor?.current_workspace_id;
     if (workspaceId && !options.shouldSkipPageTreePrefetch?.(state)) {

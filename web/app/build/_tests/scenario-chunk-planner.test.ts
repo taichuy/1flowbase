@@ -111,7 +111,7 @@ describe('scenario chunk planner', () => {
       shellCore?.test(
         '/repo/web/app/src/shared/ui/section-page-layout/SectionPageLayout.tsx'
       )
-    ).toBe(false);
+    ).toBe(true);
 
     const nativeHost = findPattern('native-host');
     expect(
@@ -195,7 +195,9 @@ describe('scenario chunk planner', () => {
     ['antd/es/modal', 'antd-overlay'],
     ['antd/es/table', 'antd-data'],
     ['antd/es/transfer', 'antd-data'],
-    ['antd/es/result', 'antd-feedback']
+    ['antd/es/result', 'antd-feedback'],
+    ['antd/es/splitter', 'antd-display'],
+    ['antd/es/splitter/hooks/useResize.js', 'antd-display']
   ])('classifies product source %s as %s', (source, chunk) => {
     expect(productAntDesignChunk(source)).toBe(chunk);
   });
@@ -207,9 +209,26 @@ describe('scenario chunk planner', () => {
     const pickerGroup = scenarioCodeSplitting.groups.find(
       (group) => 'debugName' in group && group.debugName === 'antd-picker'
     );
-    expect(dataGroup?.priority).toBe(1);
-    expect(pickerGroup?.priority).toBe(0);
+    const frontstageShellGroup = scenarioCodeSplitting.groups.find(
+      (group) => group.name === 'frontstage-shell'
+    );
+    const nativeHostGroup = scenarioCodeSplitting.groups.find(
+      (group) => group.name === 'native-host'
+    );
     expect(dataGroup!.priority!).toBeGreaterThan(pickerGroup!.priority!);
+    expect(pickerGroup!.priority!).toBeGreaterThan(frontstageShellGroup!.priority!);
+    expect(frontstageShellGroup!.priority!).toBeGreaterThan(nativeHostGroup!.priority!);
+  });
+
+  test('coalesces Settings primitives below existing demand groups', () => {
+    const groups = scenarioCodeSplitting.groups;
+    const settings = groups.find((group) => group.name === 'settings-shared');
+    expect(settings?.test).toBeInstanceOf(RegExp);
+    expect(settings?.test?.test('/repo/web/app/src/shared/ui/data-table/data-table-state.ts')).toBe(true);
+    expect(settings?.test?.test('/repo/web/app/src/shared/ui/clipboard/copy-text.ts')).toBe(false);
+    for (const group of groups.filter((group) => group !== settings)) {
+      expect(settings!.priority).toBeLessThan(group.priority ?? 0);
+    }
   });
 
   test('keeps application modules under route and demand-island ownership', () => {

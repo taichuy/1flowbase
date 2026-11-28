@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 
@@ -12,8 +13,9 @@ function grant(permissions: string[]) {
   const { actor, me } = useAuthStore.getState();
   useAuthStore.setState({
     actor: { ...actor!, effective_display_role: 'readonly.audit.20261102' },
-    me: { ...me!, effective_display_role: 'readonly.audit.20261102', permissions }
+    me: { ...me!, effective_display_role: 'readonly.audit.20261102', policy_fingerprint: 'fixture-policy' }
   });
+  seedAccessFixture(permissions);
 }
 
 describe('MCP exact operation controls', () => {

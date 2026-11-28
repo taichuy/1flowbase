@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import type {
   ConsoleMcpCatalog,
   ConsoleMcpInstanceDirectory,
@@ -131,9 +132,10 @@ function grant(permissions: string[]) {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'readonly.audit.20261102',
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 const clients: QueryClient[] = [];

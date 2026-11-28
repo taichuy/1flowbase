@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { describe, test, expect, vi } from 'vitest';
 import './embedded-agent-assistant.fixtures';
 import { AppProviders } from '../../../../app/AppProviders';
@@ -502,8 +503,9 @@ describe('EmbeddedAgentAssistant', () => {
       const auth = useAuthStore.getState();
       useAuthStore.setState({
         actor: { ...auth.actor!, effective_display_role: 'member' },
-        me: { ...auth.me!, effective_display_role: 'member', permissions }
+        me: { ...auth.me!, effective_display_role: 'member', policy_fingerprint: 'fixture-policy' }
       });
+      seedAccessFixture(permissions);
       updateConsoleAssistantSettings.mockImplementation(async (preference) => ({
         ...(await getConsoleAssistantSettings()),
         preference

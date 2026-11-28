@@ -131,13 +131,20 @@ async fn personal_writes_require_independent_operations_and_keep_security_self_s
             } else {
                 StatusCode::FORBIDDEN
             };
+            let response =
+                personal_request(&app, &cookie, &csrf, "PATCH", path, body.clone()).await;
             assert_eq!(
-                personal_request(&app, &cookie, &csrf, "PATCH", path, body.clone())
-                    .await
-                    .status(),
+                response.status(),
                 expected,
                 "grant {allowed_id}, route {path}"
             );
+            if expected == StatusCode::OK && path.starts_with("/api/console/me") {
+                let response: serde_json::Value = serde_json::from_slice(
+                    &to_bytes(response.into_body(), usize::MAX).await.unwrap(),
+                )
+                .unwrap();
+                assert!(response["data"].get("permissions").is_none());
+            }
         }
         if *allowed_id == "patch_me_meta" {
             let before = app
@@ -268,6 +275,7 @@ async fn patch_me_route_updates_editable_fields() {
     let payload: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(payload["data"]["preferred_locale"], "zh_Hans");
+    assert!(payload["data"].get("permissions").is_none());
 
     let me_response = app
         .clone()
@@ -403,6 +411,7 @@ async fn patch_me_meta_route_merges_user_preferences_and_returns_them_on_me() {
             .unwrap(),
     )
     .unwrap();
+    assert!(first_payload["data"].get("permissions").is_none());
     assert_eq!(
         first_payload["data"]["meta"]["ui"]["data_tables"]["applications.logs.runs"]
             ["visibleColumnKeys"],
@@ -544,4 +553,20 @@ async fn change_password_route_invalidates_old_session() {
         .unwrap();
 
     assert_eq!(new_login_response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn console_access_evaluation_requires_session_csrf() {
+    let app = test_app().await;
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = personal_request(
+        &app,
+        &cookie,
+        "invalid-csrf",
+        "POST",
+        "/api/console/access/evaluate",
+        json!({"codes":["patch_me"]}),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }

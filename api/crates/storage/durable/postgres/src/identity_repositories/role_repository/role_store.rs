@@ -252,12 +252,14 @@ impl RoleRepository for PgControlPlaneStore {
             return Err(ControlPlaneError::InvalidInput("default_member_role_required").into());
         }
 
-        let binding_count: i64 =
-            sqlx::query_scalar("select count(*) from user_role_bindings where role_id = $1")
-                .bind(role.id)
-                .fetch_one(self.pool())
-                .await?;
-        if binding_count > 0 {
+        let in_use: bool = sqlx::query_scalar(
+            "select exists (select 1 from user_role_bindings where role_id = $1)
+                 or exists (select 1 from department_role_bindings where role_id = $1)",
+        )
+        .bind(role.id)
+        .fetch_one(self.pool())
+        .await?;
+        if in_use {
             return Err(ControlPlaneError::Conflict("role_in_use").into());
         }
 

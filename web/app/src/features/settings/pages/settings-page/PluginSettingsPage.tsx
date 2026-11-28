@@ -115,7 +115,8 @@ function PublishedPluginSettingsPage({
             id: actor.id,
             displayName:
               me?.nickname?.trim() || me?.name?.trim() || actor.account,
-            permissions: Object.freeze([...(me?.permissions ?? [])]),
+
+            policy_fingerprint: me?.policy_fingerprint,
             isRoot: actor.effective_display_role === 'root'
           })
         : null,

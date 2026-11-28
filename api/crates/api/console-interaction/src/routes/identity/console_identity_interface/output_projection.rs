@@ -14,13 +14,11 @@ impl InterfaceContract for ConsoleIdentityOutput {
                             "available_roles",
                             serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("code",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("scope_kind",mp::object_schema([("byte_count",mp::count_schema())]))])}),
                         ),
-                        (
-                            "active_role_permissions",
-                            mp::object_schema([("item_count", mp::count_schema())]),
-                        ),
+                        ("policy_fingerprint", mp::text_schema()),
                     ]),
                 ),
             ]),
+            mp::object_schema([("variant", mp::tag_schema("Access"))]),
             mp::object_schema([
                 ("variant", mp::tag_schema("Me")),
                 (
@@ -48,10 +46,7 @@ impl InterfaceContract for ConsoleIdentityOutput {
                             "effective_display_role",
                             mp::object_schema([("byte_count", mp::count_schema())]),
                         ),
-                        (
-                            "permissions",
-                            mp::object_schema([("item_count", mp::count_schema())]),
-                        ),
+                        ("policy_fingerprint", mp::text_schema()),
                     ]),
                 ),
             ]),
@@ -162,15 +157,13 @@ impl InterfaceContract for ConsoleIdentityOutput {
                             )
                         }),
                         (
-                            "active_role_permissions",
-                            mp::object_value([(
-                                "item_count",
-                                serde_json::json!((_field_0).active_role_permissions.len()),
-                            )]),
+                            "policy_fingerprint",
+                            serde_json::json!(_field_0.policy_fingerprint),
                         ),
                     ]),
                 ),
             ]),
+            Self::Access(_) => mp::object_value([("variant", serde_json::json!("Access"))]),
             Self::Me(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Me".to_owned())),
                 (
@@ -217,11 +210,8 @@ impl InterfaceContract for ConsoleIdentityOutput {
                             )]),
                         ),
                         (
-                            "permissions",
-                            mp::object_value([(
-                                "item_count",
-                                serde_json::json!((_field_0).permissions.len()),
-                            )]),
+                            "policy_fingerprint",
+                            serde_json::json!(_field_0.policy_fingerprint),
                         ),
                     ]),
                 ),

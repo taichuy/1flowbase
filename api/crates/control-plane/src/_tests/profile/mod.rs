@@ -20,6 +20,7 @@ fn test_user() -> UserRecord {
         email_login_enabled: true,
         phone_login_enabled: true,
         status: UserStatus::Active,
+        department_roles: Vec::new(),
         session_version: 1,
         roles: vec![BoundRole {
             code: "root".to_string(),
@@ -43,7 +44,7 @@ async fn generic_preferences_cannot_replace_or_delete_assistant_owned_metadata()
         serde_json::json!({"workspaces":{"audit":{"application_id":"changed"}}}),
     ] {
         let error = service.update_me_preferences(UpdateMeMetaCommand {
-            actor_user_id: repository.user().id, tenant_id: Uuid::nil(), workspace_id: Uuid::nil(),
+            actor_user_id: repository.user().id,
             meta_patch: serde_json::json!({"embedded_assistant":value,"ui":{"theme":"changed"}}),
         }).await.err().expect("generic metadata must not bypass the assistant preference owner");
         assert!(error
@@ -54,8 +55,6 @@ async fn generic_preferences_cannot_replace_or_delete_assistant_owned_metadata()
     service
         .update_me_preferences(UpdateMeMetaCommand {
             actor_user_id: repository.user().id,
-            tenant_id: Uuid::nil(),
-            workspace_id: Uuid::nil(),
             meta_patch: serde_json::json!({"ui":{"theme":"dark"}}),
         })
         .await
@@ -76,8 +75,6 @@ async fn update_me_updates_only_profile_fields() {
     let profile = service
         .update_me(UpdateMeCommand {
             actor_user_id: existing_user.id,
-            tenant_id: Uuid::nil(),
-            workspace_id: Uuid::nil(),
             name: "Root Next".to_string(),
             nickname: "Captain Root".to_string(),
             email: "root-next@example.com".to_string(),
@@ -102,9 +99,9 @@ async fn update_me_updates_only_profile_fields() {
     assert_eq!(stored_user.account, existing_user.account);
     assert_eq!(stored_user.status, existing_user.status);
     assert_eq!(stored_user.session_version, existing_user.session_version);
-    assert_eq!(profile.user.email, "root-next@example.com");
-    assert_eq!(profile.user.nickname, "Captain Root");
-    assert_eq!(profile.actor.effective_display_role, "root");
+    assert_eq!(profile.email, "root-next@example.com");
+    assert_eq!(profile.nickname, "Captain Root");
+    assert_eq!(profile.id, repository.user().id);
 }
 
 #[tokio::test]
@@ -115,8 +112,6 @@ async fn update_me_persists_preferred_locale() {
     let profile = service
         .update_me(UpdateMeCommand {
             actor_user_id: repository.user().id,
-            tenant_id: Uuid::nil(),
-            workspace_id: Uuid::nil(),
             name: "Root".into(),
             nickname: "Root".into(),
             email: "root@example.com".into(),
@@ -128,7 +123,7 @@ async fn update_me_persists_preferred_locale() {
         .await
         .unwrap();
 
-    assert_eq!(profile.user.preferred_locale.as_deref(), Some("zh_Hans"));
+    assert_eq!(profile.preferred_locale.as_deref(), Some("zh_Hans"));
 }
 
 #[tokio::test]
@@ -152,8 +147,6 @@ async fn update_me_meta_merges_nested_preferences_without_replacing_siblings() {
     let profile = service
         .update_me_meta(UpdateMeMetaCommand {
             actor_user_id: repository.user().id,
-            tenant_id: Uuid::nil(),
-            workspace_id: Uuid::nil(),
             meta_patch: serde_json::json!({
                 "ui": {
                     "data_tables": {
@@ -170,11 +163,11 @@ async fn update_me_meta_merges_nested_preferences_without_replacing_siblings() {
         .unwrap();
 
     assert_eq!(
-        profile.user.meta["ui"]["data_tables"]["applications.logs.runs"]["visibleColumnKeys"],
+        profile.meta["ui"]["data_tables"]["applications.logs.runs"]["visibleColumnKeys"],
         serde_json::json!(["title"])
     );
     assert_eq!(
-        profile.user.meta["ui"]["data_tables"]["applications.logs.runs"]["columnWidths"],
+        profile.meta["ui"]["data_tables"]["applications.logs.runs"]["columnWidths"],
         serde_json::json!({
             "title": 320,
             "status": 180

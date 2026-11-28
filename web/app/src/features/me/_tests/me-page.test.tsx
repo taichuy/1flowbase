@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Grid } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -54,9 +55,10 @@ function authenticate(
       preferred_locale: preferredLocale,
       meta,
       effective_display_role: 'member',
-      permissions: ['application.create.all', 'plugin_config.configure.all', 'patch_me']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['application.create.all', 'plugin_config.configure.all', 'patch_me']);
 }
 
 function renderApp(pathname: string) {
@@ -139,7 +141,7 @@ describe('MePage', () => {
         introduction: 'updated intro',
         preferred_locale: null,
         effective_display_role: 'member',
-        permissions: []
+        policy_fingerprint: 'fixture-policy'
       });
 
       renderApp('/me/profile');
@@ -230,7 +232,8 @@ describe('MePage', () => {
 
   test('reader keeps profile details visible while profile editing is disabled', async () => {
     const me = useAuthStore.getState().me!;
-    useAuthStore.getState().setMe({ ...me, permissions: ['patch_me_meta'] });
+    useAuthStore.getState().setMe({ ...me });
+    seedAccessFixture(['patch_me_meta']);
     renderApp('/me/profile');
     expect(await screen.findByRole('heading', { name: '个人资料', level: 4 })).toBeInTheDocument();
     expect(screen.getByText('root@example.com')).toBeInTheDocument();
@@ -244,7 +247,7 @@ describe('MePage', () => {
   test('submits password change on /me/security and navigates to /sign-in after success', async () => {
     changeMyPassword.mockResolvedValue(undefined);
     const me = useAuthStore.getState().me!;
-    useAuthStore.getState().setMe({ ...me, permissions: [] });
+    useAuthStore.getState().setMe({ ...me });
 
     renderApp('/me/security');
 

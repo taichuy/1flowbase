@@ -356,7 +356,7 @@ impl InterfaceContract for MembershipOutput {
                 ("variant", mp::tag_schema("Members")),
                 (
                     "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("nickname",mp::object_schema([("byte_count",mp::count_schema())])), ("introduction",mp::object_schema([("byte_count",mp::count_schema())])), ("default_display_role",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("status",mp::text_schema()), ("role_codes",mp::object_schema([("item_count",mp::count_schema())]))])}),
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("nickname",mp::object_schema([("byte_count",mp::count_schema())])), ("introduction",mp::object_schema([("byte_count",mp::count_schema())])), ("default_display_role",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("status",mp::text_schema()), ("role_codes",mp::object_schema([("item_count",mp::count_schema())])), ("inherited_role_codes",mp::object_schema([("item_count",mp::count_schema())]))])}),
                 ),
             ]),
             mp::object_schema([
@@ -384,6 +384,10 @@ impl InterfaceContract for MembershipOutput {
                         ("status", mp::text_schema()),
                         (
                             "role_codes",
+                            mp::object_schema([("item_count", mp::count_schema())]),
+                        ),
+                        (
+                            "inherited_role_codes",
                             mp::object_schema([("item_count", mp::count_schema())]),
                         ),
                     ]),
@@ -498,6 +502,13 @@ impl InterfaceContract for MembershipOutput {
                                             serde_json::json!((item).role_codes.len()),
                                         )]),
                                     ),
+                                    (
+                                        "inherited_role_codes",
+                                        mp::object_value([(
+                                            "item_count",
+                                            serde_json::json!((item).inherited_role_codes.len()),
+                                        )]),
+                                    ),
                                 ]))
                             })
                             .collect::<Option<Vec<_>>>()?,
@@ -547,6 +558,13 @@ impl InterfaceContract for MembershipOutput {
                             mp::object_value([(
                                 "item_count",
                                 serde_json::json!((_field_0).role_codes.len()),
+                            )]),
+                        ),
+                        (
+                            "inherited_role_codes",
+                            mp::object_value([(
+                                "item_count",
+                                serde_json::json!((_field_0).inherited_role_codes.len()),
                             )]),
                         ),
                     ]),
@@ -640,14 +658,19 @@ fn affects_event_subscriptions(input: &MembershipInput) -> bool {
 
 struct MembershipAdapter {
     store: MainDurableStore,
+    navigation_cache: control_plane::navigation_cache::NavigationCache,
 }
 
 pub fn membership_port(
     store: MainDurableStore,
     changes: Arc<tokio::sync::Notify>,
+    navigation_cache: control_plane::navigation_cache::NavigationCache,
 ) -> Arc<dyn ConsoleInterfacePort<MembershipInput, MembershipOutput>> {
     crate::workers::event_workflow::refresh::after_success(
-        Arc::new(MembershipAdapter { store }),
+        Arc::new(MembershipAdapter {
+            store,
+            navigation_cache,
+        }),
         changes,
         affects_event_subscriptions,
     )
@@ -665,7 +688,7 @@ impl MembershipAdapter {
             user.id,
         )
         .await?;
-        let mut response = members::to_member_response(user);
+        let mut response = members::to_member_response(user, actor.current_workspace_id);
         response.department_ids = departments
             .department_ids
             .into_iter()
@@ -706,7 +729,8 @@ impl MembershipAdapter {
                     .into_iter()
                     .map(|user| {
                         let membership = departments.remove(&user.id).unwrap_or_default();
-                        let mut response = members::to_member_response(user);
+                        let mut response =
+                            members::to_member_response(user, actor.current_workspace_id);
                         response.department_ids = membership
                             .department_ids
                             .into_iter()
@@ -721,6 +745,7 @@ impl MembershipAdapter {
             }
             MembershipInput::CreateMember(body) => {
                 let user = MemberService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .create_member(CreateMemberCommand {
                         actor_user_id: actor.user_id,
                         account: body.account,
@@ -774,6 +799,7 @@ impl MembershipAdapter {
             }
             MembershipInput::DeleteMember { member_id } => {
                 MemberService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .delete_member(DeleteMemberCommand {
                         actor_user_id: actor.user_id,
                         target_user_id: parse_member_id(&member_id)?,
@@ -793,6 +819,7 @@ impl MembershipAdapter {
             }
             MembershipInput::ReplaceMemberRoles { member_id, body } => {
                 MemberService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .replace_member_roles(ReplaceMemberRolesCommand {
                         actor_user_id: actor.user_id,
                         target_user_id: parse_member_id(&member_id)?,

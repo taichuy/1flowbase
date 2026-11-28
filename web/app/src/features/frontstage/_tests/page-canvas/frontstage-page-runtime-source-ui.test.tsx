@@ -57,7 +57,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'developer',
-      permissions: []
+      policy_fingerprint: 'fixture-policy'
     }
   });
 }

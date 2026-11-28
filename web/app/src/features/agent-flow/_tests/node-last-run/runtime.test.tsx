@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import {
   configure,
   fireEvent,
@@ -259,7 +260,8 @@ function authenticate() {
       introduction: '',
       preferred_locale: 'zh_Hans',
       effective_display_role: 'root',
-      permissions: ['application.view.all', 'application.edit.own'],
+      policy_fingerprint: 'fixture-policy',
+
       meta: {
         ui: {
           locale: {
@@ -269,6 +271,7 @@ function authenticate() {
       }
     }
   });
+  seedAccessFixture(['application.view.all', 'application.edit.own']);
 }
 
 function expectNodePreviewRequest(

@@ -115,16 +115,65 @@ where
         if let Some(scope) = &self.transport_connection_scope_override {
             apply_transport_connection_scope_override(&mut input, scope.as_deref());
         }
+        let privacy_kernel = self.runtime.privacy_masking_kernel();
+        let unmasked_input_for_capture = match privacy_kernel.as_ref() {
+            Some(kernel) if kernel.has_active_policies(self.workspace_id).await? => {
+                Some(input.clone())
+            }
+            _ => None,
+        };
+        let privacy_prepared = if let Some(kernel) = privacy_kernel.as_ref() {
+            let privacy_ctx = crate::privacy_masking::PrivacyInvocationContext {
+                workspace_id: self.workspace_id,
+                flow_run_id: self.flow_run_id,
+                application_id: self
+                    .flow_execution_context
+                    .as_ref()
+                    .map(|context| context.data_model.application_id),
+                provider_instance_id: instance.id,
+                provider_instance_name: instance.display_name.clone(),
+                model_id: input.model.clone(),
+                protocol: input.protocol.clone(),
+            };
+            kernel.prepare_invocation(&privacy_ctx, &mut input).await?
+        } else {
+            None
+        };
+        let capture_input = match privacy_prepared.as_ref() {
+            Some(prepared) if prepared.all_stages_restore => {
+                unmasked_input_for_capture.as_ref().unwrap_or(&input)
+            }
+            Some(prepared) => prepared.persisted_input_override.as_ref().unwrap_or(&input),
+            None => &input,
+        };
         let active_node = self.active_runtime_node().await?;
         let capture = native_trajectory::start(
             self.repository.clone(),
             self.flow_run_id,
             active_node.map(|node| (node.node_id, node.node_run_id)),
-            &input,
+            capture_input,
             self.observation_context.as_ref(),
         )
         .await;
-        let result = self.runtime.compact(&installation, input).await;
+        let mut result = self.runtime.compact(&installation, input).await;
+        if let (Some(prepared), Ok(compact_result)) = (privacy_prepared.as_ref(), result.as_mut()) {
+            if prepared.should_restore_output() {
+                if let plugin_framework::provider_contract::ProviderCompactResult::ResponseItems {
+                    response_items,
+                    ..
+                } = compact_result
+                {
+                    for item in response_items.iter_mut() {
+                        prepared.restoration_stack.restore_json(item);
+                    }
+                }
+            }
+        }
+        if let (Some(kernel), Some(prepared)) =
+            (privacy_kernel.as_ref(), privacy_prepared.as_ref())
+        {
+            kernel.finalize_invocation(prepared, None).await;
+        }
         capture
             .finish_compact(result.as_ref().ok(), result.is_err())
             .await;
@@ -136,6 +185,32 @@ where
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
         mut input: plugin_framework::provider_contract::ProviderCountTokensInput,
     ) -> Result<plugin_framework::provider_contract::ProviderCountTokensResult> {
+        let privacy_kernel = self.runtime.privacy_masking_kernel();
+        let privacy_prepared = if let Some(kernel) = privacy_kernel.as_ref() {
+            if kernel.has_active_policies(self.workspace_id).await? {
+                let instance = self.resolve_llm_instance(runtime).await?;
+                let mut inv = input.into_invocation();
+                let privacy_ctx = crate::privacy_masking::PrivacyInvocationContext {
+                    workspace_id: self.workspace_id,
+                    flow_run_id: self.flow_run_id,
+                    application_id: self
+                        .flow_execution_context
+                        .as_ref()
+                        .map(|context| context.data_model.application_id),
+                    provider_instance_id: instance.id,
+                    provider_instance_name: instance.display_name.clone(),
+                    model_id: inv.model.clone(),
+                    protocol: inv.protocol.clone(),
+                };
+                let prepared = kernel.prepare_invocation(&privacy_ctx, &mut inv).await?;
+                input = plugin_framework::provider_contract::ProviderCountTokensInput::from_invocation(inv);
+                prepared
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let attempted = async {
             let instance = self.resolve_llm_instance(runtime).await?;
             let installation = self.ready_installation(instance.installation_id).await?;
@@ -156,6 +231,11 @@ where
                 .await
         }
         .await;
+        if let (Some(kernel), Some(prepared)) =
+            (privacy_kernel.as_ref(), privacy_prepared.as_ref())
+        {
+            kernel.finalize_invocation(prepared, None).await;
+        }
 
         match attempted {
             Ok(result) => Ok(result),
@@ -305,6 +385,37 @@ where
             })
     }
 
+    async fn project_persisted_llm_input(
+        &self,
+        _runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        resolved_route: &orchestration_runtime::execution_engine::ResolvedProviderRoute,
+        input: &ProviderInvocationInput,
+    ) -> Result<Option<ProviderInvocationInput>> {
+        let Some(kernel) = self.runtime.privacy_masking_kernel() else {
+            return Ok(None);
+        };
+        if !kernel.has_active_policies(self.workspace_id).await? {
+            return Ok(None);
+        }
+        let Some(pin) = resolved_route.invocation_pin::<RuntimeProviderInvocationPin>() else {
+            return Ok(None);
+        };
+        let mut cloned = input.clone();
+        let ctx = crate::privacy_masking::PrivacyInvocationContext {
+            workspace_id: self.workspace_id,
+            flow_run_id: self.flow_run_id,
+            application_id: self
+                .flow_execution_context
+                .as_ref()
+                .map(|context| context.data_model.application_id),
+            provider_instance_id: pin.instance.id,
+            provider_instance_name: pin.instance.display_name.clone(),
+            model_id: cloned.model.clone(),
+            protocol: cloned.protocol.clone(),
+        };
+        kernel.project_persisted_input(&ctx, &mut cloned).await
+    }
+
     async fn invoke_resolved_llm(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
@@ -434,6 +545,37 @@ where
                 effective_context_window,
             )
             .await?;
+        let privacy_kernel = self.runtime.privacy_masking_kernel();
+        let unmasked_input_for_capture = match privacy_kernel.as_ref() {
+            Some(kernel) if kernel.has_active_policies(self.workspace_id).await? => {
+                Some(input.clone())
+            }
+            _ => None,
+        };
+        let privacy_prepared = if let Some(kernel) = privacy_kernel.as_ref() {
+            let privacy_ctx = crate::privacy_masking::PrivacyInvocationContext {
+                workspace_id: self.workspace_id,
+                flow_run_id: self.flow_run_id,
+                application_id: self
+                    .flow_execution_context
+                    .as_ref()
+                    .map(|context| context.data_model.application_id),
+                provider_instance_id: instance.id,
+                provider_instance_name: instance.display_name.clone(),
+                model_id: input.model.clone(),
+                protocol: input.protocol.clone(),
+            };
+            kernel.prepare_invocation(&privacy_ctx, &mut input).await?
+        } else {
+            None
+        };
+        let capture_input = match privacy_prepared.as_ref() {
+            Some(prepared) if prepared.all_stages_restore => {
+                unmasked_input_for_capture.as_ref().unwrap_or(&input)
+            }
+            Some(prepared) => prepared.persisted_input_override.as_ref().unwrap_or(&input),
+            None => &input,
+        };
         let provider_invoke_started_at = OffsetDateTime::now_utc();
         let provider_invoke_started = std::time::Instant::now();
         let first_token_timing = Arc::new(Mutex::new(None::<FirstTokenTiming>));
@@ -536,7 +678,7 @@ where
             active_node
                 .as_ref()
                 .map(|node| (node.node_id.clone(), node.node_run_id)),
-            &input,
+            capture_input,
             self.observation_context.as_ref(),
             selected_native_transport.then(|| {
                 json!({
@@ -560,7 +702,7 @@ where
                         active_node
                             .as_ref()
                             .map(|node| (node.node_id.clone(), node.node_run_id)),
-                        &input,
+                        capture_input,
                     ),
                 )
             } else {
@@ -598,6 +740,14 @@ where
                 presentation_source_node_id.as_deref(),
                 &node_id,
             ) && self.flow_execution_context.is_some();
+            let privacy_stream_restorer = privacy_prepared
+                .as_ref()
+                .filter(|prepared| prepared.should_restore_output())
+                .map(|prepared| prepared.new_stream_restorer());
+            let diagnostic_restoration_stack = privacy_prepared
+                .as_ref()
+                .filter(|prepared| prepared.should_restore_output())
+                .map(|prepared| prepared.restoration_stack.clone_without_shared_counters());
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
                 let mut client_progress = client_progress::ClientProgress::new(
@@ -605,8 +755,26 @@ where
                     response_round_id_for_task,
                     progress_source_active,
                 );
+                let mut stream_restorer = privacy_stream_restorer;
                 let mut ingress_sequence = 0_u64;
-                while let Some(mut event) = required_receiver.recv().await {
+                loop {
+                    let batch = match required_receiver.recv().await {
+                        Some(raw_event) => match stream_restorer.as_mut() {
+                            Some(restorer) => restorer.process_event(raw_event),
+                            None => vec![raw_event],
+                        },
+                        None => match stream_restorer.as_mut() {
+                            Some(restorer) => {
+                                let flushed = restorer.flush_all();
+                                if flushed.is_empty() {
+                                    break;
+                                }
+                                flushed
+                            }
+                            None => break,
+                        },
+                    };
+                    for mut event in batch {
                     ingress_sequence += 1;
                     let ingress_ms = provider_invoke_started.elapsed().as_millis() as u64;
                     let event_kind = provider_stream_event_kind(&event);
@@ -837,6 +1005,7 @@ where
                                 })?;
                         }
                     }
+                    }
                 }
                 let completion_deltas = canonical_writer.complete()?;
                 project_canonical_provider_deltas(
@@ -854,9 +1023,16 @@ where
             let diagnostic_flow_run_id = self.flow_run_id;
             diagnostic_forward_handle = Some(tokio::spawn(async move {
                 while let Some(event) = diagnostic_receiver.recv().await {
-                    let ProviderStreamEvent::NativeEvent { protocol, event } = event else {
+                    let ProviderStreamEvent::NativeEvent {
+                        protocol,
+                        mut event,
+                    } = event
+                    else {
                         continue;
                     };
+                    if let Some(stack) = diagnostic_restoration_stack.as_ref() {
+                        stack.restore_json(&mut event);
+                    }
                     if let (Some(stream), Some(flow_run_id)) =
                         (&diagnostic_stream, diagnostic_flow_run_id)
                     {
@@ -949,6 +1125,7 @@ where
             provider_invoke_ms = provider_invoke_started.elapsed().as_millis() as u64,
             "provider invoke finished"
         );
+        let had_live_event_forwarding = required_forward_handle.is_some();
         let (canonical_stream_state, forwarding_error) =
             if let Some(handle) = required_forward_handle {
                 match handle.await {
@@ -964,26 +1141,44 @@ where
             } else {
                 (None, None)
             };
+        let (mut invocation_output, mut invocation_error) = match invocation_result {
+            Ok(output) => (Some(output), None),
+            Err(error) => (None, Some(error)),
+        };
+        if let (Some(prepared), Some(output)) =
+            (privacy_prepared.as_ref(), invocation_output.as_mut())
+        {
+            if had_live_event_forwarding {
+                prepared.restore_completed_output(&mut output.events, &mut output.result);
+            } else {
+                prepared.restore_completed_output_counting(&mut output.events, &mut output.result);
+            }
+        }
+        if let (Some(kernel), Some(prepared)) =
+            (privacy_kernel.as_ref(), privacy_prepared.as_ref())
+        {
+            kernel
+                .finalize_invocation(
+                    prepared,
+                    invocation_output
+                        .as_ref()
+                        .and_then(|output| output.result.response_id.as_deref()),
+                )
+                .await;
+        }
         native_capture
             .finish(
-                invocation_result.as_ref().ok().map(|output| &output.result),
-                invocation_result
-                    .as_ref()
-                    .err()
-                    .map(|_| "invocation failed"),
+                invocation_output.as_ref().map(|output| &output.result),
+                invocation_error.as_ref().map(|_| "invocation failed"),
                 forwarding_error.is_none(),
             )
             .await;
-        protocol_completion.finish(invocation_result.is_ok() && forwarding_error.is_none());
+        protocol_completion.finish(invocation_output.is_some() && forwarding_error.is_none());
         if let Some(handle) = diagnostic_forward_handle {
             if let Err(error) = handle.await {
                 tracing::warn!(error = %error, "provider diagnostic event forwarding task panicked");
             }
         }
-        let (mut invocation_output, mut invocation_error) = match invocation_result {
-            Ok(output) => (Some(output), None),
-            Err(error) => (None, Some(error)),
-        };
         // Validate the provider-owned typed receipt before any host metadata wrapping.
         // Keep the validation result until settlement completes so invalid metadata does
         // not skip accounting for upstream usage that has already occurred.
@@ -1015,8 +1210,12 @@ where
                         | plugin_framework::provider_contract::ProviderFinishReason::McpCall))
                 {
                     if let Some(output_items) = completed_native_output_items(&items) {
+                        let history_wire_body = privacy_prepared
+                            .as_ref()
+                            .and_then(|prepared| prepared.persisted_native_wire_body.as_ref())
+                            .unwrap_or_else(|| transport.wire_body());
                         crate::application_public_api::compat::openai::history::completed_history(
-                            transport.wire_body(),
+                            history_wire_body,
                             self.native_history.as_ref(),
                             &output_items,
                         )?

@@ -1,10 +1,16 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
+use api_host_kernel::middleware::{
+    console_policy_projection::ConsolePolicyProjector,
+    require_session::{
+        identity_request_session, identity_request_user, with_identity_request_context,
+    },
+};
 use control_plane::{
     auth::{
         ApiKeyService, CreateUserApiKeyCommand, ListUserApiKeysCommand, RevokeUserApiKeyCommand,
     },
-    ports::{RoleRepository, SessionStore},
+    ports::SessionStore,
     profile::{ProfileService, UpdateMeCommand, UpdateMeMetaCommand},
     session_security::{
         ChangeOwnPasswordCommand, LogoutCurrentSessionCommand, RevokeAllSessionsCommand,
@@ -26,7 +32,7 @@ use interface_runtime::{
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
-use super::{me, session, user_api_keys};
+use super::{access, me, session, user_api_keys};
 use crate::{app_state::ApiState, error_response::ApiError};
 
 const OWNER: &str = "api-server.console-identity";
@@ -42,6 +48,7 @@ enum ConsoleIdentityInput {
     SwitchWorkspace { workspace_id: String },
     RedeemWorkspaceInvitation { invitation_token: String },
     SwitchRole { role_code: String },
+    EvaluateAccess(access::EvaluateConsoleAccessBody),
     GetMe,
     PatchMe(me::PatchMeBody),
     PatchMeMeta(me::PatchMeMetaBody),
@@ -69,6 +76,7 @@ impl InterfaceContract for ConsoleIdentityInput {
                 ("role_code", mp::text_schema()),
             ]),
             mp::object_schema([("variant", mp::tag_schema("RedeemWorkspaceInvitation"))]),
+            mp::object_schema([("variant", mp::tag_schema("EvaluateAccess"))]),
             mp::object_schema([("variant", mp::tag_schema("GetMe"))]),
             mp::object_schema([
                 ("variant", mp::tag_schema("PatchMe")),
@@ -175,6 +183,9 @@ impl InterfaceContract for ConsoleIdentityInput {
                 ),
                 ("role_code", mp::text(_field_role_code)?),
             ]),
+            Self::EvaluateAccess(_) => {
+                mp::object_value([("variant", serde_json::json!("EvaluateAccess"))])
+            }
             Self::GetMe => {
                 mp::object_value([("variant", serde_json::Value::String("GetMe".to_owned()))])
             }
@@ -303,6 +314,7 @@ impl InterfaceContract for ConsoleIdentityInput {
 
 pub enum ConsoleIdentityOutput {
     Session(session::SessionResponse),
+    Access(access::EvaluateConsoleAccessResponse),
     Me(me::MeResponse),
     UserApiKeys(user_api_keys::UserApiKeyListResponse),
     UserApiKeyRoleOptions(user_api_keys::UserApiKeyRoleOptionsResponse),
@@ -350,6 +362,7 @@ struct ConsoleIdentityAdapter {
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     cookie_name: String,
+    policy_projector: ConsolePolicyProjector,
 }
 
 pub fn console_identity_port(
@@ -357,12 +370,14 @@ pub fn console_identity_port(
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     cookie_name: String,
+    policy_projector: ConsolePolicyProjector,
 ) -> Arc<dyn ConsoleIdentityPort> {
     Arc::new(ConsoleIdentityAdapter {
         workspace_policy,
         store,
         session_store,
         cookie_name,
+        policy_projector,
     })
 }
 
@@ -374,6 +389,9 @@ impl ConsoleIdentityAdapter {
         let identity = principal.authenticated_session().ok_or(
             control_plane::errors::ControlPlaneError::PermissionDenied("cookie_session_required"),
         )?;
+        if let Some(session) = identity_request_session(identity.expose_to_trusted_handler()) {
+            return Ok(session);
+        }
         self.session_store
             .get(identity.expose_to_trusted_handler())
             .await?
@@ -381,6 +399,9 @@ impl ConsoleIdentityAdapter {
     }
 
     async fn user(&self, principal: &UserPrincipal) -> Result<domain::UserRecord, ApiError> {
+        if let Some(user) = identity_request_user(principal.actor().user_id) {
+            return Ok(user);
+        }
         self.store
             .find_user_by_id(principal.actor().user_id)
             .await?
@@ -404,11 +425,14 @@ impl ConsoleIdentityAdapter {
             session_id: current_session.session_id,
             target_workspace_id: workspace_id,
         };
-        let result = if invitation_redeemed {
+        let mut result = if invitation_redeemed {
             service.switch_workspace_after_invitation(command).await?
         } else {
             service.switch_workspace(command).await?
         };
+        self.policy_projector
+            .project(&self.store, &mut result.actor)
+            .await?;
         Ok(ConsoleIdentityOutput::Session(
             session::to_session_response(user, &result.actor, &result.session, &self.cookie_name),
         ))
@@ -421,6 +445,15 @@ impl ConsoleIdentityAdapter {
     ) -> Result<ConsoleIdentityOutput, ApiError> {
         let actor = principal.actor();
         match input {
+            ConsoleIdentityInput::EvaluateAccess(body) => Ok(ConsoleIdentityOutput::Access(
+                access::EvaluateConsoleAccessResponse {
+                    policy_fingerprint:
+                        api_host_kernel::middleware::console_policy_projection::policy_fingerprint(
+                            actor,
+                        ),
+                    allowed: self.policy_projector.evaluate_access(actor, body.codes),
+                },
+            )),
             ConsoleIdentityInput::GetSession => {
                 let current_session = self.authenticated_session(principal).await?;
                 let user = self.user(principal).await?;
@@ -471,6 +504,12 @@ impl ConsoleIdentityAdapter {
                         .ok_or(ControlPlaneError::PermissionDenied(
                             "invitation_unsupported",
                         ))?;
+                self.policy_projector.invalidate(workspace_id).await;
+                let user = self
+                    .store
+                    .find_user_by_id(user.id)
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
                 self.switch_workspace(current_session, &user, workspace_id, true)
                     .await
             }
@@ -483,7 +522,17 @@ impl ConsoleIdentityAdapter {
                     )
                     .into());
                 }
-                let result = WorkspaceSessionService::new(
+                let user = self.user(principal).await?;
+                if !user.has_effective_role_in_workspace(
+                    current_session.current_workspace_id,
+                    role_code,
+                ) {
+                    return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                        "role_not_bound",
+                    )
+                    .into());
+                }
+                let mut result = WorkspaceSessionService::new(
                     self.store.clone(),
                     self.store.clone(),
                     Arc::clone(&self.session_store),
@@ -494,7 +543,9 @@ impl ConsoleIdentityAdapter {
                     active_role_code: role_code.to_string(),
                 })
                 .await?;
-                let user = self.user(principal).await?;
+                self.policy_projector
+                    .project(&self.store, &mut result.actor)
+                    .await?;
                 Ok(ConsoleIdentityOutput::Session(
                     session::to_session_response(
                         &user,
@@ -505,9 +556,7 @@ impl ConsoleIdentityAdapter {
                 ))
             }
             ConsoleIdentityInput::GetMe => {
-                let profile = ProfileService::new(self.store.clone())
-                    .get_me(actor.user_id, actor.tenant_id, actor.current_workspace_id)
-                    .await?;
+                let profile = self.user(principal).await?;
                 Ok(ConsoleIdentityOutput::Me(me::to_me_response(
                     profile, actor,
                 )))
@@ -516,8 +565,6 @@ impl ConsoleIdentityAdapter {
                 let profile = ProfileService::new(self.store.clone())
                     .update_me(UpdateMeCommand {
                         actor_user_id: actor.user_id,
-                        tenant_id: actor.tenant_id,
-                        workspace_id: actor.current_workspace_id,
                         name: body.name,
                         nickname: body.nickname,
                         email: body.email,
@@ -538,8 +585,6 @@ impl ConsoleIdentityAdapter {
                 let profile = ProfileService::new(self.store.clone())
                     .update_me_preferences(UpdateMeMetaCommand {
                         actor_user_id: actor.user_id,
-                        tenant_id: actor.tenant_id,
-                        workspace_id: actor.current_workspace_id,
                         meta_patch: body.meta,
                     })
                     .await?;
@@ -576,9 +621,8 @@ impl ConsoleIdentityAdapter {
             }
             ConsoleIdentityInput::ListUserApiKeyRoleOptions => {
                 let user = self.user(principal).await?;
-                let workspace_roles = self.store.list_roles(actor.current_workspace_id).await?;
                 Ok(ConsoleIdentityOutput::UserApiKeyRoleOptions(
-                    user_api_keys::role_options_response(&user, workspace_roles, actor),
+                    user_api_keys::role_options_response(&user, actor),
                 ))
             }
             ConsoleIdentityInput::CreateUserApiKey(payload) => {
@@ -590,13 +634,7 @@ impl ConsoleIdentityAdapter {
                     .filter(|value| !value.is_empty())
                     .unwrap_or(actor.effective_display_role.as_str())
                     .to_string();
-                if !user.roles.iter().any(|role| {
-                    role.code == role_code
-                        && user_api_keys::is_role_bound_to_current_workspace(
-                            role,
-                            actor.current_workspace_id,
-                        )
-                }) {
+                if !user.has_effective_role_in_workspace(actor.current_workspace_id, &role_code) {
                     return Err(control_plane::errors::ControlPlaneError::InvalidInput(
                         "role_code",
                     )
@@ -684,6 +722,13 @@ struct Declaration {
 }
 
 const DECLARATIONS: &[Declaration] = &[
+    Declaration {
+        interface_id: "console.identity.access.evaluate",
+        binding_id: "http.console.identity.access.evaluate.v1",
+        method: "POST",
+        path: "/api/console/access/evaluate",
+        mutating: false,
+    },
     Declaration {
         interface_id: "console.identity.session.get",
         binding_id: "http.console.identity.session.get.v1",
@@ -903,6 +948,15 @@ fn register_authentication(
 }
 
 pub(crate) async fn invoke(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    credential: crate::extension_bus::ConsoleAuthenticationCredential,
+    input: ConsoleIdentityInput,
+) -> Result<ConsoleIdentityOutput, ApiError> {
+    with_identity_request_context(invoke_inner(state, binding_id, credential, input)).await
+}
+
+async fn invoke_inner(
     state: Arc<ApiState>,
     binding_id: &'static str,
     credential: crate::extension_bus::ConsoleAuthenticationCredential,

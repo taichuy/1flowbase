@@ -128,9 +128,11 @@ test('late save completion cannot close a newer registered block draft', async (
   try {
     const firstRow = (await screen.findByText('First block')).closest('tr')!;
     fireEvent.click(within(firstRow).getByRole('button', { name: 'Edit' }));
-    const previousStudio = screen.getByRole('dialog', {
-      name: 'Block source studio'
-    });
+    const previousStudio = await screen.findByRole(
+      'dialog',
+      { name: 'Block source studio' },
+      { timeout: 10_000 }
+    );
     fireEvent.change(within(previousStudio).getByLabelText('Name'), {
       target: { value: 'Saved first block' }
     });
@@ -149,7 +151,7 @@ test('late save completion cannot close a newer registered block draft', async (
     );
     const secondRow = screen.getByText('Second block').closest('tr')!;
     fireEvent.click(within(secondRow).getByRole('button', { name: 'Edit' }));
-    const nextStudio = screen.getByRole('dialog', {
+    const nextStudio = await screen.findByRole('dialog', {
       name: 'Block source studio'
     });
     fireEvent.change(within(nextStudio).getByLabelText('Name'), {

@@ -52,6 +52,7 @@ pub mod plugin_isolation;
 pub mod plugin_lifecycle;
 pub mod plugin_management;
 pub mod ports;
+pub mod privacy_masking;
 pub mod profile;
 pub mod resource_action;
 pub mod resource_crud;

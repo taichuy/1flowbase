@@ -237,4 +237,11 @@ pub trait ProviderRuntimePort: Send + Sync {
         );
         Ok(None)
     }
+
+    /// Optional host-owned in-process privacy masking kernel; `None` disables masking in unit harnesses.
+    fn privacy_masking_kernel(
+        &self,
+    ) -> Option<std::sync::Arc<crate::privacy_masking::PrivacyMaskingKernel>> {
+        None
+    }
 }

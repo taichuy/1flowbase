@@ -1,4 +1,4 @@
-use domain::{BoundRole, RoleScopeKind, UserRecord, UserStatus};
+use domain::{BoundRole, UserRecord, UserStatus};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -19,7 +19,8 @@ pub struct StoredMemberRow {
     pub phone_login_enabled: bool,
     pub status: String,
     pub session_version: i64,
-    pub roles: Vec<(String, String, RoleScopeKind, Option<Uuid>)>,
+    pub roles: Vec<BoundRole>,
+    pub department_roles: Vec<BoundRole>,
 }
 
 pub struct PgMemberMapper;
@@ -47,16 +48,8 @@ impl PgMemberMapper {
                 UserStatus::Disabled
             },
             session_version: row.session_version,
-            roles: row
-                .roles
-                .into_iter()
-                .map(|(code, name, scope_kind, workspace_id)| BoundRole {
-                    code,
-                    name,
-                    scope_kind,
-                    workspace_id,
-                })
-                .collect(),
+            roles: row.roles,
+            department_roles: row.department_roles,
         }
     }
 }

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import type { ReactNode } from 'react';
@@ -144,9 +145,10 @@ beforeEach(() => {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: ['application.view.all', 'application.edit.own']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['application.view.all', 'application.edit.own']);
 });
 
 afterEach(() => {

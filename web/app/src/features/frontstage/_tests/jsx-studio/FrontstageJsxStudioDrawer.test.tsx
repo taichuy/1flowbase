@@ -333,7 +333,7 @@ describe('FrontstageJsxStudioDrawer', () => {
   });
 
   test('AC-004 disables template creation without management permission', async () => {
-    templateAuth.me.permissions = [];
+    templateAuth.canManageTemplates = false;
     await renderSettled(
       <FrontstageJsxStudioDrawer
         open
