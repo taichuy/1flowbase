@@ -640,14 +640,19 @@ fn affects_event_subscriptions(input: &MembershipInput) -> bool {
 
 struct MembershipAdapter {
     store: MainDurableStore,
+    navigation_cache: control_plane::navigation_cache::NavigationCache,
 }
 
 pub fn membership_port(
     store: MainDurableStore,
     changes: Arc<tokio::sync::Notify>,
+    navigation_cache: control_plane::navigation_cache::NavigationCache,
 ) -> Arc<dyn ConsoleInterfacePort<MembershipInput, MembershipOutput>> {
     crate::workers::event_workflow::refresh::after_success(
-        Arc::new(MembershipAdapter { store }),
+        Arc::new(MembershipAdapter {
+            store,
+            navigation_cache,
+        }),
         changes,
         affects_event_subscriptions,
     )
@@ -721,6 +726,7 @@ impl MembershipAdapter {
             }
             MembershipInput::CreateMember(body) => {
                 let user = MemberService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .create_member(CreateMemberCommand {
                         actor_user_id: actor.user_id,
                         account: body.account,
@@ -774,6 +780,7 @@ impl MembershipAdapter {
             }
             MembershipInput::DeleteMember { member_id } => {
                 MemberService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .delete_member(DeleteMemberCommand {
                         actor_user_id: actor.user_id,
                         target_user_id: parse_member_id(&member_id)?,
@@ -793,6 +800,7 @@ impl MembershipAdapter {
             }
             MembershipInput::ReplaceMemberRoles { member_id, body } => {
                 MemberService::new(self.store.for_actor(actor.clone()))
+                    .with_navigation_cache(self.navigation_cache.clone())
                     .replace_member_roles(ReplaceMemberRolesCommand {
                         actor_user_id: actor.user_id,
                         target_user_id: parse_member_id(&member_id)?,

@@ -43,7 +43,7 @@ const templateApi = vi.hoisted(() => ({
 const templateAuth = vi.hoisted(() => ({
   csrfToken: 'csrf-test',
   actor: null,
-  me: { permissions: ['settings_feature.access.system.ui-management'] }
+  canManageTemplates: true
 }));
 vi.mock('virtual:1flowbase-native-module-declarations', () => ({
   default: { version: 1, roots: {}, resources: {} }
@@ -52,6 +52,10 @@ vi.mock('../../../settings/api/ui-management', () => templateApi);
 vi.mock('../../../../state/auth-store', () => ({
   useAuthStore: (selector: (state: typeof templateAuth) => unknown) =>
     selector(templateAuth)
+}));
+
+vi.mock('../../../../state/console-operation-access', () => ({
+  useConsoleOperationAccess: () => () => templateAuth.canManageTemplates
 }));
 
 const blockCodeHook = vi.hoisted(() => ({
@@ -270,9 +274,7 @@ const buttonComponent = {
 
 beforeEach(async () => {
   vi.clearAllMocks();
-  templateAuth.me.permissions = [
-    'settings_feature.access.system.ui-management'
-  ];
+  templateAuth.canManageTemplates = true;
   templateApi.createSettingsUiTemplate.mockResolvedValue({
     id: 'saved-template',
     published_revision: null

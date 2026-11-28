@@ -1,3 +1,4 @@
+import { seedConsoleOperationAccessForTests } from '../../../../../../state/console-operation-access';
 import {
   act,
   cleanup,
@@ -155,12 +156,13 @@ function mount(
     onCreated?: (code: string) => void | Promise<void>;
   } = {}
 ) {
+  seedConsoleOperationAccessForTests({ 'model_fields.create': options.permission !== false });
   const ctx = {
     workspace: { id: 'workspace-1' },
     currentUser: {
       id: 'user-1',
       isRoot: false,
-      permissions: options.permission === false ? [] : ['model_fields.create']
+      policy_fingerprint: 'fixture-policy'
     },
     props: {},
     inputs: {},
@@ -239,7 +241,7 @@ function fill(dialog: HTMLElement) {
 beforeEach(() => {
   vi.clearAllMocks();
   resetAuthStore();
-  useAuthStore.setState({ csrfToken: 'csrf-123' });
+  useAuthStore.getState().setAuthenticated({ csrfToken: 'csrf-123', actor: { id: 'user-1', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' }, me: null });
   api.createConsoleDataModelField.mockResolvedValue(field);
   api.fetchConsoleDataModels
     .mockReset()

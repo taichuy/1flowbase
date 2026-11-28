@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
-import { hasConsoleOperationAccess } from '../../../state/console-operation-access';
+import { useConsoleOperationAccess } from '../../../state/console-operation-access';
 import {
   fetchFrontstageBlockTypeDeclarations,
   frontstageBlockTypeDeclarationsQueryKey,
@@ -48,6 +48,7 @@ export function useFrontstageBlockTypeDeclarations({
   open: boolean;
   catalogEntries: readonly NormalizedFrontstageBlockCatalogEntry[];
 }) {
+  const can = useConsoleOperationAccess();
   const queryClient = useQueryClient();
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   const actor = useAuthStore((state) => state.actor);
@@ -68,11 +69,7 @@ export function useFrontstageBlockTypeDeclarations({
       me &&
       permissionFingerprint &&
       actor.current_workspace_id === workspaceId &&
-      hasConsoleOperationAccess(
-        actor.effective_display_role,
-        me.permissions,
-        'frontend_blocks.type_declarations.view'
-      )
+      can('frontend_blocks.type_declarations.view')
   );
 
   useEffect(() => {

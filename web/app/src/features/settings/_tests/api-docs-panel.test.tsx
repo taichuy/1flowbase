@@ -335,7 +335,7 @@ describe('ApiDocsPanel', () => {
         active_role_code: 'root'
       },
       available_roles: [{ code: 'root', name: 'Root', scope_kind: 'system' }],
-      active_role_permissions: [],
+      policy_fingerprint: 'fixture-policy',
       csrf_token: 'csrf-123',
       cookie_name: 'flowbase_console_session'
     });

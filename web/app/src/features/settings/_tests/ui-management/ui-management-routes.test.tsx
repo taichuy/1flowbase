@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import '../../../../test/fixtures/rc-util-unique-ids';
 import {
   act,
@@ -737,9 +738,10 @@ test('a tab-create grant enables tabs without enabling page mutation or tab dele
     me: {
       id: 'user-1', account: 'auditor', email: 'auditor@example.com', phone: null,
       nickname: 'Auditor', name: 'Auditor', avatar_url: null, introduction: '',
-      effective_display_role: 'readonly.audit.20261102', permissions: ['frontstage.tabs.create']
+      effective_display_role: 'readonly.audit.20261102', policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['frontstage.tabs.create']);
   api.list.mockResolvedValue([{ ...nodes[0], content_presentation: 'tabs' }]);
   render(<AppProviders><RouteManagementTab /></AppProviders>);
   await screen.findByText('Page A');

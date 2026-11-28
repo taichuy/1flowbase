@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { Grid } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -169,9 +170,10 @@ function authenticateWithPermissions(permissions: string[]) {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 function renderApp(pathname: string) {
@@ -231,7 +233,7 @@ describe('settings section surface', () => {
         active_role_code: 'root'
       },
       available_roles: [{ code: 'root', name: 'Root', scope_kind: 'system' }],
-      active_role_permissions: [],
+      policy_fingerprint: 'fixture-policy',
       csrf_token: 'csrf-123',
       cookie_name: 'flowbase_console_session'
     });

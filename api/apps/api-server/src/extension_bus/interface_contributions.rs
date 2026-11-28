@@ -170,10 +170,12 @@ pub(crate) fn production_interface_contributions(
         state.store.clone(),
         Arc::clone(&state.session_store),
         state.cookie_name.clone(),
+        state.console_policy_projector.clone(),
     );
     let console_membership = crate::routes::membership_interface::membership_port(
         state.store.clone(),
         state.event_workflow_changes.clone(),
+        control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
     );
     let console_organization = crate::routes::organization::interface::port(
         state.store.clone(),
@@ -417,6 +419,7 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-identity",
             &[
+                "console.identity.access.evaluate",
                 "console.identity.session.get",
                 "console.identity.session.delete",
                 "console.identity.session.revoke-all",

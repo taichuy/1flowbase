@@ -84,7 +84,7 @@ describe('McpManagementPanel', () => {
       const { actor, me } = useAuthStore.getState();
       useAuthStore.setState({
         actor: { ...actor!, effective_display_role: 'readonly' },
-        me: { ...me!, effective_display_role: 'readonly', permissions: [] }
+        me: { ...me!, effective_display_role: 'readonly', policy_fingerprint: 'fixture-policy' }
       });
     }
     await renderSettled(

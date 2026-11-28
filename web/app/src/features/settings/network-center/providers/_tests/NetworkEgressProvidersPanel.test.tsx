@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { App } from 'antd';
@@ -222,6 +223,7 @@ describe('NetworkEgressProvidersPanel', () => {
 function setOperations(permissions: string[]) {
   useAuthStore.setState({
     actor: { id: 'member', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
-    me: { id: 'member', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+    me: { id: 'member', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', policy_fingerprint: 'fixture-policy' }
   });
+  seedAccessFixture(permissions);
 }

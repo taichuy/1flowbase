@@ -1,5 +1,4 @@
-import { useAuthStore } from '../../../state/auth-store';
-import { hasConsoleOperationAccess } from '../../../state/console-operation-access';
+import { withUserPreferenceWriteAccess } from '../../../shared/user-preferences/user-preferences';
 
 const STORAGE_KEY = '1flowbase.notifications.inbox_split_ratio';
 
@@ -14,21 +13,14 @@ export function readInboxSplitRatio(): number | null {
 }
 
 export function persistInboxSplitRatio(ratio: number) {
-  const auth = useAuthStore.getState();
-  if (
-    !hasConsoleOperationAccess(
-      auth.actor?.effective_display_role,
-      auth.me?.permissions,
-      'patch_me_meta'
-    )
-  )
-    return;
-  try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      String(Math.round(ratio * 10000) / 10000)
-    );
-  } catch {
-    // Keep resizing usable when browser storage is unavailable.
-  }
+  withUserPreferenceWriteAccess(() => {
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        String(Math.round(ratio * 10000) / 10000)
+      );
+    } catch {
+      // Keep resizing usable when browser storage is unavailable.
+    }
+  });
 }

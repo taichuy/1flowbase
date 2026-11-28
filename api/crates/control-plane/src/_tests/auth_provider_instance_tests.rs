@@ -149,6 +149,7 @@ impl AuthRepository for InstanceAwareAuthRepository {
         display_role: Option<&str>,
     ) -> Result<ActorContext> {
         Ok(ActorContext {
+            console_policy_fingerprint: None,
             user_id,
             tenant_id,
             current_workspace_id: workspace_id,

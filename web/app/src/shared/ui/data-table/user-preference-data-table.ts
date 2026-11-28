@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
 import {
-  hasConsoleOperationAccess,
+  ensureConsoleOperationAccess,
   useConsoleOperationAccess
 } from '../../../state/console-operation-access';
 import { patchUserPreferences } from '../../user-preferences/user-preferences';
@@ -130,14 +130,11 @@ export function useUserPreferenceDataTableConfiguration<T extends object>({
     const timeout = window.setTimeout(() => {
       // Preserve edit order when a later debounce expires during an earlier request.
       saveQueue.current = saveQueue.current!.then(async () => {
-        const auth = useAuthStore.getState();
+        if (!active) return;
         if (
+          !(await ensureConsoleOperationAccess(['patch_me_meta'])).patch_me_meta ||
           !active ||
-          !hasConsoleOperationAccess(
-            auth.actor?.effective_display_role,
-            auth.me?.permissions,
-            'patch_me_meta'
-          )
+          useAuthStore.getState().csrfToken !== csrfToken
         )
           return;
         try {

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { StrictMode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -94,18 +95,17 @@ describe('application templates extension tab', () => {
     Object.values(api).forEach((mock) => mock.mockReset());
     navigate.mockReset();
     await appI18n.changeLanguage('en_US');
-    useAuthStore.setState({
+    useAuthStore.getState().setAuthenticated({
       csrfToken: 'csrf-token',
-      actor: null,
-      me: {
-        permissions: [
+      actor: { id: 'user', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace' },
+      me: null
+    });
+    seedAccessFixture([
           'system_templates.catalog',
           'system_templates.download',
           'system_templates.preview',
           'system_templates.install'
-        ]
-      } as NonNullable<ReturnType<typeof useAuthStore.getState>['me']>
-    });
+        ]);
     api.getApplicationTemplateCatalog.mockResolvedValue({
       next_cursor: null,
       total: 1,
@@ -326,11 +326,7 @@ describe('application templates extension tab', () => {
     expect(api.downloadSystemTemplate).toHaveBeenCalledTimes(2);
   });
   test('readonly catalog grant keeps templates visible and installation disabled', async () => {
-    useAuthStore.setState({
-      me: { permissions: ['system_templates.catalog'] } as NonNullable<
-        ReturnType<typeof useAuthStore.getState>['me']
-      >
-    });
+    seedAccessFixture(['system_templates.catalog']);
     setup();
     expect(
       await screen.findByRole('button', { name: 'Install template' })
@@ -344,7 +340,7 @@ describe('application templates extension tab', () => {
   });
 
   test('missing permission prevents catalog and installation requests', async () => {
-    useAuthStore.setState({ me: null });
+    seedAccessFixture([]);
     setup();
     expect(
       await screen.findByText(
@@ -576,11 +572,7 @@ describe('application templates extension tab', () => {
     expect(api.installSystemTemplate).not.toHaveBeenCalled();
   });
   test('upload requires preview, install and csrf grants', async () => {
-    useAuthStore.setState({
-      me: {
-        permissions: ['system_templates.catalog', 'system_templates.install']
-      } as NonNullable<ReturnType<typeof useAuthStore.getState>['me']>
-    });
+    seedAccessFixture(['system_templates.catalog', 'system_templates.install']);
     const { container } = setup();
     expect(
       await screen.findByRole('button', { name: 'Upload template' })

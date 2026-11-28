@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -61,11 +62,13 @@ function createQueryClient() {
 function authenticate({
   workspaceId = 'workspace-1',
   actorId = 'actor-1',
-  permissions = ['frontstage.page.design']
+  permissions = ['frontstage.page.design'],
+  policyFingerprint = 'fixture-policy'
 }: {
   workspaceId?: string;
   actorId?: string;
   permissions?: string[];
+  policyFingerprint?: string;
 } = {}) {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
@@ -85,9 +88,10 @@ function authenticate({
       avatar_url: null,
       introduction: '',
       effective_display_role: 'member',
-      permissions
+      policy_fingerprint: policyFingerprint
     }
   });
+  seedAccessFixture(permissions);
 }
 
 function setupCatalog(
@@ -183,6 +187,7 @@ describe('useFrontstageBlockCatalog', () => {
       authenticate({
         workspaceId: 'workspace-2',
         actorId: 'actor-2',
+        policyFingerprint: 'changed-policy',
         permissions: []
       })
     );
@@ -204,7 +209,7 @@ describe('useFrontstageBlockCatalog', () => {
       expect.objectContaining({
         workspaceId: 'workspace-2',
         actorId: 'actor-2',
-        permissionFingerprint: 'role:member|permissions:'
+        permissionFingerprint: 'changed-policy'
       })
     );
   });

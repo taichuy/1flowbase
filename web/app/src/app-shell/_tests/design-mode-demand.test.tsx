@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../test/fixtures/console-access';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -52,9 +53,10 @@ function authenticateDesigner() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: ['frontstage.page.design']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['frontstage.page.design']);
 }
 
 describe('design-mode-demand and FrontstageDesignModeAction', () => {
@@ -80,6 +82,25 @@ describe('design-mode-demand and FrontstageDesignModeAction', () => {
     expect(button).toBeChecked();
     expect(demand.topbarDesigner).not.toHaveBeenCalled();
     expect(demand.prepareStudio).not.toHaveBeenCalled();
+  });
+
+  test('keeps persisted design mode while access is pending and clears it on backend denial', async () => {
+    const state = useAuthStore.getState();
+    state.setAuthenticated({ csrfToken: 'csrf-token', actor: { ...state.actor!, effective_display_role: 'member' }, me: null });
+    useFrontstageDesignModeStore.getState().setDesignMode(true);
+    let finish!: (response: Response) => void;
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    try {
+      render(<FrontstageDesignModeAction />);
+      expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(true);
+      await act(async () => {
+        await Promise.resolve();
+        finish(new Response(JSON.stringify({ data: { policy_fingerprint: 'restricted', allowed: { 'frontstage.page.design': false } } }), { headers: { 'content-type': 'application/json' } }));
+      });
+      expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(false);
+    } finally {
+      fetch.mockRestore();
+    }
   });
 
   test('hovering, focusing, or toggling design mode loads only TopbarNavigationDesigner and never prepares JSX Studio or Monaco', async () => {

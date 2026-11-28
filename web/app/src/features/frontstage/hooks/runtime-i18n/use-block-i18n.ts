@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import { resolveAppLocale } from '../../../../shared/i18n/locales';
+import { createFrontstageBlockCatalogPermissionFingerprint } from '../../api/block-catalog-scope';
 import { fetchFrontstageRuntimeI18nCatalog } from '../../api/runtime-i18n';
 import { createBlockI18n } from '../../lib/runtime-i18n/translator';
 
@@ -17,14 +18,14 @@ export function useBlockI18n(workspaceId: string, active: boolean) {
     active &&
     sessionStatus === 'authenticated' &&
     actor?.current_workspace_id === workspaceId;
-  const permissions = me?.permissions.slice().sort().join(',') ?? '';
+  const policyFingerprint = me ? createFrontstageBlockCatalogPermissionFingerprint(me) : '';
   const query = useQuery({
     queryKey: [
       'frontstage',
       workspaceId,
       'runtime-i18n',
       actor?.id,
-      permissions,
+      policyFingerprint,
       locale
     ],
     queryFn: () => fetchFrontstageRuntimeI18nCatalog(locale),

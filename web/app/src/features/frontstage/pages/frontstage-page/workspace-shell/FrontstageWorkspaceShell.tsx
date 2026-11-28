@@ -1,10 +1,10 @@
+import { useConsoleOperationAccessStatus } from '../../../../../state/console-operation-access';
 import { FrontstageWorkspaceContext } from './workspace-context';
 import { Typography } from 'antd';
 import { lazy, Suspense, useState, type ReactNode } from 'react';
 
 import { i18nText } from '../../../../../shared/i18n/text';
 import { SectionPageLayout } from '../../../../../shared/ui/section-page-layout/SectionPageLayout';
-import { useAuthStore } from '../../../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../../../state/frontstage-design-mode-store';
 import { FrontStagePageTreeSidebar } from '../../../components/FrontStagePageTreeSidebar';
 import { useBlockI18n } from '../../../hooks/runtime-i18n/use-block-i18n';
@@ -30,15 +30,11 @@ export function FrontstageWorkspaceShell({
 }: FrontStagePageProps & { children: ReactNode }) {
   const workspace = usePageTreeWorkspace({ ...props, autoSelectFirstPage });
   const runtimeI18n = useBlockI18n(props.workspaceId, showSidebar);
-  const actor = useAuthStore((state) => state.actor);
-  const me = useAuthStore((state) => state.me);
+  const designAccess = useConsoleOperationAccessStatus(DESIGN_MODE_PERMISSION);
   const isDesignMode = useFrontstageDesignModeStore(
     (state) => state.isDesignMode
   );
-  const canEdit =
-    isDesignMode &&
-    (actor?.effective_display_role === 'root' ||
-      Boolean(me?.permissions.includes(DESIGN_MODE_PERMISSION)));
+  const canEdit = isDesignMode && designAccess === 'allowed';
   const [movePageId, setMovePageId] = useState<string | null>(null);
   const movePage = movePageId
     ? findNodeById(workspace.pageTree, movePageId)

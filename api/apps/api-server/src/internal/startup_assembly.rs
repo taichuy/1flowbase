@@ -218,7 +218,8 @@ pub(super) async fn app_and_runtime_host_from_config(
                 )?),
             ),
         )).with_workspace_governance(Arc::new(
-            control_plane::plugin_management::ManagedWorkspaceGovernanceService::new(Arc::new(store.clone()), Arc::new(store.clone())),
+            control_plane::plugin_management::ManagedWorkspaceGovernanceService::new(Arc::new(store.clone()), Arc::new(store.clone()))
+                .with_navigation_cache(control_plane::navigation_cache::NavigationCache(infrastructure.cache_store())),
         )).with_execution_gate(Arc::new(
             control_plane::plugin_management::ManagedPluginExecutionGateAuthority::new(Arc::new(store.clone())),
         )).with_plugin_ephemeral(Arc::new(
@@ -465,10 +466,18 @@ pub(super) async fn app_and_runtime_host_from_config(
     }
     runtime_extension_host.mark_ready()?;
 
+    let policy_cache = control_plane::navigation_cache::NavigationCache(infrastructure.cache_store());
+    let console_policy_reader: Arc<dyn control_plane::ports::RoleConsolePolicyReader> = Arc::new(
+        control_plane::navigation_cache::CachedRoleConsolePolicyReader::new(Arc::new(store.clone()), policy_cache.clone()),
+    );
+    let console_policy_projector = api_host_kernel::middleware::console_policy_projection::ConsolePolicyProjector::new(
+        bootstrap_result.workspace_id, compiled_console_plan.console_operation_registry.clone(), compiled_console_plan.settings_feature_registry.clone(), console_policy_reader.clone(), policy_cache,
+    );
     let state = Arc::new(ApiState {
         #[cfg(any(test,feature="test-support"))]
         test_resources: None,
-        console_policy_reader: Arc::new(store.clone()),
+        console_policy_reader,
+        console_policy_projector,
         store: store.clone(),
         system_backup,
         system_maintenance,

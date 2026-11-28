@@ -149,7 +149,7 @@ describe('SignInPage', () => {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'member',
-      permissions: []
+      policy_fingerprint: 'fixture-policy'
     });
     fetchCurrentSession.mockResolvedValue({
       actor: {
@@ -166,7 +166,7 @@ describe('SignInPage', () => {
         active_role_code: 'member'
       },
       available_roles: [],
-      active_role_permissions: [],
+      policy_fingerprint: 'fixture-policy',
       csrf_token: 'csrf-123',
       cookie_name: 'flowbase_console_session'
     });

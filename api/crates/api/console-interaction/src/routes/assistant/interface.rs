@@ -196,8 +196,6 @@ impl AssistantSettingsAdapter {
                 ProfileService::new(self.store.clone())
                     .update_me_meta(UpdateMeMetaCommand {
                         actor_user_id: actor.user_id,
-                        tenant_id: actor.tenant_id,
-                        workspace_id,
                         meta_patch,
                     })
                     .await?;

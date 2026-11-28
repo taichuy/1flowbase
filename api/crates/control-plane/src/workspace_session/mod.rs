@@ -90,7 +90,7 @@ where
         if command.target_workspace_id == current_session.current_workspace_id {
             let actor = self
                 .auth_repository
-                .load_actor_context(
+                .resolve_actor_role(
                     command.actor_user_id,
                     current_session.tenant_id,
                     current_session.current_workspace_id,
@@ -108,7 +108,7 @@ where
 
         let actor = self
             .auth_repository
-            .load_actor_context(
+            .resolve_actor_role(
                 command.actor_user_id,
                 target_workspace.tenant_id,
                 target_workspace.id,
@@ -163,7 +163,7 @@ where
 
         let actor = self
             .auth_repository
-            .load_actor_context(
+            .resolve_actor_role(
                 command.actor_user_id,
                 current_session.tenant_id,
                 current_session.current_workspace_id,

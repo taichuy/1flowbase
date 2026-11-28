@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { describe, test, expect } from 'vitest';
 import {
   permissionsApi,
@@ -24,8 +25,9 @@ describe('RolePermissionPanel', () => {
     const { actor, me } = useAuthStore.getState();
     useAuthStore.setState({
       actor: { ...actor!, account: 'reader', effective_display_role: 'readonly.audit.20261102' },
-      me: { ...me!, account: 'reader', effective_display_role: 'readonly.audit.20261102', permissions: ['roles.console_policy_catalog.view', 'roles.list', 'roles.console_policy.view'] }
+      me: { ...me!, account: 'reader', effective_display_role: 'readonly.audit.20261102', policy_fingerprint: 'fixture-policy' }
     });
+    seedAccessFixture(['roles.console_policy_catalog.view', 'roles.list', 'roles.console_policy.view']);
     permissionsApi.fetchSettingsConsolePolicyCatalog.mockResolvedValue(
       consolePolicyCatalog([{
         kind: 'settings_feature',

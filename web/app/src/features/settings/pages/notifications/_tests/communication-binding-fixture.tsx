@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { createRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -288,9 +289,10 @@ export function setupCommunicationBinding({
       avatar_url: null,
       introduction: '',
       effective_display_role: permissions ? 'member' : 'root',
-      permissions: permissions ?? []
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions ?? []);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   });

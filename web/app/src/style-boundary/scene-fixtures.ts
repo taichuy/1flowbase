@@ -1,3 +1,4 @@
+import { seedConsoleOperationAccessForTests } from '../state/console-operation-access';
 import { getStyleBoundaryOriginalFetch } from './scene-fixtures/original-fetch';
 
 import {
@@ -38,7 +39,10 @@ export function seedStyleBoundaryAuth() {
       avatar_url: null,
       introduction: 'Boundary user',
       effective_display_role: 'root',
-      permissions: [
+      policy_fingerprint: 'fixture-policy'
+    }
+  });
+  seedConsoleOperationAccessForTests(Object.fromEntries([
         'application.view.all',
         'application.edit.own',
         'application.create.all',
@@ -57,9 +61,7 @@ export function seedStyleBoundaryAuth() {
         'user.manage.all',
         'role_permission.view.all',
         'role_permission.manage.all'
-      ]
-    }
-  });
+      ].map((code) => [code, true])));
 }
 
 function createStyleBoundaryAgentFlowDocument() {

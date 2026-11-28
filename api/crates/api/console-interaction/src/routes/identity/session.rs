@@ -21,7 +21,7 @@ pub struct SessionResponse {
     pub actor: serde_json::Value,
     pub session: serde_json::Value,
     pub available_roles: Vec<AvailableRoleResponse>,
-    pub active_role_permissions: Vec<String>,
+    pub policy_fingerprint: String,
     pub csrf_token: String,
     pub cookie_name: String,
 }
@@ -82,7 +82,8 @@ pub(crate) fn to_session_response(
             "active_role_code": session.active_role_code,
         }),
         available_roles,
-        active_role_permissions: actor.permissions.iter().cloned().collect(),
+        policy_fingerprint:
+            api_host_kernel::middleware::console_policy_projection::policy_fingerprint(actor),
         csrf_token: session.csrf_token.clone(),
         cookie_name: cookie_name.to_string(),
     }

@@ -1,7 +1,7 @@
+import { useConsoleOperationAccessStatus } from '../state/console-operation-access';
 import { Menu, Tooltip, type MenuProps } from 'antd';
 import { useEffect, type AriaAttributes, type AriaRole } from 'react';
 
-import { useAuthStore } from '../state/auth-store';
 import { useFrontstageDesignModeStore } from '../state/frontstage-design-mode-store';
 import { i18nText } from '../shared/i18n/text';
 import { preloadDesignModeDemand } from './design-mode-demand';
@@ -9,9 +9,7 @@ import { preloadDesignModeDemand } from './design-mode-demand';
 const DESIGN_MODE_PERMISSION = 'frontstage.page.design';
 
 function FrontstageDesignModeActionBase() {
-  const sessionStatus = useAuthStore((state) => state.sessionStatus);
-  const actor = useAuthStore((state) => state.actor);
-  const me = useAuthStore((state) => state.me);
+  const access = useConsoleOperationAccessStatus(DESIGN_MODE_PERMISSION);
   const isDesignMode = useFrontstageDesignModeStore(
     (state) => state.isDesignMode
   );
@@ -22,20 +20,16 @@ function FrontstageDesignModeActionBase() {
     (state) => state.toggleDesignMode
   );
 
-  const canUseDesignMode =
-    actor?.effective_display_role === 'root' ||
-    Boolean(me?.permissions.includes(DESIGN_MODE_PERMISSION));
-  const hasResolvedDesignModePermission = sessionStatus !== 'unknown';
+  const canUseDesignMode = access === 'allowed';
 
   // Exit design mode only when permission is lost; route changes should not
   // overwrite the browser-persisted preference.
   useEffect(() => {
-    if (hasResolvedDesignModePermission && !canUseDesignMode && isDesignMode) {
+    if (access === 'denied' && isDesignMode) {
       setDesignMode(false);
     }
   }, [
-    canUseDesignMode,
-    hasResolvedDesignModePermission,
+    access,
     isDesignMode,
     setDesignMode
   ]);
@@ -62,7 +56,7 @@ function FrontstageDesignModeActionBase() {
     : i18nText('appShell', 'auto.enter_design_mode');
 
   const prepareDesignMode = () => {
-    if (hasResolvedDesignModePermission && canUseDesignMode && !isDesignMode) {
+    if (canUseDesignMode && !isDesignMode) {
       void preloadDesignModeDemand();
     }
   };

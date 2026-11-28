@@ -274,7 +274,6 @@ function seedSupportingFrontstageQueries({
 }): () => void {
   const permissionFingerprint =
     createFrontstageBlockCatalogPermissionFingerprint(me);
-  const sortedPermissions = me.permissions.slice().sort().join(',');
   const locale = resolveAppLocale(resolveAuthenticatedLocale(me));
 
   const seededMetadata = getSeededPublicSystemMetadata();
@@ -316,7 +315,7 @@ function seedSupportingFrontstageQueries({
         workspaceId,
         'runtime-i18n',
         actorId,
-        sortedPermissions,
+        permissionFingerprint,
         locale
       ],
       queryFn: () => fetchFrontstageRuntimeI18nCatalog(locale),

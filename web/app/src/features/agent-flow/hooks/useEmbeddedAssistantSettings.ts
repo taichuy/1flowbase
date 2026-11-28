@@ -4,8 +4,7 @@ import {
   updateConsoleAssistantSettings,
   type ConsoleAssistantSettings
 } from '@1flowbase/api-client';
-import { useAuthStore } from '../../../state/auth-store';
-import { hasConsoleOperationAccess } from '../../../state/console-operation-access';
+import { ensureConsoleOperationAccess } from '../../../state/console-operation-access';
 
 export function useEmbeddedAssistantSettings({
   open,
@@ -76,14 +75,10 @@ export function useEmbeddedAssistantSettings({
           (!run_capabilities.reasoning_effort_enabled ||
             !selected?.reasoning_efforts.includes(preference.reasoning_effort))
         );
-        const auth = useAuthStore.getState();
         if (
           (modelChanged || effortInvalid) &&
-          hasConsoleOperationAccess(
-            auth.actor?.effective_display_role,
-            auth.me?.permissions,
-            'assistant_update_settings'
-          )
+          (await ensureConsoleOperationAccess(['assistant_update_settings'])).assistant_update_settings &&
+          !disposed && requestGeneration === generation.current
         ) {
           if (!csrfToken)
             throw new Error('assistant preference requires a console session');

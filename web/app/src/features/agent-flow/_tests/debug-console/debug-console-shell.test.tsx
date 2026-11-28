@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -109,9 +110,10 @@ describe('debug console shell', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'root',
-        permissions: ['application.view.all', 'application.edit.own']
+        policy_fingerprint: 'fixture-policy'
       }
     });
+    seedAccessFixture(['application.view.all', 'application.edit.own']);
 
     vi.spyOn(runtimeApi, 'startFlowDebugRun').mockResolvedValue({
       flow_run: {

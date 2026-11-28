@@ -64,6 +64,7 @@ async fn update_workspace_requires_console_policy() {
     let error = WorkspaceService::new(repository)
         .update_workspace(UpdateWorkspaceCommand {
             actor: ActorContext {
+                console_policy_fingerprint: None,
                 user_id: Uuid::now_v7(),
                 tenant_id: workspace.tenant_id,
                 current_workspace_id: workspace.id,
@@ -95,6 +96,7 @@ async fn ac_011_workspace_policy_only_allows_current_workspace_update_without_le
         .set_console_policies(vec![workspace_update_policy()])
         .await;
     let actor = ActorContext {
+        console_policy_fingerprint: None,
         user_id: Uuid::now_v7(),
         tenant_id: workspace.tenant_id,
         current_workspace_id: workspace.id,
@@ -119,6 +121,7 @@ async fn ac_011_workspace_legacy_grant_does_not_authorize_or_escape_current_work
     repository.upsert_workspace(workspace.clone()).await;
     repository.upsert_workspace(foreign_workspace.clone()).await;
     let legacy_actor = ActorContext {
+        console_policy_fingerprint: None,
         user_id: Uuid::now_v7(),
         tenant_id: workspace.tenant_id,
         current_workspace_id: workspace.id,

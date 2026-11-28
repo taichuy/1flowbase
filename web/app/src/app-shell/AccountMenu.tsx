@@ -67,15 +67,7 @@ function AccountMenuBase({ navigateTo, navigateHome }: AccountMenuBaseProps) {
         setSwitchingWorkspaceId(workspaceId);
         try {
           const session = await switchWorkspace(workspaceId, csrfToken);
-          const refreshedMe = await fetchCurrentMe().catch(() =>
-            me
-              ? {
-                  ...me,
-                  effective_display_role: session.actor.effective_display_role,
-                  permissions: session.active_role_permissions
-                }
-              : null
-          );
+          const refreshedMe = await fetchCurrentMe().catch(() => null);
           setAuthenticated({
             csrfToken: session.csrf_token,
             actor: session.actor,
@@ -107,14 +99,11 @@ function AccountMenuBase({ navigateTo, navigateHome }: AccountMenuBaseProps) {
       setSwitchingRoleCode(roleCode);
       try {
         const session = await switchActiveRole(roleCode, csrfToken);
+        const refreshedMe = await fetchCurrentMe().catch(() => null);
         setAuthenticated({
           csrfToken: session.csrf_token,
           actor: session.actor,
-          me: {
-            ...me,
-            effective_display_role: session.actor.effective_display_role,
-            permissions: session.active_role_permissions
-          },
+          me: refreshedMe,
           availableRoles: session.available_roles
         });
         queryClient.clear();

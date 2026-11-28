@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { describe, test, expect, vi } from 'vitest';
 import { runtimeApi } from './embedded-agent-assistant.fixtures';
 import {
@@ -48,8 +49,9 @@ describe('EmbeddedAgentAssistant', () => {
       const auth = useAuthStore.getState();
       useAuthStore.setState({
         actor: { ...auth.actor!, effective_display_role: role },
-        me: { ...auth.me!, effective_display_role: role, permissions }
+        me: { ...auth.me!, effective_display_role: role, policy_fingerprint: 'fixture-policy' }
       });
+      seedAccessFixture(permissions);
       await renderSettled(
         <AppProviders>
           <EmbeddedAgentAssistant />

@@ -16,7 +16,7 @@ export function dataBlockRecordsKey(ctx: BlockContext, modelCode?: string) {
     ctx.currentUser?.id ?? 'anonymous',
     {
       isRoot: Boolean(ctx.currentUser?.isRoot),
-      permissions: [...(ctx.currentUser?.permissions ?? [])].sort()
+      policy_fingerprint: ctx.currentUser?.policy_fingerprint ?? null
     }
   ];
   return modelCode ? [...key, modelCode] : key;

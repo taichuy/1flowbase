@@ -14,7 +14,7 @@ export interface ConsoleMe {
   preferred_locale?: string | null;
   meta?: ConsoleUserMeta;
   effective_display_role: string;
-  permissions: string[];
+  policy_fingerprint: string;
 }
 
 export interface UpdateConsoleMeInput {

@@ -62,7 +62,7 @@ describe('console me client', () => {
             introduction: '',
             preferred_locale: null,
             effective_display_role: 'root',
-            permissions: [],
+            policy_fingerprint: '000102030405060708090a0b0c0d0e0f',
             meta: {
               ui: {
                 data_tables: {
@@ -97,6 +97,7 @@ describe('console me client', () => {
         'http://127.0.0.1:7800'
       )
     ).resolves.toMatchObject({
+      policy_fingerprint: '000102030405060708090a0b0c0d0e0f',
       meta: {
         ui: {
           data_tables: {

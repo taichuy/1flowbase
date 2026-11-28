@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
@@ -269,9 +270,10 @@ test('real AuthenticatedStartup mount (useLayoutEffect + useEffect) hydrates via
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: ['frontstage.page.design']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['frontstage.page.design']);
 
   const { unmount } = render(<AuthenticatedStartup enforceStartupMountGate />);
 

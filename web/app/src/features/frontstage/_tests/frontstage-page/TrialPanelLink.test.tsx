@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { createNativePreparationSource } from '../page-canvas/fixtures/native-preparation-source';
 import {
   act,
@@ -72,9 +73,10 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'developer',
-      permissions: ['frontstage.page.design']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['frontstage.page.design']);
 }
 
 function createPageContent() {

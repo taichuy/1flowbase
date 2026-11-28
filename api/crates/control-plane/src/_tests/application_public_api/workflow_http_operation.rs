@@ -42,6 +42,7 @@ async fn workflow_http_operation_runs_with_authenticated_user_api_key_principal(
     let forbidden = WorkflowExtensionRunService::new(repository.clone())
         .create_run(CreateWorkflowExtensionRunCommand {
             actor: domain::ActorContext {
+                console_policy_fingerprint: None,
                 user_id: other_user_id(),
                 tenant_id: Uuid::nil(),
                 current_workspace_id: application.workspace_id,

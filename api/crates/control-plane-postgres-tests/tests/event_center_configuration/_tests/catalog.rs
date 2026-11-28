@@ -115,6 +115,7 @@ async fn custom_rules_share_the_directory_and_keep_original_timestamps_and_scope
         .unwrap();
     assert_eq!(service.catalog(&actor).await.unwrap()[0], entry);
     let outsider = ActorContext {
+        console_policy_fingerprint: None,
         is_root: false,
         current_workspace_id: Uuid::now_v7(),
         ..actor

@@ -33,7 +33,7 @@ pub struct MeResponse {
     pub preferred_locale: Option<String>,
     pub meta: serde_json::Value,
     pub effective_display_role: String,
-    pub permissions: Vec<String>,
+    pub policy_fingerprint: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -81,6 +81,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
     ConsoleRouteAssembly::new()
         .route(
+            "/access/evaluate",
+            console_post(super::access::evaluate, Authenticated),
+        )
+        .route(
             "/me",
             console_get(get_me, Authenticated)
                 .patch(patch_me, ConsoleOperation("patch_me".to_owned())),
@@ -95,26 +99,21 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-pub(crate) fn to_me_response(
-    profile: control_plane::profile::MeProfile,
-    actor: &domain::ActorContext,
-) -> MeResponse {
-    let mut permissions = actor.permissions.iter().cloned().collect::<Vec<_>>();
-    permissions.sort();
-
+pub(crate) fn to_me_response(user: domain::UserRecord, actor: &domain::ActorContext) -> MeResponse {
     MeResponse {
-        id: profile.user.id.to_string(),
-        account: profile.user.account,
-        email: profile.user.email,
-        phone: profile.user.phone,
-        nickname: profile.user.nickname,
-        name: profile.user.name,
-        avatar_url: profile.user.avatar_url,
-        introduction: profile.user.introduction,
-        preferred_locale: profile.user.preferred_locale,
-        meta: profile.user.meta,
+        id: user.id.to_string(),
+        account: user.account,
+        email: user.email,
+        phone: user.phone,
+        nickname: user.nickname,
+        name: user.name,
+        avatar_url: user.avatar_url,
+        introduction: user.introduction,
+        preferred_locale: user.preferred_locale,
+        meta: user.meta,
         effective_display_role: actor.effective_display_role.clone(),
-        permissions,
+        policy_fingerprint:
+            api_host_kernel::middleware::console_policy_projection::policy_fingerprint(actor),
     }
 }
 

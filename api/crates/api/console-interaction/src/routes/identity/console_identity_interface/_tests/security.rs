@@ -48,7 +48,7 @@ fn session_event_omits_handle_csrf_and_future_unknown_credentials() {
         actor: json!({"id":id,"account":"alice","effective_display_role":"reader","current_workspace_id":id,"credential":"ACTOR-SENTINEL"}),
         session: json!({"id":"SESSION-HANDLE-SENTINEL","user_id":id,"tenant_id":id,"current_workspace_id":id,"active_role_code":"reader","future_secret":"SESSION-EXTRA-SENTINEL"}),
         available_roles: vec![],
-        active_role_permissions: vec!["read".into()],
+        policy_fingerprint: "0123456789abcdef".into(),
         csrf_token: "CSRF-SENTINEL".into(),
         cookie_name: "session".into(),
     };
@@ -60,9 +60,13 @@ fn session_event_omits_handle_csrf_and_future_unknown_credentials() {
     assert_eq!(value["session"]["current_workspace_id"], id);
     assert!(value["session"].get("id").is_none());
     assert!(value.get("csrf_token").is_none());
+    assert!(value.get("active_role_permissions").is_none());
+    assert_eq!(value["policy_fingerprint"], "0123456789abcdef");
     let schema = ConsoleIdentityOutput::document_output_schema(&op).unwrap();
     assert!(!schema.to_string().contains("csrf_token"));
     assert!(!schema.to_string().contains("session_id"));
+    assert!(!schema.to_string().contains("active_role_permissions"));
+    assert!(schema.to_string().contains("policy_fingerprint"));
 }
 #[test]
 fn change_password_event_is_safe_in_schema_and_value() {
@@ -79,4 +83,16 @@ fn change_password_event_is_safe_in_schema_and_value() {
         .unwrap()
         .to_string()
         .contains("password"));
+}
+
+#[test]
+fn profile_projection_schemas_do_not_expose_permissions() {
+    use interface_runtime::InterfaceContract;
+    let http = event::schema::<me::MeResponse>().to_string();
+    let managed = ConsoleIdentityOutput::managed_projection_schema()
+        .unwrap()
+        .to_string();
+    assert!(!http.contains("\"permissions\""));
+    assert!(!managed.contains("\"permissions\""));
+    assert!(http.contains("policy_fingerprint"));
 }

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -5,7 +6,8 @@ import { setupExtensionCenterFixture, extensionsApi, installableCatalogEntry, re
 
 function grant(permissions: string[]) {
   const state = useAuthStore.getState();
-  useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', permissions } });
+  useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', policy_fingerprint: 'fixture-policy' } });
+  seedAccessFixture(permissions);
 }
 
 describe('Extension center exact operations', () => {

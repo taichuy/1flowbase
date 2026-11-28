@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../test/fixtures/console-access';
 vi.mock('../../shared/api/system-metadata', () => ({
   useSystemMetadata: () => ({
     data: {
@@ -409,8 +410,9 @@ describe('Navigation', () => {
     useAuthStore.getState().setMe({
       id: 'actor-1', account: 'developer', name: 'Developer', nickname: 'Developer',
       email: '', phone: null, avatar_url: null, introduction: '',
-      effective_display_role: 'developer', permissions: ['frontstage.page.design']
+      effective_display_role: 'developer', policy_fingerprint: 'fixture-policy'
     });
+    seedAccessFixture(['frontstage.page.design']);
     useFrontstageDesignModeStore.getState().setDesignMode(true);
     frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([]);
 
@@ -438,8 +440,9 @@ describe('Navigation', () => {
     useAuthStore.getState().setMe({
       id: 'actor-1', account: 'developer', name: 'Developer', nickname: 'Developer',
       email: '', phone: null, avatar_url: null, introduction: '',
-      effective_display_role: 'developer', permissions: ['frontstage.page.design']
+      effective_display_role: 'developer', policy_fingerprint: 'fixture-policy'
     });
+    seedAccessFixture(['frontstage.page.design']);
     useFrontstageDesignModeStore.getState().setDesignMode(true);
 
     frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([
@@ -494,8 +497,9 @@ describe('Navigation', () => {
     useAuthStore.getState().setMe({
       id: 'actor-1', account: 'developer', name: 'Developer', nickname: 'Developer',
       email: '', phone: null, avatar_url: null, introduction: '',
-      effective_display_role: 'developer', permissions: ['frontstage.page.design']
+      effective_display_role: 'developer', policy_fingerprint: 'fixture-policy'
     });
+    seedAccessFixture(['frontstage.page.design']);
     useFrontstageDesignModeStore.getState().setDesignMode(true);
     renderNavigation('/templates');
 
@@ -552,9 +556,10 @@ describe('Navigation', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'developer',
-        permissions: ['embedded_app.view.all', 'template.view.all']
+        policy_fingerprint: 'fixture-policy'
       }
     });
+    seedAccessFixture(['embedded_app.view.all', 'template.view.all']);
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       consoleNavigationForPrimaryRoutes(['embedded-apps'])
     );

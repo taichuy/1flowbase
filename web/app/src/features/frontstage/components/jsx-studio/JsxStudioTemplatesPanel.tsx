@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import {
   Alert,
   App,
@@ -43,14 +44,7 @@ export function JsxStudioTemplatesPanel({
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const canManageTemplates = useAuthStore(
-    (state) =>
-      state.actor?.effective_display_role === 'root' ||
-      (state.me?.permissions.includes(
-        'settings_feature.access.system.ui-management'
-      ) ??
-        false)
-  );
+  const canManageTemplates = useConsoleOperationAccess()('settings_feature.access.system.ui-management');
   const [form] = Form.useForm<{ name: string }>();
   const [templateDraft, setTemplateDraft] =
     useState<SettingsUiTemplateInput | null>(null);

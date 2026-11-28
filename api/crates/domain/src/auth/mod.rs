@@ -70,6 +70,9 @@ pub struct ActorContext {
     pub effective_display_role: String,
     pub is_root: bool,
     pub permissions: HashSet<String>,
+    /// Request-local console projection metadata, not part of the actor wire contract.
+    #[serde(skip)]
+    pub console_policy_fingerprint: Option<String>,
 }
 
 impl ActorContext {
@@ -94,6 +97,7 @@ impl ActorContext {
             current_workspace_id,
             effective_display_role: effective_display_role.to_string(),
             is_root: true,
+            console_policy_fingerprint: None,
             permissions: HashSet::new(),
         }
     }
@@ -126,6 +130,7 @@ impl ActorContext {
             current_workspace_id,
             effective_display_role: effective_display_role.to_string(),
             is_root: false,
+            console_policy_fingerprint: None,
             permissions: permissions.into_iter().collect(),
         }
     }

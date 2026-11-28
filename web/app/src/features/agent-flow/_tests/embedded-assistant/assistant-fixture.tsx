@@ -129,7 +129,7 @@ export function setupEmbeddedAssistantFixture() {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'root',
-        permissions: []
+        policy_fingerprint: 'fixture-policy'
       }
     });
     getConsoleAssistantSettings.mockReset();

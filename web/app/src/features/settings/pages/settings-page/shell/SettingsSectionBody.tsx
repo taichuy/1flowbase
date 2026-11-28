@@ -133,7 +133,6 @@ function SettingsSectionBoundary({ children }: { children: ReactNode }) {
 
 interface SettingsSectionAccess {
   isRoot: boolean;
-  permissions: string[];
   canManageMembers: boolean;
   canManageRoles: boolean;
   canManageHostInfrastructure: boolean;
@@ -218,7 +217,6 @@ export function SettingsSectionBody({
         <SettingsSectionBoundary>
           <SettingsFilesSection
             isRoot={access.isRoot}
-            permissions={access.permissions}
           />
         </SettingsSectionBoundary>
       );

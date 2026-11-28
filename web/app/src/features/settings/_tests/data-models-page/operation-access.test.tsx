@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import './data-models-page.fixtures';
@@ -7,7 +8,8 @@ import { dataModelsApi, renderApp, SLOW_SETTINGS_PAGE_TEST_TIMEOUT } from './sup
 const reads = ['settings_feature.access.system.data-models', 'data_sources.list', 'data_sources.view', 'data_sources.preview', 'model_definitions.list', 'model_templates.list', 'model_scope_grants.list', 'model_definitions.openapi.view', 'model_definitions.advisor.view'];
 function grant(operations: string[] = []) {
   const state = useAuthStore.getState();
-  useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', permissions: [...reads, ...operations] } });
+  useAuthStore.setState({ actor: { ...state.actor!, effective_display_role: 'readonly.audit.20261102' }, me: { ...state.me!, effective_display_role: 'readonly.audit.20261102', policy_fingerprint: 'fixture-policy' } });
+  seedAccessFixture([...reads, ...operations]);
 }
 
 describe('Data model exact operation controls', () => {

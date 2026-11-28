@@ -105,7 +105,7 @@ function setup(initialValue: CommunicationCommandConfiguration[] = []) {
     me: {
       id: 'user-1', account: 'test', email: '', phone: null, nickname: '',
       name: '', avatar_url: null, introduction: '',
-      effective_display_role: 'root', permissions: []
+      effective_display_role: 'root', policy_fingerprint: 'fixture-policy'
     }
   });
   let catalog: EventCatalogEntry[] = [{

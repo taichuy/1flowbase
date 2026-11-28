@@ -523,6 +523,21 @@ async fn eil_f14_production_assembly_has_no_unclassified_endpoint() {
         .as_ref()
         .and_then(|snapshot| snapshot.external_endpoint_catalog())
         .expect("production assembly must publish the external endpoint catalog");
+    let access = catalog
+        .row(&ExternalEndpointIdentity::http(
+            "POST",
+            "/api/console/access/evaluate",
+        ))
+        .expect("console access evaluation must be cataloged");
+    assert_eq!(
+        access.classification(),
+        ExternalEndpointClassification::CanonicalBusinessInterface
+    );
+    assert_eq!(
+        access.binding_id(),
+        Some("http.console.identity.access.evaluate.v1")
+    );
+    assert!(access.sources().contains("external-route-assembly"));
     let total = catalog.rows().len();
     let business =
         catalog.classification_count(ExternalEndpointClassification::CanonicalBusinessInterface);

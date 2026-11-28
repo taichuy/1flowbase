@@ -5,7 +5,6 @@ export function SettingsFilesSection({
   isRoot
 }: {
   isRoot: boolean;
-  permissions: string[];
 }) {
   const can = useConsoleOperationAccess();
   const canUseHostOperation = useProjectedConsoleOperationAccess();

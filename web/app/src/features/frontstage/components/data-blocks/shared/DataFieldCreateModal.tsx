@@ -1,3 +1,4 @@
+import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Checkbox, Form, Input, Select, Space } from 'antd';
@@ -60,10 +61,10 @@ export function DataFieldCreateModal({
     retry: false
   });
   const model = models.data?.find((item) => item.id === binding.model_id);
+  const can = useConsoleOperationAccess();
   const allowed = Boolean(
     model?.capabilities.can_add_user_field &&
-    (ctx.currentUser?.isRoot ||
-      ctx.currentUser?.permissions?.includes('model_fields.create'))
+    open && can('model_fields.create')
   );
   const save = async () => {
     if (!allowed || !csrfToken || saving) return;

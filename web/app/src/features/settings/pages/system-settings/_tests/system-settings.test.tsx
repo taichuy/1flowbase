@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { useQueryClient } from '@tanstack/react-query';
@@ -109,8 +110,9 @@ test('reset restores persisted values and a blank system name does not save', as
 function setOperations(permissions: string[]) {
   useAuthStore.setState({
     actor: { id: 'user-1', account: 'member', effective_display_role: 'member', current_workspace_id: 'workspace-1' },
-    me: { id: 'user-1', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', permissions }
+    me: { id: 'user-1', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: 'member', policy_fingerprint: 'fixture-policy' }
   });
+  seedAccessFixture(permissions);
 }
 
 test('view access preserves branding data while save and upload stay disabled', async () => {

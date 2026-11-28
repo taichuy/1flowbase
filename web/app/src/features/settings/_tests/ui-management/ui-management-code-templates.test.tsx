@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import '../../../../test/fixtures/rc-util-unique-ids';
 
@@ -369,9 +370,10 @@ describe('UiManagementPanel code templates', () => {
         id: 'user-1', account: 'auditor', email: 'auditor@example.com', phone: null,
         nickname: 'Auditor', name: 'Auditor', avatar_url: null, introduction: '',
         effective_display_role: 'readonly.audit.20261102',
-        permissions: ['ui_management.templates.publish']
+        policy_fingerprint: 'fixture-policy'
       }
     });
+    seedAccessFixture(['ui_management.templates.publish']);
     await renderPanel();
     const row = (await screen.findByText('自定义区块')).closest('tr')!;
     expect(screen.getByRole('button', { name: '新建模板' })).toBeDisabled();

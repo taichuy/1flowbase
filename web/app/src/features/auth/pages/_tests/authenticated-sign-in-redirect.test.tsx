@@ -53,7 +53,7 @@ describe('AuthenticatedSignInRedirect', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'admin',
-        permissions: []
+        policy_fingerprint: 'fixture-policy'
       },
       availableRoles: []
     });
@@ -93,7 +93,7 @@ describe('AuthenticatedSignInRedirect', () => {
       available_roles: [
         { code: 'member', name: 'Member', scope_kind: 'workspace' }
       ],
-      active_role_permissions: ['applications.read'],
+      policy_fingerprint: 'fixture-policy',
       csrf_token: 'csrf-joined',
       cookie_name: 'flowbase_console_session'
     });
@@ -107,7 +107,7 @@ describe('AuthenticatedSignInRedirect', () => {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'member',
-      permissions: ['applications.read']
+      policy_fingerprint: 'fixture-policy'
     });
 
     render(

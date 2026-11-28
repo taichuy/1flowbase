@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../test/fixtures/console-access';
 import fs from 'node:fs';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import path from 'node:path';
@@ -301,9 +302,10 @@ describe('createSettingsChromeMenuItems', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'root',
-        permissions: ['api_reference.view.all', 'user.view.all']
+        policy_fingerprint: 'fixture-policy'
       }
     });
+    seedAccessFixture(['api_reference.view.all', 'user.view.all']);
     consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
       consoleNavigationForSettingsSections(['data-models', 'auth-center'])
     );

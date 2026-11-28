@@ -581,7 +581,7 @@ impl AuthRepository for PgControlPlaneStore {
         Ok(())
     }
 
-    async fn load_actor_context(
+    async fn resolve_actor_role(
         &self,
         user_id: Uuid,
         tenant_id: Uuid,
@@ -606,15 +606,19 @@ impl AuthRepository for PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
 
-        let is_root = codes.iter().any(|(code, system)| *system && code == "root");
-        self.verify_workspace_access(user_id, tenant_id, workspace_id, is_root)
-            .await?;
         let effective_display_role = display_role
             .filter(|candidate| codes.iter().any(|(code, _)| code == *candidate))
             .map(str::to_string)
             .or_else(|| codes.first().map(|(code, _)| code.clone()))
             .unwrap_or_else(|| "member".to_string());
 
+        self.verify_workspace_access(
+            user_id,
+            tenant_id,
+            workspace_id,
+            effective_display_role == "root",
+        )
+        .await?;
         if effective_display_role == "root" {
             return Ok(ActorContext::root_in_scope(
                 user_id,
@@ -624,29 +628,57 @@ impl AuthRepository for PgControlPlaneStore {
             ));
         }
 
-        let role_ids = self
-            .effective_role_ids(user_id, workspace_id, &effective_display_role)
-            .await?;
-        let permissions: Vec<String> = sqlx::query_scalar(
-            r#"
-            select distinct pd.code
-            from role_permissions rp
-            join permission_definitions pd on pd.id = rp.permission_id
-            where rp.role_id = any($1)
-            order by pd.code
-            "#,
-        )
-        .bind(&role_ids)
-        .fetch_all(self.pool())
-        .await?;
-
         Ok(ActorContext::scoped_in_scope(
             user_id,
             tenant_id,
             workspace_id,
             &effective_display_role,
-            permissions,
+            [],
         ))
+    }
+
+    /// The user lookup already fetched direct bindings in role precedence order.
+    async fn resolve_loaded_user_role(
+        &self,
+        user: &UserRecord,
+        tenant_id: Uuid,
+        workspace_id: Uuid,
+        display_role: Option<&str>,
+    ) -> Result<ActorContext> {
+        let roles = user.roles.iter().filter(|role| match role.scope_kind {
+            domain::RoleScopeKind::System => true,
+            domain::RoleScopeKind::Workspace => {
+                role.workspace_id == Some(workspace_id) && role.code != "root"
+            }
+        });
+        let role = display_role
+            .filter(|candidate| roles.clone().any(|role| role.code == *candidate))
+            .or_else(|| roles.into_iter().next().map(|role| role.code.as_str()))
+            .unwrap_or("member");
+        self.verify_workspace_access(user.id, tenant_id, workspace_id, role == "root")
+            .await?;
+        Ok(if role == "root" {
+            ActorContext::root_in_scope(user.id, tenant_id, workspace_id, role)
+        } else {
+            ActorContext::scoped_in_scope(user.id, tenant_id, workspace_id, role, [])
+        })
+    }
+
+    async fn load_actor_context(
+        &self,
+        user_id: Uuid,
+        tenant_id: Uuid,
+        workspace_id: Uuid,
+        display_role: Option<&str>,
+    ) -> Result<ActorContext> {
+        if let Some(actor) = self.actor_override(user_id, tenant_id, workspace_id, display_role)? {
+            return Ok(actor);
+        }
+        let mut actor = self
+            .resolve_actor_role(user_id, tenant_id, workspace_id, display_role)
+            .await?;
+        actor.permissions = self.load_actor_legacy_permissions(&actor).await?;
+        Ok(actor)
     }
 
     async fn load_actor_context_for_bound_role(
@@ -1065,5 +1097,37 @@ impl ApiKeyRepository for PgControlPlaneStore {
         }
 
         Ok(())
+    }
+}
+
+impl PgControlPlaneStore {
+    pub async fn load_actor_legacy_permissions(
+        &self,
+        actor: &ActorContext,
+    ) -> Result<std::collections::HashSet<String>> {
+        if actor.is_root {
+            return Ok(Default::default());
+        }
+        let role_ids = self
+            .effective_role_ids(
+                actor.user_id,
+                actor.current_workspace_id,
+                &actor.effective_display_role,
+            )
+            .await?;
+        let permissions: Vec<String> = sqlx::query_scalar(
+            r#"
+            select distinct pd.code
+            from role_permissions rp
+            join permission_definitions pd on pd.id = rp.permission_id
+            where rp.role_id = any($1)
+            order by pd.code
+            "#,
+        )
+        .bind(&role_ids)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(permissions.into_iter().collect())
     }
 }

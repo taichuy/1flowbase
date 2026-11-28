@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../../../test/fixtures/console-access';
 import { installDirectorySnapshotApi } from '../fixtures/directory-snapshot';
 import { installProgressiveMcpApi } from '../fixtures/progressive-api';
 import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
@@ -445,9 +446,10 @@ export function grantDirectoryPermissions(permissions: string[]) {
       me: {
         ...me!,
         effective_display_role: 'readonly.audit.20261107',
-        permissions
+        policy_fingerprint: 'fixture-policy'
       }
     });
+    seedAccessFixture(permissions);
   });
 }
 
@@ -470,7 +472,7 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: []
+      policy_fingerprint: 'fixture-policy'
     }
   });
 }

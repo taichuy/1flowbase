@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import {
   QueryClient,
   QueryClientProvider,
@@ -297,9 +298,10 @@ describe('AC-009/012 plugin settings published page', () => {
           avatar_url: null,
           introduction: '',
           effective_display_role: role,
-          permissions
+          policy_fingerprint: 'fixture-policy'
         }
       });
+      seedAccessFixture(permissions);
       api.fetchConsolePluginSettingsPage.mockResolvedValue({
         ...page,
         source: `

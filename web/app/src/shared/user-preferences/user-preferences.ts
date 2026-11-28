@@ -6,17 +6,22 @@ import {
   type ConsoleUserMeta
 } from '@1flowbase/api-client';
 
-import { useAuthStore } from '../../state/auth-store';
-import { hasConsoleOperationAccess } from '../../state/console-operation-access';
+import { ensureConsoleOperationAccess, hasCachedConsoleOperationAccess } from '../../state/console-operation-access';
 
 /** Check the current backend projection when a non-React preference writer runs. */
 export function hasUserPreferenceWriteAccess(): boolean {
-  const { actor, me } = useAuthStore.getState();
-  return hasConsoleOperationAccess(
-    actor?.effective_display_role,
-    me?.permissions,
-    'patch_me_meta'
-  );
+  return hasCachedConsoleOperationAccess('patch_me_meta');
+}
+
+/** Keep the first user edit when the permission cache is cold. */
+export function withUserPreferenceWriteAccess(write: () => void): void {
+  if (hasUserPreferenceWriteAccess()) {
+    write();
+    return;
+  }
+  void ensureConsoleOperationAccess(['patch_me_meta']).then(({ patch_me_meta }) => {
+    if (patch_me_meta && hasUserPreferenceWriteAccess()) write();
+  });
 }
 
 export type UserPreferencePatch = ConsoleUserMeta;

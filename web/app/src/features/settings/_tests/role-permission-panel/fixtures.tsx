@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { App, ConfigProvider } from 'antd';
@@ -26,9 +27,10 @@ export function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: ['role_permission.manage.all']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['role_permission.manage.all']);
 }
 
 export function setPreferredLocale(locale: 'zh_Hans' | 'en_US') {

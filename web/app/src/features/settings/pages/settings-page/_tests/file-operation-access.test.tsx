@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
@@ -18,12 +19,13 @@ const table = { id: 'table-1', code: 'uploads', title: 'Uploads', scope_kind: 'w
 function authenticate(permissions: string[], role = 'member') {
   useAuthStore.setState({ csrfToken: 'csrf',
     actor: { id: 'user-1', account: 'member', effective_display_role: role, current_workspace_id: 'workspace-1' },
-    me: { id: 'user-1', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: role, permissions }
+    me: { id: 'user-1', account: 'member', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: role, policy_fingerprint: 'fixture-policy' }
   });
+  seedAccessFixture(permissions);
 }
 function show(permissions: string[], role = 'member') {
   authenticate(permissions, role);
-  return render(<AppProviders><SettingsFilesSection isRoot={role === 'root'} permissions={permissions} /></AppProviders>);
+  return render(<AppProviders><SettingsFilesSection isRoot={role === 'root'} /></AppProviders>);
 }
 beforeEach(() => {
   resetAuthStore();

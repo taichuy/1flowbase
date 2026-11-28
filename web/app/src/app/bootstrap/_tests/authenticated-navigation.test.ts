@@ -156,7 +156,8 @@ test('permission changes invalidate private caches; locale and permission orderi
     avatar_url: null,
     introduction: '',
     effective_display_role: 'developer',
-    permissions: ['read', 'write'],
+    policy_fingerprint: 'fixture-policy',
+
     preferred_locale: 'en_US'
   };
   useAuthStore.getState().setMe(me);
@@ -175,12 +176,11 @@ test('permission changes invalidate private caches; locale and permission orderi
     .getState()
     .setMe({
       ...me,
-      permissions: ['write', 'read'],
       preferred_locale: 'zh_Hans'
     });
   expect(api.pages).toHaveBeenCalledTimes(1);
   expect(client.getQueryData(oldKey)).toBeDefined();
-  useAuthStore.getState().setMe({ ...me, permissions: ['read'] });
+  useAuthStore.getState().setMe({ ...me, policy_fingerprint: 'revoked-policy' });
   expect(client.getQueryData(oldKey)).toBeUndefined();
   expect(api.pages).toHaveBeenCalledTimes(2);
 });

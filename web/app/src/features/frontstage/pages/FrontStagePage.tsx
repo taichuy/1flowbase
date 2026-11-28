@@ -1,3 +1,4 @@
+import { useConsoleOperationAccessStatus } from '../../../state/console-operation-access';
 import { DataBlockPageProvider } from '../components/data-blocks/DataBlockPageProvider';
 import {
   createTableBlockConfig,
@@ -157,7 +158,6 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
   pageTreeMutationError
 }) => {
   const csrfToken = useAuthStore((state) => state.csrfToken);
-  const sessionStatus = useAuthStore((state) => state.sessionStatus);
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const isDesignMode = useFrontstageDesignModeStore(
@@ -449,7 +449,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
             id: actor.id,
             displayName:
               me?.nickname?.trim() || me?.name?.trim() || actor.account,
-            permissions: Object.freeze([...(me?.permissions ?? [])]),
+            policy_fingerprint: me?.policy_fingerprint,
             isRoot: actor.effective_display_role === 'root'
           })
         : null,
@@ -459,7 +459,7 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       ui: { locale: blockI18n.locale },
       i18n: blockI18n
     }),
-    [actor, me?.name, me?.nickname, me?.permissions, blockI18n, workspaceId]
+    [actor, me?.name, me?.nickname, me?.policy_fingerprint, blockI18n, workspaceId]
   );
   const createTrialBlockContext = useMemo(() => {
     if (!jsBlockCapabilityHandlers || !selectedPageId || !tabId) {
@@ -557,13 +557,9 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       ? toDisplayErrorMessage(pageTreeMutationError)
       : i18nText('frontstage', 'auto.operation_failed');
 
-  const canEnterDesignMode = useMemo(() => {
-    return (
-      actor?.effective_display_role === 'root' ||
-      Boolean(me?.permissions.includes(DESIGN_MODE_PERMISSION))
-    );
-  }, [actor, me]);
-  const hasResolvedDesignModePermission = sessionStatus !== 'unknown';
+  const designAccess = useConsoleOperationAccessStatus(DESIGN_MODE_PERMISSION);
+  const canEnterDesignMode = designAccess === 'allowed';
+  const hasResolvedDesignModePermission = designAccess !== 'loading';
   const selectedBlockIndex =
     blockCompositionState?.selectedBlockId === selectedBlockId
       ? blockCompositionState.document.blocks.findIndex(
@@ -640,11 +636,11 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
   ]);
 
   useEffect(() => {
-    if (!canEnterDesignMode || !isDesignMode) {
+    if (designAccess === 'denied' || !isDesignMode) {
       setSelectedBlockId(null);
       setIsJsxStudioOpen(false);
     }
-  }, [canEnterDesignMode, isDesignMode]);
+  }, [designAccess, isDesignMode]);
 
   const selectedPageDisplayTitle = getPageDisplayTitle(
     pageTree,

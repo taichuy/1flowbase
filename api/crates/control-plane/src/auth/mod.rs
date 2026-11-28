@@ -612,10 +612,28 @@ where
             .await
     }
 
+    /// Console authorization loads grants via its workspace policy projection cache.
+    pub async fn authenticate_console_api_key(&self, token: &str) -> Result<UserApiKeyActor> {
+        if !token.starts_with("pat_") {
+            return Err(ControlPlaneError::NotAuthenticated.into());
+        }
+        self.authenticate_user_api_key_inner(&hash_api_key_token(token), true)
+            .await
+    }
+
     /// Trusted OAuth owner can revalidate the original key without retaining its secret.
     pub async fn authenticate_user_api_key_hash(
         &self,
         token_hash: &str,
+    ) -> Result<UserApiKeyActor> {
+        self.authenticate_user_api_key_inner(token_hash, false)
+            .await
+    }
+
+    async fn authenticate_user_api_key_inner(
+        &self,
+        token_hash: &str,
+        console_projection: bool,
     ) -> Result<UserApiKeyActor> {
         let api_key = self
             .repository
@@ -639,22 +657,48 @@ where
         if matches!(user.status, UserStatus::Disabled) {
             return Err(ControlPlaneError::NotAuthenticated.into());
         }
-        let actor = self
-            .repository
-            .load_actor_context_for_bound_role(
-                user.id,
-                api_key.tenant_id,
-                api_key.scope_id,
-                api_key
-                    .role_code
-                    .as_deref()
-                    .or(user.default_display_role.as_deref())
-                    .unwrap_or("member"),
-            )
-            .await?;
-        self.repository
-            .verify_workspace_access(user.id, api_key.tenant_id, api_key.scope_id, actor.is_root)
-            .await?;
+        let role_code = api_key
+            .role_code
+            .as_deref()
+            .or(user.default_display_role.as_deref())
+            .unwrap_or("member");
+        let actor = if console_projection {
+            // Fallback roles are allowed for sessions, but a PAT must still have its bound role.
+            if !user.roles.iter().any(|role| {
+                role.code == role_code
+                    && (role.scope_kind == domain::RoleScopeKind::System
+                        || (role.code != "root" && role.workspace_id == Some(api_key.scope_id)))
+            }) {
+                return Err(ControlPlaneError::InvalidInput("role_code").into());
+            }
+            self.repository
+                .resolve_loaded_user_role(
+                    &user,
+                    api_key.tenant_id,
+                    api_key.scope_id,
+                    Some(role_code),
+                )
+                .await?
+        } else {
+            let actor = self
+                .repository
+                .load_actor_context_for_bound_role(
+                    user.id,
+                    api_key.tenant_id,
+                    api_key.scope_id,
+                    role_code,
+                )
+                .await?;
+            self.repository
+                .verify_workspace_access(
+                    user.id,
+                    api_key.tenant_id,
+                    api_key.scope_id,
+                    actor.is_root,
+                )
+                .await?;
+            actor
+        };
         self.repository.mark_api_key_used(api_key.id).await?;
 
         Ok(UserApiKeyActor {
@@ -830,7 +874,7 @@ where
         };
         let actor = self
             .repository
-            .load_actor_context(user.id, scope.tenant_id, scope.workspace_id, None)
+            .resolve_actor_role(user.id, scope.tenant_id, scope.workspace_id, None)
             .await?;
         let session = self
             .issuer
@@ -967,7 +1011,7 @@ where
             .await?;
         let actor = self
             .repository
-            .load_actor_context(user.id, scope.tenant_id, scope.workspace_id, None)
+            .resolve_actor_role(user.id, scope.tenant_id, scope.workspace_id, None)
             .await?;
         let session = self
             .issuer

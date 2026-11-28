@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   fireEvent,
@@ -37,9 +38,10 @@ function renderPanel(permissions?: string[]) {
     },
     me: permissions === undefined ? null : {
       id: 'user-1', account: 'auditor', email: 'auditor@example.com', phone: null, nickname: 'Auditor', name: 'Auditor', avatar_url: null, introduction: '',
-      effective_display_role: 'readonly.audit.20261102', permissions
+      effective_display_role: 'readonly.audit.20261102', policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions ?? []);
   return render(
     <App>
       <QueryClientProvider

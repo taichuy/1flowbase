@@ -25,7 +25,7 @@ export interface ConsoleSessionSnapshot {
   actor: ConsoleSessionActor;
   session: ConsoleSessionRecord;
   available_roles: ConsoleAvailableRole[];
-  active_role_permissions: string[];
+  policy_fingerprint: string;
   csrf_token: string;
   cookie_name: string;
 }

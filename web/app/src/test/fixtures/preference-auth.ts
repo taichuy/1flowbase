@@ -1,4 +1,5 @@
 import { resetAuthStore, useAuthStore } from '../../state/auth-store';
+import { seedAccessFixture } from './console-access';
 
 export type PreferenceActor = { role: string; permissions: string[] };
 
@@ -27,7 +28,8 @@ export function setPreferenceActor(actor: PreferenceActor | null) {
     me: {
       id: 'preference-user', account: actor.role, email: 'preferences@example.com',
       phone: null, nickname: 'Preferences', name: 'Preferences', avatar_url: null,
-      introduction: '', effective_display_role: actor.role, permissions: actor.permissions
+      introduction: '', effective_display_role: actor.role, policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(actor.permissions);
 }

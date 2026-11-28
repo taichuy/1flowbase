@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Grid } from 'antd';
 import { createElement } from 'react';
@@ -349,13 +350,14 @@ function authenticate() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: [
+      policy_fingerprint: 'fixture-policy'
+    }
+  });
+  seedAccessFixture([
         'state_model.view.all',
         'state_model.manage.all',
         'api_reference.view.all'
-      ]
-    }
-  });
+      ]);
 }
 
 export function createAppView(pathname: string) {

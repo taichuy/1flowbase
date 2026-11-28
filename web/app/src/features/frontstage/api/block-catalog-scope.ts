@@ -1,10 +1,8 @@
 export const frontstageBlockCatalogQueryStaleTime = 30_000;
 
 export function createFrontstageBlockCatalogPermissionFingerprint(me: {
+  policy_fingerprint: string;
   effective_display_role: string;
-  permissions: readonly string[];
 }): string {
-  return `role:${me.effective_display_role}|permissions:${[...me.permissions]
-    .sort()
-    .join(',')}`;
+  return JSON.stringify([me.effective_display_role, me.policy_fingerprint]);
 }

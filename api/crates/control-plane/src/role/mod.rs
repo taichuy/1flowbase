@@ -686,14 +686,8 @@ where
                 group_ids: command.group_ids,
             })
             .await?;
-        if let Some(cache) = &self.navigation_cache {
-            cache
-                .invalidate(
-                    crate::navigation_cache::NavigationCacheDomain::ConsoleRoutes,
-                    actor.current_workspace_id,
-                )
-                .await;
-        }
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),
@@ -732,6 +726,17 @@ where
         complete_stored_console_policy(policy, &operation_index).map_err(Into::into)
     }
 
+    async fn invalidate_console_routes(&self, workspace_id: Uuid) {
+        if let Some(cache) = &self.navigation_cache {
+            cache
+                .invalidate(
+                    crate::navigation_cache::NavigationCacheDomain::ConsoleRoutes,
+                    workspace_id,
+                )
+                .await;
+        }
+    }
+
     pub async fn replace_console_policy(
         &self,
         command: ReplaceRoleConsolePolicyCommand,
@@ -767,6 +772,8 @@ where
                 groups,
             })
             .await?;
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),
@@ -843,6 +850,8 @@ where
                 is_default_member_role: command.is_default_member_role,
             })
             .await?;
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),
@@ -877,6 +886,8 @@ where
                 is_default_member_role: command.is_default_member_role,
             })
             .await?;
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),
@@ -907,6 +918,8 @@ where
                 &command.role_code,
             )
             .await?;
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),
@@ -939,6 +952,8 @@ where
                 &command.permission_codes,
             )
             .await?;
+        self.invalidate_console_routes(actor.current_workspace_id)
+            .await;
         self.repository
             .append_audit_log(&audit_log(
                 Some(actor.current_workspace_id),

@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../test/fixtures/console-access';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
@@ -162,9 +163,10 @@ function authenticateWithMe() {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'root',
-      permissions: ['frontstage.page.design']
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(['frontstage.page.design']);
 }
 
 describe('frontstage startup prefetch', () => {
@@ -456,7 +458,7 @@ describe('frontstage startup prefetch', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'root' as const,
-        permissions: ['frontstage.page.design']
+        policy_fingerprint: 'fixture-policy'
       }
     };
     const preloadWorkspaceRoute = vi.fn(async () => ({}));

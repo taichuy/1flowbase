@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConfigProvider } from 'antd';
 import {
@@ -147,9 +148,10 @@ describe('role data policy draft ownership', () => {
         actor: { ...actor!, account: 'role-manager', effective_display_role: 'member' },
         me: {
           ...me!, account: 'role-manager', effective_display_role: 'member',
-          permissions: ['roles.data_policy.view', 'roles.data_policy.replace', 'model_definitions.list']
+          policy_fingerprint: 'fixture-policy'
         }
       });
+      seedAccessFixture(['roles.data_policy.view', 'roles.data_policy.replace', 'model_definitions.list']);
       setup(section);
       const selectName = section === 'default-policy' ? '查看 作用域' : '查看 Orders';
       const select = await screen.findByRole('combobox', { name: selectName });

@@ -205,6 +205,7 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
 
     let output = PublicSignInOutput::test_new(LoginResult {
         actor: domain::ActorContext {
+            console_policy_fingerprint: None,
             user_id: id,
             tenant_id: id,
             current_workspace_id: id,

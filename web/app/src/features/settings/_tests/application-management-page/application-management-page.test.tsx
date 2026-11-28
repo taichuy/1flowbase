@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../test/fixtures/console-access';
 import { AppProviders, applicationManagementApi, applicationsApi, applicationsPublicApi, membersApi, setupApplicationManagementFixture } from './fixture';
 import { ApiClientError } from '@1flowbase/api-client';
 import { ApplicationManagementPanel } from '../../components/application-management/ApplicationManagementPanel';
@@ -177,8 +178,9 @@ describe('ApplicationManagementPanel', () => {
       useAuthStore.getState().setAuthenticated({
         csrfToken: 'csrf-123',
         actor: { ...actor!, effective_display_role: 'member' },
-        me: { ...me!, effective_display_role: 'member', permissions }
+        me: { ...me!, effective_display_role: 'member', policy_fingerprint: 'fixture-policy' }
       });
+      seedAccessFixture(permissions);
       render(
         <AppProviders>
           <ApplicationManagementPanel />
@@ -314,7 +316,7 @@ describe('ApplicationManagementPanel', () => {
         avatar_url: null,
         introduction: '',
         effective_display_role: 'member',
-        permissions: []
+        policy_fingerprint: 'fixture-policy'
       }
     });
 

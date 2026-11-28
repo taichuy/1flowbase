@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../../../../test/fixtures/console-access';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -103,9 +104,10 @@ describe('ModelProviderCatalogPanel', () => {
       me: {
         id: 'user', account: 'auditor', email: 'auditor@example.com', phone: null,
         nickname: 'Auditor', name: 'Auditor', avatar_url: null, introduction: '',
-        effective_display_role: role, permissions: [...permissions]
+        effective_display_role: role, policy_fingerprint: 'fixture-policy'
       }
     });
+    seedAccessFixture([...permissions]);
     const onViewInstances = vi.fn();
     render(<ModelProviderCatalogPanel overviewRows={[]} entries={[installedFamily]} currentCatalogEntries={{}} onCreate={vi.fn()} onViewInstances={onViewInstances} onUpgradeLatest={vi.fn()} onSwitchVersion={vi.fn()} onUninstall={vi.fn()} />);
     const create = screen.getByRole('button', { name: '新增' });

@@ -372,6 +372,7 @@ impl AuthRepository for MemoryAuthRepository {
             .unwrap_or_else(|| "member".to_string());
 
         Ok(ActorContext {
+            console_policy_fingerprint: None,
             user_id,
             tenant_id,
             current_workspace_id: workspace_id,

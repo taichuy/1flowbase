@@ -21,7 +21,7 @@ struct SessionEvent<'a> {
     actor: SessionActorEvent,
     session: SessionMetadataEvent,
     available_roles: &'a [session::AvailableRoleResponse],
-    active_role_permissions: &'a [String],
+    policy_fingerprint: &'a str,
     cookie_name: &'a str,
 }
 // This is a separate event contract. HTTP continues to serialize the token.
@@ -83,6 +83,7 @@ impl ApiInput for ConsoleIdentityInput {
             | Self::ListUserApiKeyRoleOptions => json!({}),
             Self::SwitchWorkspace { workspace_id } => json!({"body":{"workspace_id":workspace_id}}),
             Self::SwitchRole { role_code } => json!({"body":{"role_code":role_code}}),
+            Self::EvaluateAccess(body) => json!({"body":event::to_value(body)?}),
             Self::PatchMe(body) => json!({"body":event::to_value(body)?}),
             Self::PatchMeMeta(body) => json!({"body":event::to_value(body)?}),
             Self::ChangePassword(_) | Self::RedeemWorkspaceInvitation { .. } => {
@@ -117,9 +118,10 @@ impl ApiOutput for ConsoleIdentityOutput {
                 session: serde_json::from_value(value.session.clone())
                     .map_err(|error| Arc::<str>::from(error.to_string()))?,
                 available_roles: &value.available_roles,
-                active_role_permissions: &value.active_role_permissions,
+                policy_fingerprint: &value.policy_fingerprint,
                 cookie_name: &value.cookie_name,
             }),
+            Self::Access(value) => event::to_value(value),
             Self::Me(value) => event::to_value(value),
             Self::UserApiKeys(value) => event::to_value(&ApiKeysEvent {
                 items: value.items.iter().map(ApiKeyEvent::from).collect(),

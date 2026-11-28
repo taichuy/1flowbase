@@ -1,3 +1,4 @@
+import { seedAccessFixture } from '../../test/fixtures/console-access';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import {
   historicalAnalysisFixture
@@ -169,9 +170,10 @@ function authenticate(permissions = ['application.view.all']) {
       avatar_url: null,
       introduction: '',
       effective_display_role: 'member',
-      permissions
+      policy_fingerprint: 'fixture-policy'
     }
   });
+  seedAccessFixture(permissions);
 }
 
 function renderApplicationRouter() {

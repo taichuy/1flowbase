@@ -307,7 +307,7 @@ fn plugin_settings_navigation_and_api_use_the_same_canonical_grant() {
             )],
         )];
         let permissions =
-            crate::middleware::require_session::settings_feature_navigation_permissions(
+            crate::middleware::console_policy_projection::settings_feature_navigation_permissions(
                 plan.console_operation_registry.inventory(),
                 &policies,
                 &plan.settings_feature_registry.inventory().features,

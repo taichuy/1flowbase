@@ -1,3 +1,4 @@
+import { withUserPreferenceWriteAccess } from '../../../../shared/user-preferences/user-preferences';
 import { AssistantConversationSubtitle } from './AssistantConversationSubtitle';
 import {
   assistantConversationKey,
@@ -44,7 +45,7 @@ import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 
 import { useAuthStore } from '../../../../state/auth-store';
 import {
-  hasConsoleOperationAccess,
+  ensureConsoleOperationAccess,
   useConsoleOperationAccess
 } from '../../../../state/console-operation-access';
 import {
@@ -589,25 +590,15 @@ export function EmbeddedAgentAssistantPreview({
   }
 
   function persistAssistantWindowSize(rect: WindowWorkspaceRect | null) {
-    const auth = useAuthStore.getState();
-    if (
-      !rect ||
-      !hasConsoleOperationAccess(
-        auth.actor?.effective_display_role,
-        auth.me?.permissions,
-        'patch_me_meta'
-      )
-    ) {
-      return;
-    }
+    if (!rect) return;
     const historyOccupiedWidth =
       sidePanelOpen && !mobile && !historyFullView
         ? historyWidthRef.current + ASSISTANT_HISTORY_RESIZE_WIDTH
         : 0;
-    writeAssistantWindowSize({
+    withUserPreferenceWriteAccess(() => writeAssistantWindowSize({
       conversationWidth: rect.width - historyOccupiedWidth,
       windowHeight: rect.height
-    });
+    }));
   }
 
   async function saveSettings() {
@@ -615,13 +606,9 @@ export function EmbeddedAgentAssistantPreview({
       return;
     }
     const preference = await form.validateFields();
-    const auth = useAuthStore.getState();
     if (
-      !hasConsoleOperationAccess(
-        auth.actor?.effective_display_role,
-        auth.me?.permissions,
-        'assistant_update_settings'
-      )
+      !(await ensureConsoleOperationAccess(['assistant_update_settings'])).assistant_update_settings ||
+      useAuthStore.getState().csrfToken !== csrfToken
     )
       return;
     invalidateSettingsRead();

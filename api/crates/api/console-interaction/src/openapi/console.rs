@@ -76,6 +76,7 @@ struct Paths91;
 
 #[derive(OpenApi)]
 #[openapi(paths(
+    crate::routes::access::evaluate,
     crate::routes::me::get_me,
     crate::routes::me::patch_me,
     crate::routes::me::patch_me_meta,
@@ -192,6 +193,8 @@ struct Schemas3;
 #[derive(OpenApi)]
 #[openapi(components(schemas(
     crate::routes::me::ChangePasswordBody,
+    crate::routes::access::EvaluateConsoleAccessBody,
+    crate::routes::access::EvaluateConsoleAccessResponse,
     crate::routes::me::MeResponse,
     crate::routes::me::PatchMeBody,
     crate::routes::me::PatchMeMetaBody,
