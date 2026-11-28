@@ -740,11 +740,3 @@ pub(crate) fn floor_char_boundary(text: &str, mut idx: usize) -> usize {
     }
     idx
 }
-
-pub(crate) fn ceil_char_boundary(text: &str, mut idx: usize) -> usize {
-    idx = idx.min(text.len());
-    while idx < text.len() && !text.is_char_boundary(idx) {
-        idx += 1;
-    }
-    idx
-}

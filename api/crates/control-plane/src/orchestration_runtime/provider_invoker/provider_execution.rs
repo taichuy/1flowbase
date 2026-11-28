@@ -413,8 +413,7 @@ where
             model_id: cloned.model.clone(),
             protocol: cloned.protocol.clone(),
         };
-        let prepared = kernel.prepare_invocation(&ctx, &mut cloned).await?;
-        Ok(prepared.and_then(|p| p.persisted_input_override))
+        kernel.project_persisted_input(&ctx, &mut cloned).await
     }
 
     async fn invoke_resolved_llm(

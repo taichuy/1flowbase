@@ -8,6 +8,7 @@ use extension_contracts::provider_contract::{
 use serde_json::Value;
 
 use super::engine::placeholder_regex;
+use super::native_stream::{NativeDeltaChannels, NativeLane};
 
 /// Maximum possible byte length of `{{<24-char KIND>_<8-char tag>}}` = 2 + 24 + 1 + 8 + 2 = 37.
 const MAX_PLACEHOLDER_BYTES: usize = 40;
@@ -30,10 +31,7 @@ pub struct RestorationStack {
 }
 
 impl RestorationStack {
-    pub fn new(
-        stages: Vec<RestorationStage>,
-        session_fallback: HashMap<String, String>,
-    ) -> Self {
+    pub fn new(stages: Vec<RestorationStage>, session_fallback: HashMap<String, String>) -> Self {
         Self {
             stages,
             session_fallback,
@@ -87,6 +85,23 @@ impl RestorationStack {
             current = next;
         }
         current
+    }
+
+    /// Restore each complete token through the stack before escaping its replacement,
+    /// never the surrounding serialized JSON or an intermediate restoration layer.
+    pub(super) fn restore_json_fragment(&self, input: &str) -> String {
+        placeholder_regex()
+            .replace_all(input, |captures: &regex::Captures<'_>| {
+                let token = &captures[0];
+                let raw = self.restore_str(token);
+                if raw == token {
+                    return raw;
+                }
+                let escaped =
+                    serde_json::to_string(&raw).expect("string serialization is infallible");
+                escaped[1..escaped.len() - 1].to_owned()
+            })
+            .into_owned()
     }
 
     /// Recursively restores all string leaf values in a JSON Value.
@@ -187,6 +202,7 @@ fn replace_placeholders_once(
 pub struct StreamingTextRestorer {
     stack: RestorationStack,
     pending: String,
+    json_fragment: bool,
 }
 
 impl StreamingTextRestorer {
@@ -194,6 +210,22 @@ impl StreamingTextRestorer {
         Self {
             stack,
             pending: String::new(),
+            json_fragment: false,
+        }
+    }
+
+    pub(super) fn for_json(stack: RestorationStack) -> Self {
+        Self {
+            json_fragment: true,
+            ..Self::new(stack)
+        }
+    }
+
+    fn restore(&self, value: &str) -> String {
+        if self.json_fragment {
+            self.stack.restore_json_fragment(value)
+        } else {
+            self.stack.restore_str(value)
         }
     }
 
@@ -213,7 +245,7 @@ impl StreamingTextRestorer {
         if ready.is_empty() {
             String::new()
         } else {
-            self.stack.restore_str(&ready)
+            self.restore(&ready)
         }
     }
 
@@ -223,7 +255,7 @@ impl StreamingTextRestorer {
             return String::new();
         }
         let tail = std::mem::take(&mut self.pending);
-        self.stack.restore_str(&tail)
+        self.restore(&tail)
     }
 }
 
@@ -268,8 +300,9 @@ fn is_valid_incomplete_placeholder_prefix(tail: &str) -> bool {
     if !first.is_ascii_uppercase() {
         return false;
     }
-    body.bytes()
-        .all(|b| b.is_ascii_uppercase() || b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+    body.bytes().all(|b| {
+        b.is_ascii_uppercase() || b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'
+    })
 }
 
 /// Stateful per-stream restorer covering all `ProviderStreamEvent` channels.
@@ -279,6 +312,7 @@ pub struct ProviderStreamEventRestorer {
     reasoning: StreamingTextRestorer,
     tool_deltas: HashMap<String, StreamingTextRestorer>,
     mcp_deltas: HashMap<String, StreamingTextRestorer>,
+    native_deltas: NativeDeltaChannels,
 }
 
 impl ProviderStreamEventRestorer {
@@ -288,6 +322,7 @@ impl ProviderStreamEventRestorer {
             reasoning: StreamingTextRestorer::new(stack.clone()),
             tool_deltas: HashMap::new(),
             mcp_deltas: HashMap::new(),
+            native_deltas: NativeDeltaChannels::default(),
             stack,
         }
     }
@@ -323,7 +358,7 @@ impl ProviderStreamEventRestorer {
                     let restorer = self
                         .tool_deltas
                         .entry(call_id.clone())
-                        .or_insert_with(|| StreamingTextRestorer::new(self.stack.clone()));
+                        .or_insert_with(|| StreamingTextRestorer::for_json(self.stack.clone()));
                     let restored = restorer.push(fragment);
                     if restored.is_empty() {
                         return Vec::new();
@@ -354,7 +389,7 @@ impl ProviderStreamEventRestorer {
                     let restorer = self
                         .mcp_deltas
                         .entry(call_id.clone())
-                        .or_insert_with(|| StreamingTextRestorer::new(self.stack.clone()));
+                        .or_insert_with(|| StreamingTextRestorer::for_json(self.stack.clone()));
                     let restored = restorer.push(fragment);
                     if restored.is_empty() {
                         return Vec::new();
@@ -385,23 +420,20 @@ impl ProviderStreamEventRestorer {
                 output_index,
                 mut item,
             } => {
-                self.stack.restore_json(&mut item);
+                super::native_stream::restore_wire_event(&self.stack, &mut item);
                 vec![ProviderStreamEvent::OutputItem {
                     phase,
                     output_index,
                     item,
                 }]
             }
-            ProviderStreamEvent::ResponsesOutputDelta { mut event } => {
-                self.stack.restore_json(&mut event);
-                vec![ProviderStreamEvent::ResponsesOutputDelta { event }]
+            ProviderStreamEvent::ResponsesOutputDelta { event } => {
+                self.native_deltas
+                    .process(&self.stack, NativeLane::Responses, event)
             }
-            ProviderStreamEvent::NativeEvent {
-                protocol,
-                mut event,
-            } => {
-                self.stack.restore_json(&mut event);
-                vec![ProviderStreamEvent::NativeEvent { protocol, event }]
+            ProviderStreamEvent::NativeEvent { protocol, event } => {
+                self.native_deltas
+                    .process(&self.stack, NativeLane::Native(protocol), event)
             }
             terminal @ (ProviderStreamEvent::Finish { .. }
             | ProviderStreamEvent::Error { .. }
@@ -416,7 +448,7 @@ impl ProviderStreamEventRestorer {
 
     /// Flush all buffered channels before stream exit.
     pub fn flush_all(&mut self) -> Vec<ProviderStreamEvent> {
-        let mut out = Vec::new();
+        let mut out = self.native_deltas.flush();
         let reasoning_tail = self.reasoning.flush();
         if !reasoning_tail.is_empty() {
             out.push(ProviderStreamEvent::ReasoningDelta {

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
     AppendPrivacyMaskingLogInput, ListPrivacyMaskingLogsQuery, PrivacyMaskingLogsQueryPage,
-    PrivacyMaskingRepository, PrivacyMaskingRuntimePolicyRecord,
+    PrivacyMaskingRepository, PrivacyMaskingRuntimePolicyRecord, PrivacyRunPayloadMask,
     UpsertPrivacyMaskingRuntimePolicyInput,
 };
 use extension_contracts::{
@@ -22,12 +22,11 @@ pub(crate) async fn delete_policies_for_installations_in_tx(
     if installation_ids.is_empty() {
         return Ok(0);
     }
-    let result = sqlx::query(
-        "DELETE FROM privacy_masking_runtime_policies WHERE installation_id = ANY($1)",
-    )
-    .bind(installation_ids)
-    .execute(&mut **transaction)
-    .await?;
+    let result =
+        sqlx::query("DELETE FROM privacy_masking_runtime_policies WHERE installation_id = ANY($1)")
+            .bind(installation_ids)
+            .execute(&mut **transaction)
+            .await?;
     Ok(result.rows_affected())
 }
 
@@ -110,20 +109,26 @@ impl PrivacyMaskingRepository for PgControlPlaneStore {
         &self,
         installation_id: Uuid,
     ) -> Result<u64> {
-        let result = sqlx::query(
-            "DELETE FROM privacy_masking_runtime_policies WHERE installation_id = $1",
-        )
-        .bind(installation_id)
-        .execute(self.pool())
-        .await?;
+        let result =
+            sqlx::query("DELETE FROM privacy_masking_runtime_policies WHERE installation_id = $1")
+                .bind(installation_id)
+                .execute(self.pool())
+                .await?;
         self.observe_privacy_installation_invalidation(installation_id);
         Ok(result.rows_affected())
     }
 
-    async fn append_privacy_masking_log(
+    async fn mask_privacy_run_inputs(
         &self,
-        input: &AppendPrivacyMaskingLogInput,
+        workspace_id: Uuid,
+        flow_run_id: Uuid,
+        mask: &PrivacyRunPayloadMask<'_>,
     ) -> Result<()> {
+        self.rewrite_privacy_run_payloads(workspace_id, flow_run_id, mask)
+            .await
+    }
+
+    async fn append_privacy_masking_log(&self, input: &AppendPrivacyMaskingLogInput) -> Result<()> {
         let matched_rules_json = serde_json::to_value(&input.matched_rules)
             .context("failed to serialize privacy masking log matches")?;
         sqlx::query(

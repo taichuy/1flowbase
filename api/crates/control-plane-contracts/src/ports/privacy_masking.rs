@@ -69,6 +69,10 @@ pub trait PrivacyMaskingInvalidationObserver: Send + Sync {
     fn invalidate_workspace(&self, workspace_id: Uuid);
 }
 
+/// A deterministic, side-effect-free transform supplied by the Kernel. The adapter
+/// applies it to the current lossless values while holding the run write fence.
+pub type PrivacyRunPayloadMask<'a> = dyn Fn(&mut serde_json::Value) + Send + Sync + 'a;
+
 #[async_trait]
 pub trait PrivacyMaskingRepository: Send + Sync {
     async fn upsert_privacy_masking_policy(
@@ -86,10 +90,14 @@ pub trait PrivacyMaskingRepository: Send + Sync {
         installation_id: Uuid,
     ) -> Result<u64>;
 
-    async fn append_privacy_masking_log(
+    async fn mask_privacy_run_inputs(
         &self,
-        input: &AppendPrivacyMaskingLogInput,
+        workspace_id: Uuid,
+        flow_run_id: Uuid,
+        mask: &PrivacyRunPayloadMask<'_>,
     ) -> Result<()>;
+
+    async fn append_privacy_masking_log(&self, input: &AppendPrivacyMaskingLogInput) -> Result<()>;
 
     async fn list_privacy_masking_logs(
         &self,

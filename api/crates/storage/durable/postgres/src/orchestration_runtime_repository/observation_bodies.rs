@@ -6,6 +6,7 @@ mod context_occurrences;
 mod native_snapshots;
 mod node_payloads;
 pub(super) use context_occurrences::occurrence_count;
+pub(super) use node_payloads::archive_node_event_payload;
 
 pub(super) async fn lock_native_batch(
     tx: &mut sqlx::Transaction<'_, Postgres>,

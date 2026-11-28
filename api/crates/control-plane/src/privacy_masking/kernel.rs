@@ -1,5 +1,5 @@
 //! Host-owned in-process Privacy Masking Kernel: policy cache, fail-closed masking, and memory-only session vault.
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -9,7 +9,7 @@ use control_plane_contracts::ports::{
     UpsertPrivacyMaskingRuntimePolicyInput,
 };
 use extension_contracts::provider_contract::{
-    NativePromptBlock, ProviderInvocationInput, ProviderInvocationResult, ProviderStreamEvent,
+    ProviderInvocationInput, ProviderInvocationResult, ProviderStreamEvent,
 };
 use extension_contracts::{
     PrivacyMaskingPreviewHitDto, PrivacyMaskingSubjectKind, PrivacyMaskingWorkspacePolicyDto,
@@ -20,8 +20,11 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::engine::{
-    derive_hmac_subkey, mask_json_value, mask_text_with_rules, CompiledWorkspacePolicy,
-    PrivacyPolicyCompileError, StageMaskState,
+    derive_hmac_subkey, mask_text_with_rules, CompiledWorkspacePolicy, PrivacyPolicyCompileError,
+    StageMaskState,
+};
+use super::invocation_content::{
+    refresh_native_digest, visit_invocation_content, visit_user_content, FinalAuditSnippets,
 };
 use super::stream_restorer::{ProviderStreamEventRestorer, RestorationStack, RestorationStage};
 
@@ -100,7 +103,7 @@ impl PreparedPrivacyMasking {
 
     pub fn restore_completed_output(
         &self,
-        events: &mut [ProviderStreamEvent],
+        events: &mut Vec<ProviderStreamEvent>,
         result: &mut ProviderInvocationResult,
     ) {
         if self.restoration_stack.is_empty() {
@@ -110,23 +113,7 @@ impl PreparedPrivacyMasking {
         // Running a fresh stream restorer over the final event list restores text/reasoning/tool
         // boundaries without double-counting into the stage counters that live streaming already recorded.
         let non_counting_stack = self.restoration_stack.clone_without_shared_counters();
-        let mut restorer = ProviderStreamEventRestorer::new(non_counting_stack.clone());
-        let mut restored_events = Vec::with_capacity(events.len());
-        for event in events.iter().cloned() {
-            restored_events.extend(restorer.process_event(event));
-        }
-        restored_events.extend(restorer.flush_all());
-        // Preserve event slice length if caller expects in-place mutation; replace each item if 1:1,
-        // otherwise restore directly on each event item.
-        if restored_events.len() == events.len() {
-            for (dst, src) in events.iter_mut().zip(restored_events) {
-                *dst = src;
-            }
-        } else {
-            for event in events.iter_mut() {
-                restore_event_in_place(&non_counting_stack, event);
-            }
-        }
+        restore_event_list(&non_counting_stack, events);
         non_counting_stack.restore_invocation_result(result);
     }
 
@@ -139,38 +126,21 @@ impl PreparedPrivacyMasking {
         if self.restoration_stack.is_empty() {
             return;
         }
-        let mut restorer = ProviderStreamEventRestorer::new(self.restoration_stack.clone());
-        let mut restored_events = Vec::with_capacity(events.len());
-        for event in events.drain(..) {
-            restored_events.extend(restorer.process_event(event));
-        }
-        restored_events.extend(restorer.flush_all());
-        *events = restored_events;
+        restore_event_list(&self.restoration_stack, events);
         // Restore final_content / tool_calls without double-counting if events already counted them.
         let non_counting = self.restoration_stack.clone_without_shared_counters();
         non_counting.restore_invocation_result(result);
     }
 }
 
-fn restore_event_in_place(stack: &RestorationStack, event: &mut ProviderStreamEvent) {
-    match event {
-        ProviderStreamEvent::TextDelta { delta }
-        | ProviderStreamEvent::ReasoningDelta { delta } => {
-            if delta.contains("{{") {
-                *delta = stack.restore_str(delta);
-            }
-        }
-        ProviderStreamEvent::ToolCallDelta { delta, .. }
-        | ProviderStreamEvent::McpCallDelta { delta, .. } => {
-            stack.restore_json(delta);
-        }
-        ProviderStreamEvent::ToolCallCommit { call } => stack.restore_tool_call(call),
-        ProviderStreamEvent::McpCallCommit { call } => stack.restore_mcp_call(call),
-        ProviderStreamEvent::OutputItem { item, .. } => stack.restore_json(item),
-        ProviderStreamEvent::ResponsesOutputDelta { event }
-        | ProviderStreamEvent::NativeEvent { event, .. } => stack.restore_json(event),
-        _ => {}
+fn restore_event_list(stack: &RestorationStack, events: &mut Vec<ProviderStreamEvent>) {
+    let mut restorer = ProviderStreamEventRestorer::new(stack.clone());
+    let mut restored = Vec::with_capacity(events.len());
+    for event in events.drain(..) {
+        restored.extend(restorer.process_event(event));
     }
+    restored.extend(restorer.flush_all());
+    *events = restored;
 }
 
 #[derive(Default)]
@@ -188,12 +158,7 @@ impl SessionRestorationVault {
             .unwrap_or_default()
     }
 
-    fn insert(
-        &mut self,
-        workspace_id: Uuid,
-        response_id: String,
-        map: HashMap<String, String>,
-    ) {
+    fn insert(&mut self, workspace_id: Uuid, response_id: String, map: HashMap<String, String>) {
         if map.is_empty() || response_id.trim().is_empty() {
             return;
         }
@@ -213,15 +178,35 @@ impl SessionRestorationVault {
     }
 
     fn evict_expired(&mut self, now: Instant) {
-        self.entries
-            .retain(|_, (inserted_at, _)| now.saturating_duration_since(*inserted_at) <= SESSION_VAULT_TTL);
+        self.entries.retain(|_, (inserted_at, _)| {
+            now.saturating_duration_since(*inserted_at) <= SESSION_VAULT_TTL
+        });
+    }
+}
+
+#[derive(Default)]
+struct PolicyCache {
+    policies: HashMap<Uuid, Arc<Vec<CompiledWorkspacePolicy>>>,
+    global_generation: u64,
+    workspace_generations: HashMap<Uuid, u64>,
+}
+
+impl PolicyCache {
+    fn generations(&self, workspace_id: Uuid) -> (u64, u64) {
+        (
+            self.global_generation,
+            self.workspace_generations
+                .get(&workspace_id)
+                .copied()
+                .unwrap_or_default(),
+        )
     }
 }
 
 pub struct PrivacyMaskingKernel {
     repository: Arc<dyn PrivacyMaskingRepository>,
     hmac_subkey: [u8; 32],
-    policy_cache: RwLock<HashMap<Uuid, Arc<Vec<CompiledWorkspacePolicy>>>>,
+    policy_cache: RwLock<PolicyCache>,
     session_vault: Mutex<SessionRestorationVault>,
 }
 
@@ -234,7 +219,7 @@ impl PrivacyMaskingKernel {
         Ok(Self {
             repository,
             hmac_subkey,
-            policy_cache: RwLock::new(HashMap::new()),
+            policy_cache: RwLock::new(PolicyCache::default()),
             session_vault: Mutex::new(SessionRestorationVault::default()),
         })
     }
@@ -281,11 +266,10 @@ impl PrivacyMaskingKernel {
         };
 
         let mut current = text.to_string();
-        let mut combined_hits = Vec::new();
+        let mut states = Vec::new();
         let mut total_hits = 0u32;
-        let mut stages = Vec::new();
 
-        for (stage_index, policy) in policies.iter().enumerate() {
+        for policy in &policies {
             let rules = policy.all_enabled_rules();
             if rules.is_empty() {
                 continue;
@@ -300,26 +284,35 @@ impl PrivacyMaskingKernel {
                 &mut state,
             );
             total_hits = total_hits.saturating_add(state.total_hits);
-            combined_hits.extend(state.to_preview_hits());
-            if restore_output && !state.restore_map.is_empty() {
-                stages.push(RestorationStage {
-                    stage_index,
-                    map: state.restore_map,
-                });
-            }
+            states.push(state);
         }
 
-        let restored_text = if restore_output {
-            let stack = RestorationStack::new(stages, HashMap::new());
-            Some(stack.restore_str(&current))
-        } else {
-            None
-        };
+        let mut snippets = FinalAuditSnippets::new(states.iter());
+        snippets.observe(&current);
+        let hits = states
+            .iter_mut()
+            .flat_map(|state| {
+                snippets.populate(state);
+                state.to_preview_hits()
+            })
+            .collect();
+
+        let restored_text = restore_output.then(|| {
+            let stages = states
+                .into_iter()
+                .enumerate()
+                .map(|(stage_index, state)| RestorationStage {
+                    stage_index,
+                    map: state.restore_map,
+                })
+                .collect();
+            RestorationStack::new(stages, HashMap::new()).restore_str(&current)
+        });
 
         Ok(PreviewMaskingOutput {
             masked_text: current,
             restored_text,
-            hits: combined_hits,
+            hits,
             total_hits,
         })
     }
@@ -332,40 +325,77 @@ impl PrivacyMaskingKernel {
         &self,
         workspace_id: Uuid,
     ) -> anyhow::Result<Arc<Vec<CompiledWorkspacePolicy>>> {
-        if let Ok(guard) = self.policy_cache.read() {
-            if let Some(cached) = guard.get(&workspace_id) {
-                return Ok(Arc::clone(cached));
+        for _ in 0..3 {
+            let snapshot = {
+                let guard = self
+                    .policy_cache
+                    .read()
+                    .map_err(|_| anyhow::anyhow!("privacy policy cache poisoned"))?;
+                if let Some(cached) = guard.policies.get(&workspace_id) {
+                    return Ok(Arc::clone(cached));
+                }
+                guard.generations(workspace_id)
+            };
+            let compiled = self
+                .repository
+                .list_active_privacy_masking_policies(workspace_id)
+                .await?
+                .into_iter()
+                .map(|record| {
+                    CompiledWorkspacePolicy::compile(
+                        Some(record.installation_id),
+                        record.policy_version,
+                        &record.policy,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>();
+            let mut guard = self
+                .policy_cache
+                .write()
+                .map_err(|_| anyhow::anyhow!("privacy policy cache poisoned"))?;
+            if snapshot != guard.generations(workspace_id) {
+                continue;
             }
+            let compiled = compiled
+                .map_err(|err| anyhow::anyhow!("privacy_masking_policy_compile_failed: {err}"))?;
+            return Ok(Arc::clone(
+                guard
+                    .policies
+                    .entry(workspace_id)
+                    .or_insert_with(|| Arc::new(compiled)),
+            ));
         }
-        let records = self
-            .repository
-            .list_active_privacy_masking_policies(workspace_id)
-            .await?;
-        let mut compiled = Vec::with_capacity(records.len());
-        for record in records {
-            let policy = CompiledWorkspacePolicy::compile(
-                Some(record.installation_id),
-                record.policy_version,
-                &record.policy,
-            )
-            .map_err(|err| anyhow::anyhow!("privacy_masking_policy_compile_failed: {err}"))?;
-            compiled.push(policy);
-        }
-        let compiled = Arc::new(compiled);
-        if let Ok(mut guard) = self.policy_cache.write() {
-            guard.insert(workspace_id, Arc::clone(&compiled));
-        }
-        Ok(compiled)
+        anyhow::bail!("privacy masking policy changed during loading; retry invocation")
     }
 
     /// Evaluates matched subjects in sequential routing-chain order:
     /// Stage 1: `agent_flow` binding -> Stage 2: `model_provider_instance` binding.
     /// Mutates `input` in place with masked content and recomputes `native_transport` digest/size.
-    /// Fail-closed: returns `Err` on any policy load, compile, or digest failure.
+    /// Fail closed on policy load, compile, digest or durable input rewrite failure.
     pub async fn prepare_invocation(
         &self,
         ctx: &PrivacyInvocationContext,
         input: &mut ProviderInvocationInput,
+    ) -> anyhow::Result<Option<PreparedPrivacyMasking>> {
+        self.prepare(ctx, input, true).await
+    }
+
+    pub(crate) async fn project_persisted_input(
+        &self,
+        ctx: &PrivacyInvocationContext,
+        input: &mut ProviderInvocationInput,
+    ) -> anyhow::Result<Option<ProviderInvocationInput>> {
+        Ok(self
+            .prepare(ctx, input, false)
+            .await?
+            .and_then(|prepared| prepared.persisted_input_override))
+    }
+
+    async fn prepare(
+        &self,
+        ctx: &PrivacyInvocationContext,
+        input: &mut ProviderInvocationInput,
+        rewrite_run: bool,
     ) -> anyhow::Result<Option<PreparedPrivacyMasking>> {
         let policies = self.load_workspace_policies(ctx.workspace_id).await?;
         if policies.is_empty() {
@@ -374,7 +404,7 @@ impl PrivacyMaskingKernel {
 
         let mut stages: Vec<ExecutedMaskingStage> = Vec::new();
         let mut any_matched_binding = false;
-        let mut all_stages_restore = true;
+        let mut stage_rules = Vec::new();
 
         // Stage 1: AgentFlow subject bindings
         if let Some(application_id) = ctx.application_id {
@@ -386,10 +416,12 @@ impl PrivacyMaskingKernel {
                     continue;
                 };
                 any_matched_binding = true;
-                if !binding.restore_output {
-                    all_stages_restore = false;
-                }
                 let rules = policy.rules_for_binding(binding);
+                stage_rules.push((
+                    binding.restore_output,
+                    &policy.allowlist_lower,
+                    rules.clone(),
+                ));
                 let mut state = StageMaskState::default();
                 if !rules.is_empty() {
                     mask_provider_invocation_input(
@@ -399,7 +431,7 @@ impl PrivacyMaskingKernel {
                         &policy.allowlist_lower,
                         &rules,
                         &mut state,
-                    )?;
+                    );
                 }
                 let stage_index = stages.len();
                 stages.push(ExecutedMaskingStage {
@@ -428,10 +460,12 @@ impl PrivacyMaskingKernel {
                 continue;
             };
             any_matched_binding = true;
-            if !binding.restore_output {
-                all_stages_restore = false;
-            }
             let rules = policy.rules_for_binding(binding);
+            stage_rules.push((
+                binding.restore_output,
+                &policy.allowlist_lower,
+                rules.clone(),
+            ));
             let mut state = StageMaskState::default();
             if !rules.is_empty() {
                 mask_provider_invocation_input(
@@ -441,7 +475,7 @@ impl PrivacyMaskingKernel {
                     &policy.allowlist_lower,
                     &rules,
                     &mut state,
-                )?;
+                );
             }
             let stage_index = stages.len();
             stages.push(ExecutedMaskingStage {
@@ -463,11 +497,29 @@ impl PrivacyMaskingKernel {
             return Ok(None);
         }
 
-        // Scrub earlier stages' `masked_snippet` against all subsequent stages' masked secrets
-        // so cross-stage neighboring sensitive values never leak into an earlier stage's audit snippet.
-        scrub_cross_stage_snippets(&mut stages);
+        let mut snippets = FinalAuditSnippets::new(stages.iter().map(|stage| &stage.state));
+        visit_invocation_content(input, |text| snippets.observe(text));
+        for stage in &mut stages {
+            snippets.populate(&mut stage.state);
+        }
+        if stages.iter().any(|stage| stage.state.total_hits > 0) {
+            refresh_native_digest(input)?;
+        }
 
-        let restoration_stages: Vec<RestorationStage> = stages
+        let all_stages_restore = stage_rules.iter().all(|(restore, _, _)| *restore);
+        let mask_durable_text = |text: &mut String| {
+            for (_, allowlist, rules) in stage_rules.iter().filter(|(restore, _, _)| !restore) {
+                *text = mask_text_with_rules(
+                    text,
+                    ctx.workspace_id,
+                    &self.hmac_subkey,
+                    allowlist,
+                    rules,
+                    &mut StageMaskState::default(),
+                );
+            }
+        };
+        let mut restoration_stages: Vec<RestorationStage> = stages
             .iter()
             .filter(|stage| stage.restore_output && !stage.state.restore_map.is_empty())
             .map(|stage| RestorationStage {
@@ -477,7 +529,7 @@ impl PrivacyMaskingKernel {
             .collect();
 
         // Session vault fallback only applies when output restoration is enabled.
-        let session_fallback = if stages.iter().any(|s| s.restore_output) {
+        let mut session_fallback = if stages.iter().any(|s| s.restore_output) {
             let prev_id = input
                 .previous_response_id
                 .as_deref()
@@ -501,6 +553,25 @@ impl PrivacyMaskingKernel {
             HashMap::new()
         };
 
+        if !all_stages_restore {
+            // An enabled stage can have masked a value before a strict rule sees
+            // it. Never reintroduce that value through a restoration or vault map.
+            for stage in &mut restoration_stages {
+                stage.map.retain(|placeholder, raw| {
+                    mask_durable_text(raw);
+                    raw != placeholder
+                });
+            }
+            for stage in stages.iter().filter(|stage| !stage.restore_output) {
+                for placeholder in stage.state.restore_map.keys() {
+                    session_fallback.remove(placeholder);
+                }
+            }
+            session_fallback.retain(|placeholder, raw| {
+                mask_durable_text(raw);
+                raw != placeholder
+            });
+        }
         let restoration_stack = RestorationStack::new(restoration_stages, session_fallback);
 
         // When any stage disables restoration (`restore_output == false`), compute the exact
@@ -510,7 +581,8 @@ impl PrivacyMaskingKernel {
             let mut persisted = input.clone();
             if !restoration_stack.is_empty() {
                 let non_counting = restoration_stack.clone_without_shared_counters();
-                restore_provider_invocation_input(&non_counting, &mut persisted)?;
+                restore_provider_invocation_input(&non_counting, &mut persisted);
+                refresh_native_digest(&mut persisted)?;
             }
             let wire_body = persisted
                 .native_transport
@@ -520,6 +592,47 @@ impl PrivacyMaskingKernel {
         } else {
             (None, None)
         };
+
+        // Start/earlier node execution already needed the original input. Mask the
+        // durable copy (not the executor's variable pool) before any upstream I/O.
+        if let Some(flow_run_id) = ctx
+            .flow_run_id
+            .filter(|_| rewrite_run && !all_stages_restore)
+        {
+            let mask_payload = |payload: &mut Value| {
+                visit_user_content(payload, |text| {
+                    let mut restore = Vec::new();
+                    for (stage_index, (restore_output, allowlist, rules)) in
+                        stage_rules.iter().enumerate()
+                    {
+                        let mut state = StageMaskState::default();
+                        *text = mask_text_with_rules(
+                            text,
+                            ctx.workspace_id,
+                            &self.hmac_subkey,
+                            allowlist,
+                            rules,
+                            &mut state,
+                        );
+                        if *restore_output && !state.restore_map.is_empty() {
+                            restore.push(RestorationStage {
+                                stage_index,
+                                map: state.restore_map,
+                            });
+                        }
+                    }
+                    // Nearby content can complete a strict match after an enabled
+                    // stage is unwound. Mask strict content in the result as well.
+                    if !restore.is_empty() {
+                        *text = RestorationStack::new(restore, HashMap::new()).restore_str(text);
+                        mask_durable_text(text);
+                    }
+                });
+            };
+            self.repository
+                .mask_privacy_run_inputs(ctx.workspace_id, flow_run_id, &mask_payload)
+                .await?;
+        }
 
         Ok(Some(PreparedPrivacyMasking {
             context: ctx.clone(),
@@ -595,50 +708,16 @@ impl PrivacyMaskingKernel {
 impl PrivacyMaskingInvalidationObserver for PrivacyMaskingKernel {
     fn invalidate_installation(&self, _installation_id: Uuid) {
         if let Ok(mut guard) = self.policy_cache.write() {
-            guard.clear();
+            guard.global_generation += 1;
+            guard.policies.clear();
+            guard.workspace_generations.clear();
         }
     }
 
     fn invalidate_workspace(&self, workspace_id: Uuid) {
         if let Ok(mut guard) = self.policy_cache.write() {
-            guard.remove(&workspace_id);
-        }
-    }
-}
-
-fn scrub_cross_stage_snippets(stages: &mut [ExecutedMaskingStage]) {
-    if stages.len() < 2 {
-        return;
-    }
-    let stage_maps: Vec<Vec<(String, String)>> = stages
-        .iter()
-        .map(|stage| {
-            let mut pairs: Vec<(String, String)> = stage
-                .state
-                .restore_map
-                .iter()
-                .map(|(placeholder, raw)| (placeholder.clone(), raw.clone()))
-                .collect();
-            // Replace longest raw strings first for deterministic scrubbing.
-            pairs.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
-            pairs
-        })
-        .collect();
-
-    for (idx, stage) in stages.iter_mut().enumerate() {
-        for later_pairs in &stage_maps[(idx + 1)..] {
-            for entry in stage.state.matches.values_mut() {
-                for (later_placeholder, later_raw) in later_pairs {
-                    if !later_raw.is_empty()
-                        && !later_raw.contains(&entry.placeholder)
-                        && entry.masked_snippet.contains(later_raw.as_str())
-                    {
-                        entry.masked_snippet = entry
-                            .masked_snippet
-                            .replace(later_raw.as_str(), later_placeholder);
-                    }
-                }
-            }
+            *guard.workspace_generations.entry(workspace_id).or_default() += 1;
+            guard.policies.remove(&workspace_id);
         }
     }
 }
@@ -650,167 +729,28 @@ fn mask_provider_invocation_input(
     allowlist_lower: &std::collections::HashSet<String>,
     rules: &[&super::engine::CompiledRule],
     state: &mut StageMaskState,
-) -> anyhow::Result<()> {
-    for message in &mut input.messages {
-        if !message.content.is_empty() {
-            message.content = mask_text_with_rules(
-                &message.content,
-                workspace_id,
-                hmac_subkey,
-                allowlist_lower,
-                rules,
-                state,
-            );
-        }
-        if let Some(content_blocks) = message.content_blocks.as_mut() {
-            mask_json_value(
-                content_blocks,
-                workspace_id,
-                hmac_subkey,
-                allowlist_lower,
-                rules,
-                state,
-            );
-        }
-        if let Some(tool_calls) = message.tool_calls.as_mut() {
-            mask_json_value(
-                tool_calls,
-                workspace_id,
-                hmac_subkey,
-                allowlist_lower,
-                rules,
-                state,
-            );
-        }
-    }
-
-    for block in &mut input.system {
-        match block {
-            NativePromptBlock::Text { text, .. } => {
-                if !text.is_empty() {
-                    *text = mask_text_with_rules(
-                        text,
-                        workspace_id,
-                        hmac_subkey,
-                        allowlist_lower,
-                        rules,
-                        state,
-                    );
-                }
-            }
-        }
-    }
-
-    if let Some(envelope) = input.client_protocol_envelope.as_mut() {
-        mask_protocol_body_map(
-            &mut envelope.body,
-            workspace_id,
-            hmac_subkey,
-            allowlist_lower,
-            rules,
-            state,
-        );
-        if let Some(source_request) = envelope.source_request.as_mut() {
-            if let Some(body) = source_request.body.as_mut() {
-                mask_json_value(
-                    body,
-                    workspace_id,
-                    hmac_subkey,
-                    allowlist_lower,
-                    rules,
-                    state,
-                );
-            }
-        }
-    }
-
-    if let Some(transport) = input.native_transport.as_mut() {
-        let before_hits = state.total_hits;
-        mask_json_value(
-            &mut transport.wire_body,
-            workspace_id,
-            hmac_subkey,
-            allowlist_lower,
-            rules,
-            state,
-        );
-        if state.total_hits > before_hits {
-            let (digest, size_bytes) = canonical_json_digest_and_size(&transport.wire_body)?;
-            transport.digest = digest;
-            transport.size_bytes = size_bytes as u64;
-        }
-    }
-
-    Ok(())
-}
-
-fn mask_protocol_body_map(
-    body: &mut BTreeMap<String, Value>,
-    workspace_id: Uuid,
-    hmac_subkey: &[u8; 32],
-    allowlist_lower: &std::collections::HashSet<String>,
-    rules: &[&super::engine::CompiledRule],
-    state: &mut StageMaskState,
 ) {
-    for (key, value) in body.iter_mut() {
-        if matches!(
-            key.as_str(),
-            "model" | "previous_response_id" | "conversation" | "stream" | "stream_options"
-        ) {
-            continue;
-        }
-        mask_json_value(
-            value,
+    visit_invocation_content(input, |text| {
+        *text = mask_text_with_rules(
+            text,
             workspace_id,
             hmac_subkey,
             allowlist_lower,
             rules,
             state,
         );
-    }
+    });
 }
 
 fn restore_provider_invocation_input(
     stack: &RestorationStack,
     input: &mut ProviderInvocationInput,
-) -> anyhow::Result<()> {
-    for message in &mut input.messages {
-        if message.content.contains("{{") {
-            message.content = stack.restore_str(&message.content);
+) {
+    visit_invocation_content(input, |text| {
+        if text.contains("{{") {
+            *text = stack.restore_str(text);
         }
-        if let Some(blocks) = message.content_blocks.as_mut() {
-            stack.restore_json(blocks);
-        }
-        if let Some(tool_calls) = message.tool_calls.as_mut() {
-            stack.restore_json(tool_calls);
-        }
-    }
-    for block in &mut input.system {
-        match block {
-            NativePromptBlock::Text { text, .. } => {
-                if text.contains("{{") {
-                    *text = stack.restore_str(text);
-                }
-            }
-        }
-    }
-    if let Some(envelope) = input.client_protocol_envelope.as_mut() {
-        for value in envelope.body.values_mut() {
-            stack.restore_json(value);
-        }
-        if let Some(source_request) = envelope.source_request.as_mut() {
-            if let Some(body) = source_request.body.as_mut() {
-                stack.restore_json(body);
-            }
-        }
-    }
-    if let Some(transport) = input.native_transport.as_mut() {
-        stack.restore_json(&mut transport.wire_body);
-        let (digest, size_bytes) = canonical_json_digest_and_size(&transport.wire_body)?;
-        transport.digest = digest;
-        transport.size_bytes = size_bytes as u64;
-    }
-    Ok(())
+    });
 }
 
 /// Canonical JSON SHA-256 digest and serialized byte size matching `ProviderTransportPayload`.

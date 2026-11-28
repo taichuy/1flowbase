@@ -9,13 +9,11 @@ use extension_contracts::{
 };
 use hmac::{Hmac, KeyInit, Mac};
 use regex::{Regex, RegexBuilder};
-use serde_json::Value;
 use sha2::Sha256;
 use uuid::Uuid;
 
 use super::builtins::{
-    ceil_char_boundary, find_builtin_spec, floor_char_boundary, passes_boundary, passes_validator,
-    BoundaryKind, BuiltinValidator,
+    find_builtin_spec, passes_boundary, passes_validator, BoundaryKind, BuiltinValidator,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -24,7 +22,6 @@ pub const MAX_CUSTOM_RULES: usize = 128;
 pub const MAX_CUSTOM_PATTERN_LEN: usize = 512;
 pub const MAX_ALLOWLIST_ITEMS: usize = 256;
 pub const MAX_PLACEHOLDER_KIND_LEN: usize = 24;
-const MAX_SNIPPET_CHARS: usize = 80;
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum PrivacyPolicyCompileError {
@@ -146,25 +143,14 @@ pub fn placeholder_regex() -> &'static Regex {
     })
 }
 
-pub fn prefix_hint(raw: &str) -> String {
-    let char_count = raw.chars().count();
-    if char_count < 8 {
-        return String::new();
-    }
-    let prefix_len = if char_count >= 16 { 4 } else { 2 };
-    let head: String = raw.chars().take(prefix_len).collect();
-    format!("{head}…")
+pub fn prefix_hint(_raw: &str) -> String {
+    String::new()
 }
 
 #[derive(Clone)]
 pub(crate) enum CompiledRuleMatcher {
-    Builtin {
-        builtin_code: String,
-    },
-    Custom {
-        regex: Regex,
-        capture_group: usize,
-    },
+    Builtin { builtin_code: String },
+    Custom { regex: Regex, capture_group: usize },
 }
 
 #[derive(Clone)]
@@ -302,10 +288,7 @@ impl CompiledWorkspacePolicy {
     }
 
     pub fn active_subject_count(&self) -> u32 {
-        self.subject_bindings
-            .iter()
-            .filter(|b| b.enabled)
-            .count() as u32
+        self.subject_bindings.iter().filter(|b| b.enabled).count() as u32
     }
 
     pub fn matching_binding(
@@ -366,7 +349,10 @@ pub struct StageMaskState {
 }
 
 impl StageMaskState {
-    pub fn to_log_matches(&self, restored_counts: &HashMap<String, u32>) -> Vec<PrivacyMaskingLogMatchDto> {
+    pub fn to_log_matches(
+        &self,
+        restored_counts: &HashMap<String, u32>,
+    ) -> Vec<PrivacyMaskingLogMatchDto> {
         self.matches
             .values()
             .map(|entry| PrivacyMaskingLogMatchDto {
@@ -507,63 +493,35 @@ pub(crate) fn mask_text_with_rules(
         let raw = &text[span.start..span.end];
         let placeholder =
             deterministic_placeholder(hmac_subkey, workspace_id, &span.rule.placeholder_kind, raw);
-        let placeholder_start_in_out = out.len();
         out.push_str(&placeholder);
-        let placeholder_end_in_out = out.len();
         state
             .restore_map
             .entry(placeholder.clone())
             .or_insert_with(|| raw.to_string());
         state.total_hits = state.total_hits.saturating_add(1);
 
-        let entry = state
-            .matches
-            .entry(placeholder.clone())
-            .or_insert_with(|| StageMaskMatchAccumulator {
-                rule_id: span.rule.rule_id.clone(),
-                rule_name: if span.rule.name.is_empty() {
-                    span.rule.rule_id.clone()
-                } else {
-                    span.rule.name.clone()
-                },
-                placeholder_kind: span.rule.placeholder_kind.clone(),
-                placeholder: placeholder.clone(),
-                original_len: raw.chars().count() as u32,
-                prefix_hint: prefix_hint(raw),
-                hit_count: 0,
-                masked_snippet: String::new(),
-            });
+        let entry =
+            state
+                .matches
+                .entry(placeholder.clone())
+                .or_insert_with(|| StageMaskMatchAccumulator {
+                    rule_id: span.rule.rule_id.clone(),
+                    rule_name: if span.rule.name.is_empty() {
+                        span.rule.rule_id.clone()
+                    } else {
+                        span.rule.name.clone()
+                    },
+                    placeholder_kind: span.rule.placeholder_kind.clone(),
+                    placeholder: placeholder.clone(),
+                    original_len: raw.chars().count() as u32,
+                    prefix_hint: prefix_hint(raw),
+                    hit_count: 0,
+                    masked_snippet: placeholder.clone(),
+                });
         entry.hit_count = entry.hit_count.saturating_add(1);
-        if entry.masked_snippet.is_empty() {
-            // Defer snippet extraction until full masked string is built so NO raw neighbor leaks.
-            entry.masked_snippet = format!("{placeholder_start_in_out}:{placeholder_end_in_out}");
-        }
         last = span.end;
     }
     out.push_str(&text[last..]);
-
-    // Populate zero-plaintext snippets strictly from the fully masked output string `out`.
-    for entry in state.matches.values_mut() {
-        if let Some((start_s, end_s)) = entry.masked_snippet.split_once(':') {
-            if let (Ok(s_idx), Ok(e_idx)) = (start_s.parse::<usize>(), end_s.parse::<usize>()) {
-                if s_idx <= e_idx && e_idx <= out.len() {
-                    let snip_start = floor_char_boundary(&out, s_idx.saturating_sub(24));
-                    let snip_end = ceil_char_boundary(&out, (e_idx + 24).min(out.len()));
-                    let mut snippet: String = out[snip_start..snip_end]
-                        .chars()
-                        .take(MAX_SNIPPET_CHARS)
-                        .collect();
-                    if snip_start > 0 {
-                        snippet.insert(0, '…');
-                    }
-                    if snip_end < out.len() {
-                        snippet.push('…');
-                    }
-                    entry.masked_snippet = snippet;
-                }
-            }
-        }
-    }
 
     out
 }
@@ -590,19 +548,13 @@ fn collect_pattern_matches<'a>(
         if end <= start {
             continue;
         }
-        if skip_existing_placeholders
-            && existing_placeholders
-                .iter()
-                .any(|&(ps, pe)| start < pe && end > ps)
-        {
-            continue;
-        }
-        // Even custom rules must never re-mask an exact existing placeholder token itself.
-        if existing_placeholders
-            .iter()
-            .any(|&(ps, pe)| start == ps && end == pe)
-        {
-            continue;
+        // The spans are strictly ordered and disjoint. Only the first span ending
+        // after `start` can be the first overlap or an exact match.
+        let idx = existing_placeholders.partition_point(|&(_, pe)| pe <= start);
+        if let Some(&(ps, pe)) = existing_placeholders.get(idx) {
+            if (skip_existing_placeholders && ps < end) || (ps == start && pe == end) {
+                continue;
+            }
         }
         if !passes_boundary(text, start, end, boundary) {
             continue;
@@ -616,60 +568,4 @@ fn collect_pattern_matches<'a>(
         }
         out.push(CandidateSpan { start, end, rule });
     }
-}
-
-/// Recursively masks all string leaf values in a JSON tree, skipping structural metadata keys.
-pub(crate) fn mask_json_value(
-    value: &mut Value,
-    workspace_id: Uuid,
-    hmac_subkey: &[u8; 32],
-    allowlist_lower: &HashSet<String>,
-    rules: &[&CompiledRule],
-    state: &mut StageMaskState,
-) {
-    match value {
-        Value::String(text) => {
-            let masked = mask_text_with_rules(
-                text,
-                workspace_id,
-                hmac_subkey,
-                allowlist_lower,
-                rules,
-                state,
-            );
-            *text = masked;
-        }
-        Value::Array(items) => {
-            for item in items {
-                mask_json_value(item, workspace_id, hmac_subkey, allowlist_lower, rules, state);
-            }
-        }
-        Value::Object(map) => {
-            for (key, item) in map.iter_mut() {
-                if is_non_content_wire_key(key) {
-                    continue;
-                }
-                mask_json_value(item, workspace_id, hmac_subkey, allowlist_lower, rules, state);
-            }
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) => {}
-    }
-}
-
-fn is_non_content_wire_key(key: &str) -> bool {
-    matches!(
-        key,
-        "type"
-            | "role"
-            | "id"
-            | "call_id"
-            | "tool_call_id"
-            | "response_id"
-            | "previous_response_id"
-            | "model"
-            | "mime_type"
-            | "media_type"
-            | "encrypted_content"
-            | "signature"
-    )
 }

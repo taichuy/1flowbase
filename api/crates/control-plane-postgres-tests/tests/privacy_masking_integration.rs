@@ -59,7 +59,7 @@ async fn setup_store_and_workspaces() -> (
             .expect("kernel init"),
     );
     let store = base_store.with_privacy_masking_invalidation_observer(
-        kernel.clone() as Arc<dyn PrivacyMaskingInvalidationObserver>,
+        kernel.clone() as Arc<dyn PrivacyMaskingInvalidationObserver>
     );
 
     let tenant = store.upsert_root_tenant().await.expect("tenant");
@@ -471,4 +471,359 @@ async fn atomic_lifecycle_fencing_purges_policies_on_disable_revoke_and_uninstal
         .unwrap()
         .is_empty());
     assert!(!kernel.has_active_policies(ws_a).await.unwrap());
+}
+
+#[tokio::test]
+async fn restore_policy_fences_persisted_run_and_conversation_payloads() {
+    use control_plane::ports::{
+        AppendRuntimeEventInput, ApplicationRunTraceNodeContentProjectionInput,
+        ApplicationRunTraceNodeProjectionInput, CreateApplicationInput, CreateFlowRunInput,
+        CreateNodeRunInput, ListApplicationRunConversationMessageItemsPageInput,
+        OrchestrationRuntimeRepository, ReplaceApplicationRunTraceProjectionInput,
+        UpdateFlowRunInput, UpdateNodeRunInput, UpsertCompiledPlanInput,
+    };
+    use control_plane_contracts::flow_run_title::build_flow_run_title;
+    use domain::{
+        ApplicationType, FlowRunMode, FlowRunStatus, NodeRunStatus, RuntimeEventDurability,
+        RuntimeEventLayer, RuntimeEventSource, RuntimeEventVisibility, RuntimeTrustLevel,
+    };
+    use extension_contracts::provider_contract::{ProviderInvocationResult, ProviderStreamEvent};
+    use serde_json::Value;
+
+    let (store, kernel, actor, workspace, _) = setup_store_and_workspaces().await;
+    let (installation, _) = seed_active_privacy_plugin(&store, actor, "0.1.0").await;
+    let app = store
+        .create_application(&CreateApplicationInput {
+            actor_user_id: actor,
+            workspace_id: workspace,
+            application_type: ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
+            workflow_trigger_config: None,
+            name: "Privacy fixture".into(),
+            description: String::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
+        })
+        .await
+        .unwrap();
+    let editor = store
+        .get_or_create_editor_state(workspace, app.id, actor)
+        .await
+        .unwrap();
+    let plan = store
+        .upsert_compiled_plan(&UpsertCompiledPlanInput {
+            actor_user_id: actor,
+            flow_id: editor.flow.id,
+            flow_draft_id: editor.draft.id,
+            schema_version: "1flowbase.flow/v2".into(),
+            document_hash: "privacy-fixture".into(),
+            document_updated_at: editor.draft.updated_at,
+            plan: json!({"topological_order":["node-start","node-llm"]}),
+        })
+        .await
+        .unwrap();
+    let instance = Uuid::new_v4();
+    let started = OffsetDateTime::now_utc();
+    let email = "pg-fixture-secret@acme.org";
+    let long = format!("PG_LONG_{}_END", "Z".repeat(320));
+    let secret_input = format!("{long} {email}\0tail");
+
+    for restore_output in [false, true] {
+        let mut policy = sample_policy_for_instance(instance, restore_output);
+        policy.rules.push(PrivacyMaskingRuleDto {
+            rule_id: "long".into(),
+            name: "Long fixture".into(),
+            kind: PrivacyMaskingRuleKind::CustomRegex,
+            builtin_code: None,
+            placeholder_kind: "LONG".into(),
+            pattern: Some("PG_LONG_Z+_END".into()),
+            enabled: true,
+            priority: 10,
+        });
+        kernel
+            .sync_workspace_policy(installation, workspace, Some(actor), &policy)
+            .await
+            .unwrap();
+        let run = OrchestrationRuntimeRepository::create_flow_run(&store, &CreateFlowRunInput {
+            application_run_log_context: None, actor_user_id: actor, application_id: app.id,
+            flow_id: editor.flow.id, flow_draft_id: editor.draft.id, compiled_plan_id: plan.id,
+            debug_session_id: String::new(), flow_schema_version: plan.schema_version.clone(),
+            document_hash: plan.document_hash.clone(), run_mode: FlowRunMode::AssistantExecution,
+            target_node_id: None, title: build_flow_run_title(None, &secret_input), status: FlowRunStatus::Running,
+            input_payload: json!({
+                "node-start":{"query":secret_input,"history":[{"role":"user","content":format!("previous {email}")}]},
+                "__embedded_assistant_user_message":{"content":secret_input,"page_references":[]}
+            }),
+            started_at: started, api_key_id: None, publication_version_id: None,
+            assistant_conversation_id: None, external_user: None, external_conversation_id: None,
+            external_trace_id: None, compatibility_mode: None, idempotency_key: None,
+        }).await.unwrap();
+        let mut nodes = Vec::new();
+        for (name, kind) in [("node-start", "start"), ("node-llm", "llm")] {
+            nodes.push(
+                store
+                    .create_node_run(&CreateNodeRunInput {
+                        flow_run_id: run.id,
+                        node_id: name.into(),
+                        node_type: kind.into(),
+                        node_alias: name.into(),
+                        status: NodeRunStatus::Running,
+                        input_payload: json!({"id":secret_input}),
+                        debug_payload: json!({"preexisting_snapshot":secret_input}),
+                        started_at: started,
+                    })
+                    .await
+                    .unwrap(),
+            );
+        }
+        let trace_node_id = Uuid::new_v4();
+        store
+            .replace_application_run_trace_projection(&ReplaceApplicationRunTraceProjectionInput {
+                flow_run_id: run.id,
+                projection_version: 1,
+                source_watermark: "privacy-fixture".into(),
+                nodes: vec![ApplicationRunTraceNodeProjectionInput {
+                    trace_node_id,
+                    parent_trace_node_id: None,
+                    stable_locator: "node-start".into(),
+                    node_kind: "node_run".into(),
+                    owner_kind: Some("node_run".into()),
+                    owner_id: Some(nodes[0].id.to_string()),
+                    order_key: "000001".into(),
+                    node_id: Some("node-start".into()),
+                    node_type: Some("start".into()),
+                    node_mode: None,
+                    node_alias: "Start".into(),
+                    status: "running".into(),
+                    started_at: started,
+                    finished_at: None,
+                    duration_ms: None,
+                    metrics_payload: json!({}),
+                    has_children: false,
+                    child_count: 0,
+                    has_content: true,
+                    content_ref: None,
+                    source_flow_run_id: None,
+                    source_trace_node_id: None,
+                    parent_callback_task_id: None,
+                    parent_tool_call_id: None,
+                    trace_relation_kind: None,
+                }],
+                contents: vec![ApplicationRunTraceNodeContentProjectionInput {
+                    trace_node_id,
+                    content_kind: "node_run".into(),
+                    payload: json!({"input_payload":{"id":secret_input}}).into(),
+                    source_refs: json!([]),
+                }],
+            })
+            .await
+            .unwrap();
+        let start_event = store
+            .append_runtime_event(&AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(nodes[1].id),
+                span_id: None,
+                parent_span_id: None,
+                event_type: "node_started".into(),
+                layer: RuntimeEventLayer::RuntimeItem,
+                source: RuntimeEventSource::Host,
+                trust_level: RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({"input_payload":{"id":secret_input}}),
+                visibility: RuntimeEventVisibility::Workspace,
+                durability: RuntimeEventDurability::Durable,
+            })
+            .await
+            .unwrap();
+        let original_event_body: Uuid = sqlx::query_scalar(
+            "select observation_body_content_id from runtime_events where id=$1",
+        )
+        .bind(start_event.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        let context = PrivacyInvocationContext {
+            workspace_id: workspace,
+            flow_run_id: Some(run.id),
+            application_id: Some(app.id),
+            provider_instance_id: instance,
+            provider_instance_name: "fixture".into(),
+            model_id: "fixture".into(),
+            protocol: "openai_chat".into(),
+        };
+        let mut input = ProviderInvocationInput {
+            messages: vec![ProviderMessage {
+                role: ProviderMessageRole::User,
+                content: secret_input.clone(),
+                name: None,
+                tool_call_id: None,
+                is_error: None,
+                tool_calls: None,
+                content_blocks: None,
+            }],
+            ..Default::default()
+        };
+        let prepared = kernel
+            .prepare_invocation(&context, &mut input)
+            .await
+            .unwrap()
+            .unwrap();
+        let outbound = &input.messages[0].content;
+        assert!(!outbound.contains(email));
+        assert!(!outbound.contains("PG_LONG_"));
+        let check = |text: &str| {
+            assert_eq!(
+                text.contains(email),
+                restore_output,
+                "email in persisted copy: {text}"
+            );
+            assert_eq!(
+                text.contains("PG_LONG_Z"),
+                restore_output,
+                "long secret in persisted copy: {text}"
+            );
+        };
+        // The actual base columns and the NUL-triggered raw JSON sidecars must
+        // have changed before there is an upstream response to persist.
+        let row = sqlx::query_as::<_, (Value, Value, String)>(
+            "select input_payload,raw_json_payloads,title from flow_runs where id=$1",
+        )
+        .bind(run.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        check(&row.0.to_string());
+        check(row.1["input_payload"].as_str().expect("lossless sidecar"));
+        assert_eq!(row.2.contains("PG_LONG_Z"), restore_output);
+        let sections = sqlx::query_as::<_, (Value, Value)>("select d.payload,d.raw_json_payloads from node_run_details d join node_runs n on n.id=d.node_run_id where n.flow_run_id=$1 and d.section in ('input_payload','debug_payload')")
+            .bind(run.id).fetch_all(store.pool()).await.unwrap();
+        assert_eq!(sections.len(), 4);
+        for (body, raw) in sections {
+            check(&body.to_string());
+            check(&raw.to_string());
+        }
+        let (event, archived_body) = sqlx::query_as::<_, (Value, Uuid)>("select runtime_event_original_payload(payload,raw_json_payloads,flow_run_id),observation_body_content_id from runtime_events where id=$1")
+            .bind(start_event.id).fetch_one(store.pool()).await.unwrap();
+        check(&event.to_string());
+        assert!(event["input_payload"]["id"]
+            .as_str()
+            .unwrap()
+            .ends_with("\0tail"));
+        assert_eq!(archived_body == original_event_body, restore_output);
+        let old_body_exists: bool = sqlx::query_scalar(
+            "select exists(select 1 from runtime_canonical_contents where id=$1)",
+        )
+        .bind(original_event_body)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(old_body_exists, restore_output);
+        let trace = sqlx::query_as::<_, (Value, Value)>("select payload,raw_json_payloads from application_run_trace_node_contents where trace_node_id=$1")
+            .bind(trace_node_id).fetch_one(store.pool()).await.unwrap();
+        check(&trace.0.to_string());
+        check(trace.1["payload"].as_str().unwrap());
+        let before_answer = store
+            .get_application_run_conversation_current_item(app.id, run.id)
+            .await
+            .unwrap()
+            .unwrap();
+        check(before_answer.query.as_deref().unwrap());
+
+        // Simulate a provider echo, using the same completed-result restoration
+        // and durable prompt projection that the real invoker consumes.
+        let mut events = vec![ProviderStreamEvent::TextDelta {
+            delta: outbound.clone(),
+        }];
+        let mut result = ProviderInvocationResult {
+            final_content: Some(outbound.clone()),
+            ..Default::default()
+        };
+        prepared.restore_completed_output_counting(&mut events, &mut result);
+        let answer = result.final_content.unwrap();
+        if restore_output {
+            assert_eq!(answer, secret_input);
+        }
+        let prompt = prepared
+            .persisted_input_override
+            .as_ref()
+            .map(|v| &v.messages[0].content)
+            .unwrap_or(&secret_input);
+        store
+            .update_node_run(&UpdateNodeRunInput {
+                node_run_id: nodes[1].id,
+                status: NodeRunStatus::Succeeded,
+                output_payload: json!({"answer":answer}),
+                error_payload: None,
+                metrics_payload: json!({}),
+                debug_payload: json!({"llm":{"prompt_snapshot":prompt}}),
+                finished_at: Some(started),
+            })
+            .await
+            .unwrap();
+        store
+            .update_flow_run(&UpdateFlowRunInput {
+                flow_run_id: run.id,
+                status: FlowRunStatus::Succeeded,
+                output_payload: json!({"answer":answer}),
+                error_payload: None,
+                finished_at: Some(started),
+            })
+            .await
+            .unwrap();
+        kernel.finalize_invocation(&prepared, None).await;
+
+        let detail = store
+            .get_application_run_detail(app.id, run.id)
+            .await
+            .unwrap()
+            .unwrap();
+        check(&detail.flow_run.output_payload.to_string());
+        let (debug, output) = sqlx::query_as::<_, (Value, Value)>(
+            "select debug_payload,output_payload from node_run_records where id=$1",
+        )
+        .bind(nodes[1].id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        check(&debug.to_string());
+        check(&output.to_string());
+        let current = store
+            .get_application_run_conversation_current_item(app.id, run.id)
+            .await
+            .unwrap()
+            .unwrap();
+        check(current.query.as_deref().unwrap());
+        check(current.answer.as_deref().unwrap());
+        let page = store
+            .list_application_run_conversation_message_items_page(
+                app.id,
+                run.id,
+                ListApplicationRunConversationMessageItemsPageInput {
+                    before_sequence: None,
+                    after_sequence: None,
+                    limit: 20,
+                },
+            )
+            .await
+            .unwrap();
+        // The task page intentionally pages turns, not the individual imported
+        // history rows. Check both the task consumer and the retained history projection.
+        if !restore_output {
+            assert!(!format!("{page:?}").contains(email));
+        }
+        let history: String = sqlx::query_scalar(
+            "select content from application_run_conversation_message_items where flow_run_id=$1 and role='user' and not is_current and content like 'previous %'",
+        ).bind(run.id).fetch_one(store.pool()).await.unwrap();
+        assert_eq!(history.contains(email), restore_output);
+        let summaries: Value = sqlx::query_scalar(
+            "select to_jsonb(s) from application_run_log_summaries s where flow_run_id=$1",
+        )
+        .bind(run.id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(summaries.to_string().contains("PG_LONG_Z"), restore_output);
+    }
 }

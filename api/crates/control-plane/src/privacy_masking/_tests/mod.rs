@@ -29,6 +29,8 @@ struct InMemoryPrivacyRepo {
     policies: Mutex<HashMap<(Uuid, Uuid), PrivacyMaskingRuntimePolicyRecord>>,
     logs: Mutex<Vec<AppendPrivacyMaskingLogInput>>,
     fail_reads: Mutex<bool>,
+    fail_run_rewrite: Mutex<bool>,
+    next_read_fence: Mutex<Option<(Arc<tokio::sync::Barrier>, Arc<tokio::sync::Barrier>)>>,
 }
 
 #[async_trait]
@@ -61,12 +63,19 @@ impl PrivacyMaskingRepository for InMemoryPrivacyRepo {
         if *self.fail_reads.lock().unwrap() {
             anyhow::bail!("simulated_privacy_db_outage");
         }
-        let policies = self.policies.lock().unwrap();
-        let mut out: Vec<_> = policies
+        let mut out: Vec<_> = self
+            .policies
+            .lock()
+            .unwrap()
             .values()
             .filter(|r| r.workspace_id == workspace_id)
             .cloned()
             .collect();
+        let fence = self.next_read_fence.lock().unwrap().take();
+        if let Some((captured, resume)) = fence {
+            captured.wait().await;
+            resume.wait().await;
+        }
         out.sort_by_key(|r| r.installation_id);
         Ok(out)
     }
@@ -79,6 +88,18 @@ impl PrivacyMaskingRepository for InMemoryPrivacyRepo {
         let before = policies.len();
         policies.retain(|(inst, _), _| *inst != installation_id);
         Ok((before - policies.len()) as u64)
+    }
+
+    async fn mask_privacy_run_inputs(
+        &self,
+        _workspace_id: Uuid,
+        _flow_run_id: Uuid,
+        _mask: &control_plane_contracts::ports::PrivacyRunPayloadMask<'_>,
+    ) -> anyhow::Result<()> {
+        if *self.fail_run_rewrite.lock().unwrap() {
+            anyhow::bail!("simulated_run_rewrite_failure");
+        }
+        Ok(())
     }
 
     async fn append_privacy_masking_log(
@@ -111,7 +132,8 @@ fn all_builtin_rules(enable_public_ip: bool) -> Vec<PrivacyMaskingRuleDto> {
             builtin_code: Some(d.builtin_code.clone()),
             placeholder_kind: d.placeholder_kind,
             pattern: None,
-            enabled: d.default_enabled || (enable_public_ip && d.builtin_code == BUILTIN_IPV4_PUBLIC),
+            enabled: d.default_enabled
+                || (enable_public_ip && d.builtin_code == BUILTIN_IPV4_PUBLIC),
             priority: idx as i32,
         })
         .collect()
@@ -157,7 +179,9 @@ async fn builtin_rules_mask_real_secrets_and_resist_false_positives() {
         .expect("preview succeeds");
 
     // Secrets & real PII MUST be masked
-    assert!(!out.masked_text.contains("sk-proj-AbCdEf1234567890GhIjKlMnOpQrStUv"));
+    assert!(!out
+        .masked_text
+        .contains("sk-proj-AbCdEf1234567890GhIjKlMnOpQrStUv"));
     assert!(!out.masked_text.contains("Sup3rSecr3tPwd!"));
     assert!(!out.masked_text.contains("alice.wang@acme-corp.io"));
     assert!(!out.masked_text.contains("Phone: 13812345678"));
@@ -167,7 +191,9 @@ async fn builtin_rules_mask_real_secrets_and_resist_false_positives() {
     assert!(!out.masked_text.contains("8.8.8.8"));
 
     // False-positive guards & allowlist MUST stay untouched
-    assert!(out.masked_text.contains("sk-allowlisted-demo-token-1234567890"));
+    assert!(out
+        .masked_text
+        .contains("sk-allowlisted-demo-token-1234567890"));
     assert!(out.masked_text.contains("test@example.com"));
     assert!(out.masked_text.contains("order_id=13812345678"));
     assert!(out.masked_text.contains("110105194912310021"));
@@ -522,7 +548,11 @@ async fn restore_disabled_keeps_masked_output_and_persists_masked_input() {
     }];
     prepared.restore_completed_output(&mut events, &mut result);
     // Output must remain masked
-    assert!(!result.final_content.as_deref().unwrap().contains("strict@company.com"));
+    assert!(!result
+        .final_content
+        .as_deref()
+        .unwrap()
+        .contains("strict@company.com"));
 }
 
 #[tokio::test]
@@ -574,11 +604,21 @@ async fn fail_closed_on_repository_error_and_invalidation_clears_cache() {
         .unwrap();
 
     // Warm cache
-    assert!(kernel.prepare_invocation(&ctx, &mut input).await.unwrap().is_some());
+    assert!(kernel
+        .prepare_invocation(&ctx, &mut input)
+        .await
+        .unwrap()
+        .is_some());
     // Delete policy and invalidate installation -> immediately stops masking
     repo.delete_privacy_masking_policies_for_installation(installation_id)
         .await
         .unwrap();
     kernel.invalidate_installation(installation_id);
-    assert!(kernel.prepare_invocation(&ctx, &mut input).await.unwrap().is_none());
+    assert!(kernel
+        .prepare_invocation(&ctx, &mut input)
+        .await
+        .unwrap()
+        .is_none());
 }
+
+mod fp1;

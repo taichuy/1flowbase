@@ -1,7 +1,9 @@
 //! Host-owned Privacy Masking kernel: built-in rules, regex engine, streaming restorer, and cache.
 pub mod builtins;
 pub mod engine;
+mod invocation_content;
 pub mod kernel;
+mod native_stream;
 pub mod stream_restorer;
 
 #[cfg(test)]
