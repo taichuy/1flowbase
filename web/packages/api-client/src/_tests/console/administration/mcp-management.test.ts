@@ -149,11 +149,16 @@ describe('console-mcp-management client', () => {
           risk_level: 'low',
           status: 'enabled',
           des_id_required: true,
-          tool_ids: ['tool_a', 'tool_b']
+          tool_ids: ['sales,lookup', 'page']
         }),
       expected: {
-        path: '/api/console/mcp/tools/page?page=1&page_size=20&keyword=runtime&execution_target_kind=interface_wrapper&interface_id=get_runtime&risk_level=low&status=enabled&des_id_required=true&tool_ids=tool_a%2Ctool_b'
+        path: '/api/console/mcp/tools/page?page=1&page_size=20&keyword=runtime&execution_target_kind=interface_wrapper&interface_id=get_runtime&risk_level=low&status=enabled&des_id_required=true&tool_ids_json=%5B%22sales%2Clookup%22%2C%22page%22%5D'
       }
+    },
+    {
+      name: 'explicit empty tool ID selection',
+      request: () => fetchConsoleMcpToolsPage({ tool_ids: [] }),
+      expected: { path: '/api/console/mcp/tools/page?tool_ids_json=%5B%5D' }
     },
     {
       name: 'interface capabilities with bindable filter',
@@ -176,6 +181,21 @@ describe('console-mcp-management client', () => {
       expected: {
         path: '/api/console/mcp/interface-capabilities/page?bindable_only=false&q=runtime&method=GET&offset=20&limit=20'
       }
+    },
+    {
+      name: 'reserved tool ID detail, not a collection request',
+      request: () => fetchConsoleMcpTool('page'),
+      expected: { path: '/api/console/mcp/tools/by-id?tool_id=page' }
+    },
+    {
+      name: 'unqualified by-id remains a tool ID',
+      request: () => fetchConsoleMcpTool('by-id'),
+      expected: { path: '/api/console/mcp/tools/by-id' }
+    },
+    {
+      name: 'reserved interface ID detail, not a collection request',
+      request: () => fetchConsoleMcpInterfaceCapability('page'),
+      expected: { path: '/api/console/mcp/interface-capabilities/by-id?interface_id=page' }
     },
     {
       name: 'single interface capability',

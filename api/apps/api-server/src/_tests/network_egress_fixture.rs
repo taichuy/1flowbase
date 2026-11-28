@@ -13,9 +13,9 @@ use std::{
 use control_plane::ports::{
     CreateModelProviderInstanceInput, CreateNetworkEgressPoolInput,
     CreateNetworkEgressPoolMemberInput, CreateNetworkEgressProviderInput,
-    CreateNetworkEgressRouteInput, ModelProviderRepository, NetworkEgressPoolRepository,
-    NetworkEgressRepository, NetworkEgressRouteRepository, PluginRepository,
-    ReplaceNetworkEgressProjectionInput, UpsertNetworkEgressProviderSecretInput,
+    CreateNetworkEgressRouteInput, CreatePluginAssignmentInput, ModelProviderRepository,
+    NetworkEgressPoolRepository, NetworkEgressRepository, NetworkEgressRouteRepository,
+    PluginRepository, ReplaceNetworkEgressProjectionInput, UpsertNetworkEgressProviderSecretInput,
     UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
 };
 use domain::{
@@ -240,6 +240,17 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         )
         .await
         .expect("fixture model installation must persist");
+        <storage_durable_postgres::MainDurableStore as PluginRepository>::create_assignment(
+            &state.store,
+            &CreatePluginAssignmentInput {
+                installation_id: model_installation_id,
+                workspace_id: state.bootstrap_workspace_id,
+                provider_code: "fixture_provider".into(),
+                actor_user_id: root.id,
+            },
+        )
+        .await
+        .expect("fixture model installation must be assigned to the instance workspace");
         <storage_durable_postgres::MainDurableStore as ModelProviderRepository>::create_instance(
             &state.store,
             &CreateModelProviderInstanceInput {

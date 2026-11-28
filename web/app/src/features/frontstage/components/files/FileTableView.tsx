@@ -69,12 +69,14 @@ function useFileTableController({
   const [filename, setFilename] = useState('');
   const [sort, setSort] = useState('created_at:desc');
   useEffect(() => {
+    const nextFilename = search.trim();
+    if (nextFilename === filename) return;
     const timer = setTimeout(() => {
-      setFilename(search.trim());
+      setFilename(nextFilename);
       setPage(1);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [search, filename]);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [shareTarget, setShareTarget] = useState<{

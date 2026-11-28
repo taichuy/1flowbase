@@ -768,6 +768,8 @@ async fn exercise_boot_refresh(reenable_after_selection: bool) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn boot_refresh_holds_db_lock_until_visible_and_pinned_before_release() {
+    use futures_util::FutureExt;
+
     let (state, database_url) = crate::_tests::support::test_api_state_with_database_url().await;
     let actor_id: Uuid = sqlx::query_scalar("select id from users where account='root'")
         .fetch_one(state.store.pool())
@@ -839,9 +841,16 @@ async fn boot_refresh_holds_db_lock_until_visible_and_pinned_before_release() {
     let pinned_once: Arc<std::sync::OnceLock<PinnedSnapshots>> =
         Arc::new(std::sync::OnceLock::new());
 
+    sqlx::query("delete from event_catalog")
+        .execute(runtime.store.pool())
+        .await
+        .unwrap();
+    eprintln!("boot lock probe: fixture ready; starting rollback refresh");
     // 1. Pre-commit failure after SQL staging rolls back visible state AND leaves OnceLock unpinned.
-    *runtime.composition.before_authority_release.lock().unwrap() =
-        Some(Box::new(|| anyhow::bail!("simulated pre-commit failure")));
+    *runtime.composition.before_authority_release.lock().unwrap() = Some(Box::pin(async {
+        eprintln!("boot lock probe: rollback attempt reached pre-commit hook");
+        anyhow::bail!("simulated pre-commit failure")
+    }));
     let state_fail = state.clone();
     let pin_fail = pinned_once.clone();
     let err = runtime
@@ -849,7 +858,12 @@ async fn boot_refresh_holds_db_lock_until_visible_and_pinned_before_release() {
         .refresh_boot_snapshots_with_event_catalog_and_pin(
             move |snapshots| {
                 Box::pin(async move {
-                    crate::event_center::persistence::snapshot(&state_fail, &snapshots).await
+                    let catalog =
+                        crate::event_center::persistence::snapshot(&state_fail, &snapshots).await?;
+                    eprintln!(
+                        "boot lock probe: rollback catalog prepared; acquiring authority batch"
+                    );
+                    Ok(catalog)
                 })
             },
             move |published| {
@@ -872,86 +886,101 @@ async fn boot_refresh_holds_db_lock_until_visible_and_pinned_before_release() {
             .unwrap()
     ));
 
+    let rolled_back_events: i64 = sqlx::query_scalar("select count(*) from event_catalog")
+        .fetch_one(runtime.store.pool())
+        .await
+        .unwrap();
+    assert_eq!(rolled_back_events, 0, "staged catalog must roll back");
+
     // 2. Real event_catalog SQL runs inside the authority transaction; before release, both
     //    local snapshots mutex AND PG locks are held and OnceLock is still unset; after commit,
     //    event_catalog rows are durable and OnceLock is pinned to the exact published snapshot.
-    sqlx::query("delete from event_catalog")
-        .execute(runtime.store.pool())
+    // Open the independent observer before acquiring the authority lease. Never check out
+    // a second connection from the fixture's one-slot pool inside the publication barrier.
+    let mut conn = <sqlx::PgConnection as sqlx::Connection>::connect(&database_url)
         .await
         .unwrap();
+    eprintln!("boot lock probe: rollback verified; starting commit refresh");
     let composition_ref = runtime.composition.clone();
     let workspace_id = actor.current_workspace_id;
     let pin_check = pinned_once.clone();
-    *runtime.composition.before_authority_release.lock().unwrap() = Some(Box::new(move || {
+    *runtime.composition.before_authority_release.lock().unwrap() = Some(Box::pin(async move {
+        eprintln!("boot lock probe: SQL staged, before authority release");
         assert!(
             pin_check.get().is_none(),
             "OnceLock must not pin before COMMIT"
         );
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                assert!(
-                    tokio::time::timeout(
-                        std::time::Duration::from_millis(25),
-                        composition_ref.current_snapshots(),
-                    )
-                    .await
-                    .is_err(),
-                    "readers must remain blocked on snapshots mutex until authority lease commits"
-                );
-                let mut conn = <sqlx::PgConnection as sqlx::Connection>::connect(&database_url)
-                    .await
-                    .unwrap();
-                let mut tx = sqlx::Acquire::begin(&mut conn).await.unwrap();
-                let event_lock_free: bool = sqlx::query_scalar(
-                    "select pg_try_advisory_xact_lock(hashtextextended('1flowbase.event_catalog', 0))",
-                )
-                .fetch_one(&mut *tx)
-                .await
-                .unwrap();
-                assert!(
-                    !event_lock_free,
-                    "1flowbase.event_catalog advisory lock must be held inside stage_managed_settings_templates"
-                );
-                let uncommitted_visible: i64 =
-                    sqlx::query_scalar("select count(*) from event_catalog")
-                        .fetch_one(&mut *tx)
-                        .await
-                        .unwrap();
-                assert_eq!(
-                    uncommitted_visible, 0,
-                    "event catalog SQL must be staged inside the uncommitted authority transaction"
-                );
-                sqlx::query("set local lock_timeout = '50ms'")
-                    .execute(&mut *tx)
-                    .await
-                    .unwrap();
-                let lock_err = sqlx::query(
-                    "update extension_installations set updated_at = now() where id = $1",
-                )
+        // Poll the actual reader without relying on scheduling a timer on another worker.
+        assert!(
+            tokio::task::unconstrained(composition_ref.current_snapshots())
+                .now_or_never()
+                .is_none(),
+            "readers must remain blocked on snapshots mutex until authority lease commits"
+        );
+        let mut tx = sqlx::Acquire::begin(&mut conn).await.unwrap();
+        sqlx::query("set local lock_timeout = '50ms'")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        let event_lock_free: bool = sqlx::query_scalar(
+            "select pg_try_advisory_xact_lock(hashtextextended('1flowbase.event_catalog', 0))",
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+        assert!(
+            !event_lock_free,
+            "1flowbase.event_catalog advisory lock must be held inside stage_managed_settings_templates"
+        );
+        let uncommitted_visible: i64 = sqlx::query_scalar("select count(*) from event_catalog")
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+        assert_eq!(
+            uncommitted_visible, 0,
+            "event catalog SQL must be staged inside the uncommitted authority transaction"
+        );
+        let lock_err =
+            sqlx::query("update extension_installations set updated_at = now() where id = $1")
                 .bind(id)
                 .execute(&mut *tx)
                 .await
                 .unwrap_err();
-                let msg = lock_err.to_string();
-                assert!(
-                    msg.contains("lock timeout") || msg.contains("55P03"),
-                    "expected PG lock held while staging event catalog & visible snapshot, got: {msg}"
-                );
-            });
-        });
+        assert_eq!(
+            lock_err
+                .as_database_error()
+                .and_then(|error| error.code())
+                .as_deref(),
+            Some("55P03"),
+            "competing installation write must fail with lock_not_available: {lock_err}"
+        );
+        tx.rollback().await.unwrap();
         Ok(())
     }));
     let state_ok = state.clone();
+    let composition_at_pin = runtime.composition.clone();
     let pin_ok = pinned_once.clone();
     let returned = runtime
         .composition
         .refresh_boot_snapshots_with_event_catalog_and_pin(
             move |snapshots| {
                 Box::pin(async move {
-                    crate::event_center::persistence::snapshot(&state_ok, &snapshots).await
+                    let catalog =
+                        crate::event_center::persistence::snapshot(&state_ok, &snapshots).await?;
+                    eprintln!(
+                        "boot lock probe: commit catalog prepared; acquiring authority batch"
+                    );
+                    Ok(catalog)
                 })
             },
             move |published| {
+                eprintln!("boot lock probe: committed; pinning published snapshots");
+                assert!(
+                    tokio::task::unconstrained(composition_at_pin.current_snapshots())
+                        .now_or_never()
+                        .is_none(),
+                    "readers must still be blocked while the committed snapshot is pinned"
+                );
                 pin_ok
                     .set(published.clone())
                     .map_err(|_| anyhow::anyhow!("already pinned"))
@@ -959,7 +988,12 @@ async fn boot_refresh_holds_db_lock_until_visible_and_pinned_before_release() {
         )
         .await
         .unwrap();
+    eprintln!("boot lock probe: publication and inline reclamation returned");
     let after = runtime.composition.snapshot(workspace_id).await.unwrap();
+    assert!(
+        !Arc::ptr_eq(&before, &after),
+        "refresh must replace the snapshot"
+    );
     assert!(Arc::ptr_eq(&returned[&workspace_id], &after));
     assert!(Arc::ptr_eq(
         &pinned_once.get().unwrap()[&workspace_id],

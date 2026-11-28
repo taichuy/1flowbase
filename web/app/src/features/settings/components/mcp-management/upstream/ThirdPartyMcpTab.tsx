@@ -1,3 +1,4 @@
+import type { McpTablePagination } from '../mcp-management-state';
 import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
@@ -272,7 +273,6 @@ function SchemaFields({ schema }: { schema: unknown }) {
 function useUpstreamMcpController({
   onImported
 }: {
-  canManage?: boolean;
   onImported: () => void;
 }) {
   const can = useConsoleOperationAccess();
@@ -789,7 +789,7 @@ function useUpstreamMcpController({
 }
 
 export function ThirdPartyMcpTab(
-  props: Parameters<typeof useUpstreamMcpController>[0]
+  props: Parameters<typeof useUpstreamMcpController>[0] & McpTablePagination
 ) {
   const {
     connectionsQuery,
@@ -819,8 +819,7 @@ export function ThirdPartyMcpTab(
     filteredTools
   } = useUpstreamMcpController(props);
 
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const { page, pageSize, setPosition } = props;
   const connections = connectionsQuery.data ?? [];
   const currentPage = Math.min(
     page,
@@ -857,8 +856,7 @@ export function ThirdPartyMcpTab(
           pageSizeOptions={[10, 20, 50, 100]}
           total={connections.length}
           onPageChange={(nextPage, nextSize) => {
-            setPage(nextSize === pageSize ? nextPage : 1);
-            setPageSize(nextSize);
+            setPosition({ page: nextSize === pageSize ? nextPage : 1, pageSize: nextSize });
           }}
           toolbar={
             <Flex justify="flex-end" align="center" gap={8} wrap>

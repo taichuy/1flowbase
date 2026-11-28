@@ -495,6 +495,7 @@ async function renderPanel(
 }
 
 async function renderPanelWithMountedTool({
+  configureCatalog,
   includeBinding = true,
   bindingGroupPath = '/ops/customer',
   includeGroup = false,
@@ -503,6 +504,7 @@ async function renderPanelWithMountedTool({
   secondInstance = false,
   defaultEntryPath = '/'
 }: {
+  configureCatalog?: (catalog: ConsoleMcpCatalog) => void;
   includeBinding?: boolean;
   bindingGroupPath?: string;
   includeGroup?: boolean;
@@ -653,6 +655,7 @@ async function renderPanelWithMountedTool({
       sort_order: 0
     });
   }
+  configureCatalog?.(catalog);
   installDirectorySnapshotApi(mcpManagementApi, catalog);
   installProgressiveMcpApi(mcpManagementApi, catalog, interfaceCapabilities);
   return renderSettled(

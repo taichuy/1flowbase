@@ -102,17 +102,23 @@ describe('McpManagementPanel', () => {
     expect(
       screen.getByRole('columnheader', { name: 'Tool 类型' })
     ).toBeInTheDocument();
+    const proxyRow = { name: /Search customer/ };
+    expect(await screen.findByRole('row', proxyRow)).toBeVisible();
     const typeFilter = screen.getByRole('combobox', { name: 'Tool 类型' });
     await mouseDown(typeFilter);
     await selectAntdOption('接口封装');
     await click(screen.getByRole('button', { name: /查\s*询/ }));
-    expect(
-      screen.queryByRole('row', { name: /Search customer/ })
-    ).not.toBeInTheDocument();
+    await waitFor(() => expect(mcpManagementApi.fetchSettingsMcpToolsPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ execution_target_kind: 'interface_wrapper' })
+    ));
+    await waitFor(() => expect(screen.queryByRole('row', proxyRow)).not.toBeInTheDocument());
     await mouseDown(typeFilter);
     await selectAntdOption('MCP 代理');
     await click(screen.getByRole('button', { name: /查\s*询/ }));
-    const toolRow = screen.getByRole('row', { name: /Search customer/ });
+    const toolRow = await screen.findByRole('row', proxyRow);
+    expect(mcpManagementApi.fetchSettingsMcpToolsPage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ execution_target_kind: 'mcp_proxy' })
+    );
     expect(within(toolRow).getByText('MCP 代理')).toBeInTheDocument();
     await click(within(toolRow).getAllByRole('button')[0]);
 

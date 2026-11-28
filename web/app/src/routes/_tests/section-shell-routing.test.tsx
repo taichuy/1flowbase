@@ -693,7 +693,13 @@ describe('section shell routing', () => {
         'settings_feature.access.system.network-center'
       ]);
 
+      // The query is mounted by the lazy route. Wait for that boundary before querying its DOM.
+      const load = pathname.endsWith('/routing-rules')
+        ? networkCenterApi.fetchSettingsNetworkEgressRoutes
+        : networkCenterApi.fetchSettingsNetworkEgressProviderTypes;
+      load.mockClear();
       renderApp(pathname);
+      await waitFor(() => expect(load).toHaveBeenCalled(), SECTION_REDIRECT_WAIT_OPTIONS);
 
       expect(await screen.findByTestId(shellTestId)).toBeInTheDocument();
       expect(screen.getByRole('tablist')).toBeInTheDocument();
@@ -708,23 +714,6 @@ describe('section shell routing', () => {
       ).not.toBeInTheDocument();
       expect(screen.getByRole('tab', { name: '代理池' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: '路由规则' })).toBeInTheDocument();
-      await waitFor(() => {
-        if (pathname.endsWith('/routing-rules')) {
-          expect(
-            networkCenterApi.fetchSettingsNetworkEgressRoutes
-          ).toHaveBeenCalled();
-          return;
-        }
-        if (pathname.endsWith('/proxy-types')) {
-          expect(
-            networkCenterApi.fetchSettingsNetworkEgressProviderTypes
-          ).toHaveBeenCalled();
-          return;
-        }
-        expect(
-          networkCenterApi.fetchSettingsNetworkEgressProviderTypes
-        ).toHaveBeenCalled();
-      }, SECTION_REDIRECT_WAIT_OPTIONS);
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

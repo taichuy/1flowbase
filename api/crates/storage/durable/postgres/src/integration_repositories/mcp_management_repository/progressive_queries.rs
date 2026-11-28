@@ -32,9 +32,18 @@ const TOOL_PAGE_SOURCE: &str = r#"
           and ($4::text is null or risk_level = $4)
           and ($5::text is null or status = $5)
           and ($6::text[] is null or tool_id = any($6))
-          and ($7::text is null or name ilike $7 or tool_id ilike $7 or interface_id ilike $7
-               or remote_tool_name ilike $7 or upstream_connection_id::text ilike $7
-               or assistant_client_capability_code ilike $7 or interface_id = any($8::text[]))
+          -- The catalog searched "name tool_id operation source" as one literal substring.
+          and ($7::text is null or concat_ws(' ', name, tool_id,
+              case execution_kind
+                  when 'interface_wrapper' then coalesce($8::jsonb ->> interface_id, interface_id)
+                  when 'mcp_proxy' then 'MCP tools/call ' || remote_tool_name
+                  when 'assistant_client' then 'Assistant browser capability ' || assistant_client_capability_code
+              end,
+              case execution_kind
+                  when 'interface_wrapper' then interface_id
+                  when 'mcp_proxy' then upstream_connection_id::text || ' / ' || remote_tool_name
+                  when 'assistant_client' then assistant_client_capability_code
+              end) ilike $7)
     )
 "#;
 
@@ -135,7 +144,7 @@ impl PgControlPlaneStore {
                 .bind(query.status.as_deref())
                 .bind(query.tool_ids.as_deref())
                 .bind(query.keyword.as_deref().map(keyword_pattern))
-                .bind(query.keyword_interface_ids.as_deref())
+                .bind(sqlx::types::Json(&query.interface_operations))
                 .bind(query.des_id_required)
         };
         let total = bind(count_sql).fetch_one(self.pool()).await?.get(0);

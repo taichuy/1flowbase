@@ -104,14 +104,6 @@ export function resolveSelectedPageId({
   pageTree: FrontStageTreeNode[];
 }): PageSelectionResolution {
   if (pageId) {
-    if (isPageInTree(pageTree, pageId)) {
-      return {
-        selectedPageId: pageId,
-        navigationTarget: undefined,
-        shouldNavigate: false
-      };
-    }
-
     return {
       selectedPageId: pageId,
       navigationTarget: undefined,

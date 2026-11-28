@@ -1,11 +1,11 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::_tests::support::{
-    login_and_capture_cookie, test_api_state_with_database_url, test_config, write_test_executable,
+    copy_fixture_tree, login_and_capture_cookie, test_api_state_with_database_url, test_config,
+    write_fixture_artifact_marker, write_test_executable, TempDataSourcePackage,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -15,43 +15,8 @@ use control_plane::ports::{CreatePluginAssignmentInput, UpsertPluginInstallation
 use domain::{
     PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
 };
-use plugin_framework::compute_manifest_fingerprint;
 use serde_json::{json, Value};
 use tower::ServiceExt;
-
-struct TempDataSourcePackage {
-    root: PathBuf,
-}
-
-impl TempDataSourcePackage {
-    fn new() -> Self {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("api-server-data-source-routes-{nonce}"));
-        fs::create_dir_all(&root).unwrap();
-        Self { root }
-    }
-
-    fn path(&self) -> &Path {
-        &self.root
-    }
-
-    fn write(&self, relative_path: &str, content: &str) {
-        let path = self.root.join(relative_path);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(path, content).unwrap();
-    }
-}
-
-impl Drop for TempDataSourcePackage {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
-    }
-}
 
 fn create_fixture_package() -> TempDataSourcePackage {
     let package = TempDataSourcePackage::new();
@@ -161,20 +126,6 @@ esac
     package
 }
 
-fn copy_dir_all(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).unwrap();
-    for entry in fs::read_dir(src).unwrap() {
-        let entry = entry.unwrap();
-        let file_type = entry.file_type().unwrap();
-        let target = dst.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_dir_all(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), target).unwrap();
-        }
-    }
-}
-
 async fn seed_data_source_installation(
     state: &crate::app_state::ApiState,
     package_root: &Path,
@@ -197,21 +148,9 @@ async fn seed_data_source_installation(
         .join("installed")
         .join("fixture_data_source")
         .join("0.1.0");
-    copy_dir_all(package_root, &installed_path);
-    let manifest_fingerprint = compute_manifest_fingerprint(&installed_path.join("manifest.yaml"))
-        .await
-        .unwrap();
-    fs::write(
-        installed_path.join(".1flowbase-artifact.json"),
-        serde_json::to_vec_pretty(&json!({
-            "plugin_id": "fixture_data_source@0.1.0",
-            "version": "0.1.0",
-            "checksum": null,
-            "manifest_fingerprint": manifest_fingerprint,
-        }))
-        .unwrap(),
-    )
-    .unwrap();
+    copy_fixture_tree(package_root, &installed_path);
+    let manifest_fingerprint =
+        write_fixture_artifact_marker(&installed_path, "fixture_data_source@0.1.0", "0.1.0").await;
 
     <storage_durable_postgres::MainDurableStore as control_plane::ports::PluginRepository>::upsert_installation(
         &state.store,

@@ -218,8 +218,10 @@ impl ManagedExtensionComposition {
             }
             visible.current = published.clone();
             #[cfg(test)]
-            if let Some(hook) = self.before_authority_release.lock().unwrap().take() {
-                if let Err(error) = hook() {
+            let hook = self.before_authority_release.lock().unwrap().take();
+            #[cfg(test)]
+            if let Some(hook) = hook {
+                if let Err(error) = hook.await {
                     *visible = rollback_visible;
                     return Err(error);
                 }

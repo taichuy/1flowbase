@@ -13,7 +13,7 @@
         },
         {
           "file": "web/app/src/features/agent-flow/lib/selector-options.ts",
-          "sha256": "2e965fd7d2c915d0f4eeac31c653dc3d24890b08dd99d9042f772b81f478e9e3"
+          "sha256": "e5032a575f563d6534a7a1c761aec215b616f5c3529a528bd3c2388fcd5c7806"
         },
         {
           "file": "web/app/src/features/agent-flow/_tests/containers/authoring.test.ts",

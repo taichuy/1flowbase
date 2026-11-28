@@ -40,6 +40,7 @@
     "cancel_node_edit": "取消节点编辑",
     "save_node": "保存节点",
     "save_directory": "保存目录",
+    "directory_tools_permission": "查看已挂载工具的摘要或选择要挂载的工具，需要 list_mcp_tools_page 权限。",
     "directory_not_ready": "目录尚未加载完成，请稍后重试。",
     "directory_duplicate_path": "该路径已有同名分组或 Tool 挂载。",
     "discard_unsaved_changes_title": "放弃未保存的更改？",

@@ -416,8 +416,12 @@ pub struct McpToolPageHttpQuery {
     pub status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub des_id_required: Option<bool>,
+    /// Legacy comma-separated IDs; blank entries are ignored. Do not combine with tool_ids_json.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_ids: Option<String>,
+    /// JSON-encoded array of exact tool IDs; [] matches none. Do not combine with tool_ids.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_ids_json: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

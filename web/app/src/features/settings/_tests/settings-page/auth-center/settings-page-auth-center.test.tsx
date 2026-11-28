@@ -5,6 +5,8 @@ import {
   authenticatorConfigSchema,
   renderAuthCenterReady
 } from './settings-page.fixtures';
+// Only this suite enters the lazy auth-center section.
+import '../../../pages/settings-page/SettingsAuthCenterSection';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useAuthStore } from '../../../../../state/auth-store';
 

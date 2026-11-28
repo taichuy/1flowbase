@@ -19,6 +19,25 @@ import { getStartInputFields } from '../lib/variables/start-node-variables';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 
 describe('start node variables', () => {
+  test('cascader paths retain first-seen order, prefix labels and empty branches', () => {
+    const option = (nodeId: string, nodeLabel: string, outputLabel: string, ...segments: string[]) => ({
+      nodeId, nodeLabel, outputKey: outputLabel, outputLabel, valueType: 'string',
+      value: [nodeId, ...segments], displayLabel: outputLabel
+    });
+    expect(toCascaderSelectorOptions([
+      option('10', 'First', 'Old', 'z'), option('2', 'Second', ''),
+      option('10', 'Ignored', 'Child', 'z', '__proto__'),
+      option('10', 'Ignored', 'Unused', 'a', '', 'after-empty'),
+      option('10', 'Ignored', 'New', 'z')
+    ])).toStrictEqual([
+      { label: 'First', value: '10', children: [
+        { label: 'New', value: 'z', children: [{ label: 'Child', value: '__proto__' }] },
+        { label: 'a', value: 'a', children: [] }
+      ] },
+      { label: 'Second', value: '2', children: [] }
+    ]);
+  });
+
   test('new Agent Flow and Workflow expose both default credentials without editable start fields', () => {
     for (const document of [
       createDefaultAgentFlowDocument({ flowId: 'agent-credentials' }),
@@ -566,12 +585,14 @@ describe('start node variables', () => {
         }
       ]).map((option) => ({
         value: option.value,
+        outputLabel: option.outputLabel,
         label: option.displayLabel
       }))
     ).toEqual(
       expect.arrayContaining([
         {
           value: ['env', 'ApiBaseUrl'],
+          outputLabel: 'env.ApiBaseUrl',
           label: 'env.ApiBaseUrl'
         }
       ])
@@ -599,12 +620,14 @@ describe('start node variables', () => {
     expect(
       listVisibleSelectorOptions(document, 'node-answer').map((option) => ({
         value: option.value,
+        outputLabel: option.outputLabel,
         label: option.displayLabel
       }))
     ).toEqual(
       expect.arrayContaining([
         {
           value: ['conversation', 'ApiBaseUrl'],
+          outputLabel: 'conversation.ApiBaseUrl',
           label: 'conversation.ApiBaseUrl'
         }
       ])

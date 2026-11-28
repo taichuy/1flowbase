@@ -4,9 +4,9 @@
     {
       "file": "web/app/src/features/settings/components/mcp-management/upstream/ThirdPartyMcpTab.tsx",
       "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "8edaf701472a2317ff67c634968bddc1db060d3aedb1a2a0efafa56e3c1f43fd",
-      "reason": "useUpstreamMcpController已隔离connections查询、save/test/discovery/import mutation和结果状态；导出ThirdPartyMcpTab只组合同一个上游连接工作区的表格、连接表单、测试结果与工具发现dialog。请求与状态owner没有混进第二资源域，模块不导出hook/常量混合HMR边界；仅删除真实未消费的view.message解构，不能凭UI长度再改变连接/导入流程。 P21f reassessed 2026-11-17: ThirdPartyMcpTab now uses shared DataTable configuration and explicit page/pageSize selection over its connections, with table column settings and native row actions. useUpstreamMcpController still owns connection queries, permission-guarded save/credential/test/discovery/import mutations and scoped invalidation. Exported component composes the same connection workspace and dialogs; test delta proves page-two actions target the visible connection and retains credential/discovery scenarios.",
-      "evidence": [{"file":"web/app/src/features/settings/components/mcp-management/_tests/third-party-mcp-tab.test.tsx","sha256":"1929f8948905309c1907d66f1dbf5714fe30675c8418687cead50a7ac72d171b"},{"file":"web/app/src/features/settings/components/mcp-management/upstream/ThirdPartyMcpTab.tsx","sha256":"8edaf701472a2317ff67c634968bddc1db060d3aedb1a2a0efafa56e3c1f43fd"}]
+      "sourceSha256": "bcf4785a78d684767e1ae09537d8268375ee25cf7252e659b87a96b6d62d0300",
+      "reason": "The exported tab wires a connection list to connection testing, discovery and import dialogs. The local controller owns requests and closes discovery after a successful selected-tool import. The upstream scenarios assert the visible connection identity and the discovery/preview/import payload, not maintainability by line count.",
+      "evidence": [{"file":"web/app/src/features/settings/components/mcp-management/_tests/third-party-mcp-tab.test.tsx","sha256":"a7a0059189eebeae12c0c4a5f5853bb045e9398e079382bc4f4e6142c9e77e55"}]
     }
   ]
 }

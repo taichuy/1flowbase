@@ -27,7 +27,7 @@ use crate::openapi_docs::DocsCatalogOperation;
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Path, Query, RawQuery, State},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json, Router,
@@ -63,6 +63,22 @@ pub use debug_execute::{
 };
 
 pub use dto::*;
+
+// Only the unqualified GET for the literal "page" is ambiguous. "by-id" is
+// still an ordinary ID unless the caller explicitly selects that reserved ID.
+fn reserved_page_id(path_id: String, query: Option<&str>, key: &str) -> String {
+    if path_id == "by-id"
+        && query.is_some_and(|query| {
+            let mut selectors =
+                url::form_urlencoded::parse(query.as_bytes()).filter(|(name, _)| name == key);
+            matches!((selectors.next(), selectors.next()), (Some((_, id)), None) if id == "page")
+        })
+    {
+        "page".into()
+    } else {
+        path_id
+    }
+}
 
 async fn invoke_core(
     state: Arc<ApiState>,
@@ -148,6 +164,24 @@ pub fn router() -> Router<Arc<ApiState>> {
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
+    let instances = console_put(
+        update_mcp_instance,
+        ConsoleOperation("mcp.instances.update".to_string()),
+    )
+    .delete(
+        delete_mcp_instance,
+        ConsoleOperation("mcp.instances.delete".to_string()),
+    );
+    let tools = console_get(get_mcp_tool, ConsoleOperation("mcp.tools.view".to_string()))
+        .put(
+            update_mcp_tool,
+            ConsoleOperation("mcp.tools.update".to_string()),
+        )
+        .delete(
+            delete_mcp_tool,
+            ConsoleOperation("mcp.tools.delete".to_string()),
+        );
+
     ConsoleRouteAssembly::new()
         .route(
             "/mcp/catalog",
@@ -207,7 +241,8 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(
                 list_mcp_instances_page,
                 ConsoleOperation("mcp.instances.view".to_string()),
-            ),
+            )
+            .fallback_to_resource("/mcp/instances/:instance_id", &instances),
         )
         .route(
             "/mcp/instances/:instance_id/copy",
@@ -216,17 +251,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 ConsoleOperation("mcp.instances.copy".to_string()),
             ),
         )
-        .route(
-            "/mcp/instances/:instance_id",
-            console_put(
-                update_mcp_instance,
-                ConsoleOperation("mcp.instances.update".to_string()),
-            )
-            .delete(
-                delete_mcp_instance,
-                ConsoleOperation("mcp.instances.delete".to_string()),
-            ),
-        )
+        .route("/mcp/instances/:instance_id", instances)
         .route(
             "/mcp/instances/:instance_id/client-credential",
             console_get(
@@ -305,20 +330,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(
                 list_mcp_tools_page,
                 ConsoleOperation("mcp.tools.view".to_string()),
-            ),
+            )
+            .fallback_to_resource("/mcp/tools/:tool_id", &tools),
         )
-        .route(
-            "/mcp/tools/:tool_id",
-            console_get(get_mcp_tool, ConsoleOperation("mcp.tools.view".to_string()))
-                .put(
-                    update_mcp_tool,
-                    ConsoleOperation("mcp.tools.update".to_string()),
-                )
-                .delete(
-                    delete_mcp_tool,
-                    ConsoleOperation("mcp.tools.delete".to_string()),
-                ),
-        )
+        .route("/mcp/tools/:tool_id", tools)
         .route(
             "/mcp/tools/:tool_id/description/refresh",
             console_post(
@@ -720,12 +735,14 @@ pub async fn create_mcp_tool(
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
 }
 
-#[utoipa::path(get, path = "/api/console/mcp/tools/{tool_id}", responses((status = 200, body = McpToolResponse)))]
+#[utoipa::path(get, path = "/api/console/mcp/tools/{tool_id}", params(("tool_id" = String, Path, description = "Tool ID"), ("tool_id" = Option<String>, Query, description = "Only on tools/by-id: use page to read the tool whose ID is page.")), responses((status = 200, body = McpToolResponse)))]
 pub async fn get_mcp_tool(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(tool_id): Path<String>,
+    RawQuery(query): RawQuery,
 ) -> Result<Json<ApiSuccess<McpToolResponse>>, ApiError> {
+    let tool_id = reserved_page_id(tool_id, query.as_deref(), "tool_id");
     let interface_tools::McpToolsOutput::Tool(value) = invoke_tools(
         state,
         headers,
@@ -1163,12 +1180,14 @@ pub async fn list_mcp_interface_capabilities_page(
     Ok(Json(ApiSuccess::new(value)))
 }
 
-#[utoipa::path(get, path = "/api/console/mcp/interface-capabilities/{interface_id}", summary = "Get MCP interface capability details", description = "Returns the full contract for a single visible MCP interface capability.", params(("interface_id" = String, Path, description = "Interface capability ID")), responses((status = 200, body = McpInterfaceCatalogEntryResponse), (status = 404, description = "Interface capability not found")))]
+#[utoipa::path(get, path = "/api/console/mcp/interface-capabilities/{interface_id}", summary = "Get MCP interface capability details", description = "Returns the full contract for a single visible MCP interface capability.", params(("interface_id" = String, Path, description = "Interface capability ID"), ("interface_id" = Option<String>, Query, description = "Only on interface-capabilities/by-id: use page to read the interface whose ID is page.")), responses((status = 200, body = McpInterfaceCatalogEntryResponse), (status = 404, description = "Interface capability not found")))]
 pub async fn get_mcp_interface_capability(
     State(state): State<Arc<ApiState>>,
     Path(interface_id): Path<String>,
+    RawQuery(query): RawQuery,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<McpInterfaceCatalogEntryResponse>>, ApiError> {
+    let interface_id = reserved_page_id(interface_id, query.as_deref(), "interface_id");
     let interface_catalog_routes::McpCatalogOutput::Interface(value) = invoke_catalog(
         state,
         headers,
@@ -1179,7 +1198,7 @@ pub async fn get_mcp_interface_capability(
     else {
         unreachable!()
     };
-    Ok(Json(ApiSuccess::new(value)))
+    Ok(Json(ApiSuccess::new(*value)))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/instances/page", summary = "List MCP instance summaries", description = "Returns a filtered page of MCP instances with group and tool binding counts.", params(McpInstancePageHttpQuery), responses((status = 200, body = McpInstancePageResponse)))]

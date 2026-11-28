@@ -9,3 +9,5 @@
 Existing `verify-repo.js tooling`, `frontend`, `frontend-pr`, `backend`, and `all` targets remain available. The PR frontend slice includes the shared frontend contract tests; do not run `test-contracts.js` again in the same slice.
 
 Locally, the worker budget is `max(1, floor(0.60 × effective CPU count))`. Workspace testing divides it across Turbo tasks and their Vitest workers. `.1flowbase.verify.local.json` can lower worker counts; CI ignores this file and uses runner capacity. The Linux resource profile additionally caps its aggregate memory at the smaller of 8 GiB and effective capacity. Direct shell commands outside that profile are not memory-isolated by the CLI configuration.
+
+Frontend stable, fast, coverage and page-regression commands share one page-test inventory in `scripts/node/run-frontend-vitest/layers.js`. Exclusions use globs; the page lane uses Vitest positional file or directory filters. Explicit Level 1 file requests bypass those exclusions. Level 2 runs the Frontstage page-selection and Agent Flow variable-cascader contracts in the existing PR smoke process.

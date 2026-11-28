@@ -8,6 +8,8 @@ use tower::ServiceExt;
 
 #[path = "mcp_management_routes/interface_inventory.rs"]
 mod interface_inventory;
+#[path = "mcp_management_routes/page_permissions.rs"]
+mod page_permissions;
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -317,47 +319,85 @@ async fn mcp_tool_create_and_update_allow_omitting_full_description() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
-    let create_response = app
-        .clone()
-        .oneshot(
+    let create_tool = |id: &str| {
+        let body = json!({
+            "tool_id": id,
+            "des_id": null,
+            "name": "Optional full description",
+            "short_description": "Tool with an optional full description",
+            "execution_target": {"kind":"interface_wrapper","interface_id":"get_runtime_profile"},
+            "parameter_schema": {},
+            "result_schema": {},
+            "input_mapping": {},
+            "output_mapping": {},
+            "permission_code": null,
+            "risk_level": "low",
+            "status": "enabled"
+        });
+        app.clone().oneshot(
             Request::builder()
                 .method("POST")
                 .uri("/api/console/mcp/tools")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "tool_id": "optional_full_description",
-                        "des_id": null,
-                        "name": "Optional full description",
-                        "short_description": "Tool with an optional full description",
-                        "execution_target": {"kind":"interface_wrapper","interface_id":"get_runtime_profile"},
-                        "parameter_schema": {},
-                        "result_schema": {},
-                        "input_mapping": {},
-                        "output_mapping": {},
-                        "permission_code": null,
-                        "risk_level": "low",
-                        "status": "enabled"
-                    })
-                    .to_string(),
-                ))
+                .body(Body::from(body.to_string()))
                 .unwrap(),
         )
-        .await
-        .unwrap();
+    };
+    let create_response = create_tool("page").await.unwrap();
     assert_eq!(create_response.status(), StatusCode::CREATED);
     assert_eq!(
         response_json(create_response).await["data"]["full_description"],
         json!("")
     );
 
-    let update_response = app
+    let collection = mcp_data(&app, &root_cookie, "/api/console/mcp/tools/page").await;
+    assert_eq!(collection["items"][0]["tool_id"], "page");
+    for csv in ["%20page%20%2Cmissing%2C", "%20%2C%20"] {
+        let legacy = mcp_data(
+            &app,
+            &root_cookie,
+            &format!("/api/console/mcp/tools/page?tool_ids={csv}"),
+        )
+        .await;
+        assert_eq!(legacy, collection);
+    }
+    assert_eq!(
+        mcp_data(
+            &app,
+            &root_cookie,
+            "/api/console/mcp/tools/page?tool_ids=absent"
+        )
+        .await["total"],
+        0
+    );
+    assert_eq!(
+        create_tool("by-id").await.unwrap().status(),
+        StatusCode::CREATED
+    );
+    for uri in [
+        "/api/console/mcp/tools/by-id",
+        "/api/console/mcp/tools/by-id?tool_id=unrelated",
+        "/api/console/mcp/tools/by-id?tool_id=page&tool_id=another",
+    ] {
+        assert_eq!(mcp_data(&app, &root_cookie, uri).await["tool_id"], "by-id");
+    }
+    assert_eq!(
+        mcp_data(
+            &app,
+            &root_cookie,
+            "/api/console/mcp/tools/by-id?tool_id=page"
+        )
+        .await["tool_id"],
+        "page"
+    );
+    page_permissions::assert_page_and_detail_grants(&app, &root_cookie, &root_csrf).await;
+    let update_response = app.clone()
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri("/api/console/mcp/tools/optional_full_description")
+                .uri("/api/console/mcp/tools/page")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -386,6 +426,19 @@ async fn mcp_tool_create_and_update_allow_omitting_full_description() {
         response_json(update_response).await["data"]["full_description"],
         json!("")
     );
+    let deleted = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/mcp/tools/page")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
 }
 
 async fn create_exposed_published_model(
@@ -516,7 +569,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "instance_id": "workspace_ops",
+                        "instance_id": "page",
                         "name": "Workspace Ops",
                         "description_short": "Workspace MCP instance",
                         "status": "enabled",
@@ -580,7 +633,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     let detail = mcp_data(
         &app,
         &root_cookie,
-        "/api/console/mcp/interface-capabilities/get_runtime_profile",
+        "/api/console/mcp/interface-capabilities/get_runtime_profile?interface_id=page&interface_id=older",
     )
     .await;
     assert_eq!(&detail, runtime_profile_interface);
@@ -708,7 +761,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "tool_id": "runtime_profile",
+                        "tool_id": "sales,lookup",
                         "des_id": "des12345",
                         "name": "Runtime profile",
                         "short_description": "Runtime profile",
@@ -731,7 +784,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert_eq!(create_tool_response.status(), StatusCode::CREATED);
     let create_tool_payload = response_json(create_tool_response).await;
     let tool_id = create_tool_payload["data"]["tool_id"].as_str().unwrap();
-    assert_eq!(tool_id, "runtime_profile");
+    assert_eq!(tool_id, "sales,lookup");
     assert!(create_tool_payload["data"]
         .get("usage_description")
         .is_none());
@@ -765,7 +818,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/mcp/instances/workspace_ops/groups")
+                .uri("/api/console/mcp/instances/page/groups")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -790,7 +843,9 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/mcp/tools/{tool_id}"))
+                .uri(format!(
+                    "/api/console/mcp/tools/{tool_id}?tool_id=page&tool_id=older"
+                ))
                 .header("cookie", &root_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -807,7 +862,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/console/mcp/instances/workspace_ops/tool-bindings")
+                .uri("/api/console/mcp/instances/page/tool-bindings")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .header("content-type", "application/json")
@@ -853,7 +908,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
     assert_eq!(tools[0], get_tool_payload["data"]);
     assert_eq!(full["tools"], tools);
 
-    let tool_page = mcp_data(&app, &root_cookie, "/api/console/mcp/tools/page?page_size=1&keyword=gEt%20%2Fapi%2Fconsole%2Fsystem%2Fruntime-profile&execution_target_kind=interface_wrapper&interface_id=get_runtime_profile&risk_level=low&status=enabled&des_id_required=false&tool_ids=%20runtime_profile%2C%20%2C").await;
+    let tool_page = mcp_data(&app, &root_cookie, "/api/console/mcp/tools/page?page_size=1&keyword=gEt%20%2Fapi%2Fconsole%2Fsystem%2Fruntime-profile&execution_target_kind=interface_wrapper&interface_id=get_runtime_profile&risk_level=low&status=enabled&des_id_required=false&tool_ids_json=%5B%22missing%22%2C%22sales%2Clookup%22%5D").await;
     assert_eq!(tool_page["total"], 1);
     let summary = &tool_page["items"][0];
     assert_eq!(summary["tool_id"], tool_id);
@@ -862,6 +917,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         "GET /api/console/system/runtime-profile"
     );
     assert_eq!(summary["availability_status"], "available");
+    let mut catalog_projection = full["tools"][0].clone();
     for field in [
         "full_description",
         "parameter_schema",
@@ -872,15 +928,24 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         "response_fields",
     ] {
         assert!(summary.get(field).is_none(), "summary leaked {field}");
-        assert!(tools[0].get(field).is_some(), "legacy list lost {field}");
+        assert!(
+            catalog_projection
+                .as_object_mut()
+                .unwrap()
+                .remove(field)
+                .is_some(),
+            "legacy list lost {field}"
+        );
     }
+    assert_eq!(summary, &catalog_projection);
     for filter in [
         "execution_target_kind=assistant_client",
         "interface_id=not-found",
         "risk_level=critical",
         "status=disabled",
         "des_id_required=true",
-        "tool_ids=missing",
+        "tool_ids_json=%5B%22sales%22%2C%22lookup%22%5D",
+        "tool_ids_json=%5B%5D",
     ] {
         assert_eq!(
             mcp_data(
@@ -891,6 +956,21 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
             .await["total"],
             0,
             "{filter}"
+        );
+    }
+    for invalid in [
+        "tool_ids_json=sales%2Clookup",
+        "tool_ids=sales&tool_ids_json=%5B%5D",
+    ] {
+        assert_eq!(
+            mcp_get(
+                &app,
+                &root_cookie,
+                &format!("/api/console/mcp/tools/page?{invalid}")
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
         );
     }
     let tool_second_page = mcp_data(
@@ -945,7 +1025,7 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/api/console/mcp/instances/workspace_ops/groups?path=%2Fsystem")
+                .uri("/api/console/mcp/instances/page/groups?path=%2Fsystem")
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
                 .body(Body::empty())
@@ -1008,6 +1088,38 @@ async fn mcp_management_routes_read_empty_catalog_without_seeding_default_instan
         missing_description_check_response.status(),
         StatusCode::NOT_FOUND
     );
+    let update = json!({"instance_id":"page","name":"Updated instance","status":"enabled","default_entry_path":"/"});
+    let updated = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/mcp/instances/page")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(update.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.status(), StatusCode::OK);
+    let updated = response_json(updated).await;
+    assert_eq!(updated["data"]["instance_id"], "page");
+    assert_eq!(updated["data"]["name"], "Updated instance");
+    let deleted = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/mcp/instances/page")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]

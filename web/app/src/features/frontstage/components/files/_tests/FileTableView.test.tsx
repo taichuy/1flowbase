@@ -100,6 +100,13 @@ async function mount(
   });
   return view;
 }
+// File rows arrive after the selected table enables its records query. Wait for
+// that query and its rendered row before inspecting a single preview cell.
+async function findPreviewCell(filename: string) {
+  await waitFor(() => expect(client.fetchConsoleFileRecords).toHaveBeenCalled());
+  const link = await screen.findByText(filename, { selector: 'a[href]' });
+  return within(link.closest('tr')!).getAllByRole('cell')[0];
+}
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
@@ -311,12 +318,7 @@ describe('FileTableView', () => {
         total: 1
       });
       await mount();
-      const filename = await screen.findByRole('link', {
-        name: record.filename
-      });
-      const previewCell = within(filename.closest('tr')!).getAllByRole(
-        'cell'
-      )[0];
+      const previewCell = await findPreviewCell(record.filename);
       expect(
         within(previewCell).getByRole('link', { name: record.url })
       ).toHaveAttribute('href', record.url);
@@ -330,12 +332,11 @@ describe('FileTableView', () => {
       total: 1
     });
     await mount();
-    const thumbnail = await screen.findByRole('img', { name: record.filename });
-    const cell = thumbnail.closest('td')!;
-    await error(thumbnail);
-    expect(
-      await within(cell).findByRole('link', { name: record.url })
-    ).toHaveAttribute('href', record.url);
+    const cell = await findPreviewCell(record.filename);
+    await error(within(cell).getByRole('img', { name: record.filename }));
+    expect(await within(cell).findByRole('link', { name: record.url })).toHaveAttribute(
+      'href', record.url
+    );
     expect(within(cell).queryByRole('img')).not.toBeInTheDocument();
   });
 
@@ -364,7 +365,8 @@ describe('FileTableView', () => {
       total: 2
     });
     await mount();
-    const thumbnail = await screen.findByRole('img', { name: 'picture.png' });
+    const cell = await findPreviewCell(imageRecord.filename);
+    const thumbnail = within(cell).getByRole('img', { name: imageRecord.filename });
     expect(thumbnail).toHaveAttribute('src', imageRecord.preview_url);
     expect(thumbnail).toHaveAttribute('loading', 'lazy');
     expect(
@@ -472,12 +474,19 @@ describe('FileTableView', () => {
     const second = { ...record, id: 'record-2', filename: 'second.txt' };
     const newest = { ...record, id: 'record-3', filename: 'newest.txt' };
     let uploaded = false;
-    vi.mocked(client.fetchConsoleFileRecords).mockImplementation(
-      async (_, page) => ({
-        items: page === 1 ? [uploaded ? newest : record] : [second],
-        total: 21
-      })
-    );
+    let releaseSecondPage!: () => void;
+    const secondPagePending = new Promise<void>((resolve) => {
+      releaseSecondPage = resolve;
+    });
+    const fetchRecords = vi.mocked(client.fetchConsoleFileRecords);
+    fetchRecords.mockImplementation(async (_, page) => {
+      if (page === 2) {
+        await secondPagePending;
+        return { items: [second], total: 21 };
+      }
+      if (page === 1) return { items: [uploaded ? newest : record], total: 21 };
+      throw new Error(`Unexpected file page: ${page}`);
+    });
     vi.mocked(client.uploadConsoleFile).mockImplementation(async () => {
       uploaded = true;
       return {
@@ -486,17 +495,45 @@ describe('FileTableView', () => {
         record: newest
       };
     });
-    await mount(queryClient);
-    await click(await screen.findByRole('button', { name: /^(页|Page) 2$/i }));
+    // Navigate from the fresh cache while the mount-time search debounce could
+    // still fire. Keep page 2 in flight across that boundary, without sleeping.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await mount(queryClient);
+      expect(screen.getByRole('link', { name: record.filename })).toBeVisible();
+      expect(fetchRecords).not.toHaveBeenCalled();
+      await click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
+      expect(fetchRecords).toHaveBeenCalledWith(
+        table.code,
+        2,
+        5,
+        expect.any(AbortSignal),
+        { filename: '', sort: 'created_at:desc' }
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+    } finally {
+      vi.useRealTimers();
+      releaseSecondPage();
+    }
     await screen.findByRole('link', { name: 'second.txt' });
     await click(screen.getByRole('button', { name: /上传文件/ }));
     const dialog = await screen.findByRole('dialog', { name: '上传文件' });
+    fetchRecords.mockClear();
     await change(dialog.querySelector('input[type="file"]')!, {
       target: { files: [new File(['newest'], 'newest.txt')] }
     });
     expect(
       await screen.findByRole('link', { name: 'newest.txt' })
     ).toBeInTheDocument();
+    expect(fetchRecords).toHaveBeenCalledWith(
+      table.code,
+      1,
+      5,
+      expect.any(AbortSignal),
+      { filename: '', sort: 'created_at:desc' }
+    );
   });
   test.each([null, '/api/public/files/content?token=temporary&preview=true'])(
     'creates a clickable share link and copies the same URL (preview: %s)',

@@ -150,10 +150,7 @@ export function installProgressiveMcpApi(
       const page = Math.max(1, options?.page ?? 1);
       const pageSize = Math.max(1, options?.page_size ?? 20);
       const keyword = options?.keyword?.trim().toLowerCase();
-      const toolIds =
-        options?.tool_ids && options.tool_ids.length > 0
-          ? new Set(options.tool_ids)
-          : null;
+      const toolIds = options?.tool_ids === undefined ? null : new Set(options.tool_ids);
       const filtered = catalog.tools.filter((tool) => {
         if (toolIds && !toolIds.has(tool.tool_id)) {
           return false;

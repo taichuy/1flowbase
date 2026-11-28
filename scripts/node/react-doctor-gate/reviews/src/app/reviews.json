@@ -3,13 +3,6 @@
   "reviews": [
     {
       "file": "web/app/src/app/AppI18nProvider.tsx",
-      "rule": "react-doctor/prefer-use-sync-external-store",
-      "sourceSha256": "9bff5baf74490345cc4be89a75f8d011446be4e43fe7eb0199891fb5821ef9bd",
-      "reason": "AppI18nProvider 显式订阅 storage/custom event，cleanup 移除；i18next/ConfigProvider 消费 appLocale，当前是客户端入口。 现有 storage/custom event subscribe+cleanup 更新 snapshot，纯客户端入口，无 SSR snapshot 要求或具体 torn-render consumer。",
-      "evidence": [{"file":"web/app/src/app/AppI18nProvider.tsx","sha256":"9bff5baf74490345cc4be89a75f8d011446be4e43fe7eb0199891fb5821ef9bd"},{"file":"web/app/src/app/AppProviders.tsx","sha256":"1109308e3803fd9407c53c15d33543333e947f6f753330ca32765cf0319a985d"},{"file":"web/app/src/features/settings/_tests/settings-extension-center/fixture.tsx","sha256":"ffe90ba217312ec47eed8fe3ef12f741dfce32816cacd28be7942bf849b211cd"},{"file":"web/app/src/features/settings/_tests/settings-page/ui-component-extension-catalog.test.tsx","sha256":"02a6292741dc48e16b2955fca0f157f02a9cf695468af4a0dfd5578b9ddb0022"},{"file":"web/app/src/features/settings/components/extension-center/_tests/ExtensionUploadModal.test.tsx","sha256":"c9658baffaee547529c26bad43381162b1e4c898ce3a790ffd3a1577288ceeb0"},{"file":"web/app/src/features/settings/components/mcp-management/bundle/_tests/McpTemplateLibrary.test.tsx","sha256":"06b3b037c99721d1767024c4420b289ef3800c9788bb644a9ec82e24c800b51d"},{"file":"web/app/src/features/settings/network-center/pools/_tests/NetworkEgressPoolsPanel.test.tsx","sha256":"88bde9b78cb72d2c52475ab8a5f67e48610b7dfd6a0d2735e87756fea8121695"},{"file":"web/app/src/features/settings/network-center/providers/_tests/NetworkEgressProvidersPanel.test.tsx","sha256":"87ec4a907263f452b194762dbae96fb344e78d51172d90a8d844e0416faadcef"},{"file":"web/app/src/features/settings/network-center/routes/_tests/NetworkEgressRoutesPanel.test.tsx","sha256":"4c6a4b3bd53f91134571b22d80b48e9e74041f5cd454a6695e5fb381fa6a3762"},{"file":"web/app/src/routes/_tests/section-shell-routing.test.tsx","sha256":"f50c82b44f77f83d9452bc4a6ff113c8bcf22f52be9bef50e69550afb436f962"},{"file":"web/app/src/shared/i18n/app-i18n.ts","sha256":"7330cb29b4b1a51e8f37f328f43bcc921aa33466497acc41cf150cba43f776bc"},{"file":"web/app/src/shared/i18n/locales.ts","sha256":"2aeff626a4b42b65358d935a892c904389a0681ce0fb94ec6c518171ac6fa62e"},{"file":"web/app/src/shared/user-preferences/locale-preference.ts","sha256":"fb6d2a656e147e8df1a3744b35b2af34f4e5990a8c0658fba1345c545ff43110"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"},{"file":"web/app/src/style-boundary/_tests/registry.test.tsx","sha256":"1497db3ab1775300d5f252fd2b32d1a5eb011f389d2c2cbbb31f22922cf50958"}]
-    },
-    {
-      "file": "web/app/src/app/AppI18nProvider.tsx",
       "rule": "react-doctor/rerender-state-only-in-handlers",
       "sourceSha256": "9bff5baf74490345cc4be89a75f8d011446be4e43fe7eb0199891fb5821ef9bd",
       "reason": "initialError is read during render and thrown into the boundary if initial namespace loading fails. Merely putting the asynchronous rejection in a ref would strand the initial skeleton.",
@@ -18,7 +11,7 @@
     {
       "file": "web/app/src/app/bootstrap/frontstage-startup-prefetch.ts",
       "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "ce15650bef0c5d7ec418a0868e74914c751fb315872fc7961dbfb16697e3ee7b",
+      "sourceSha256": "1e23ebbfc744022f49a6c58796b41b250308c3b4a72ba5d61b43058486c10b3d",
       "reason": "The guards after page-tree and tabs requests check the current actor/workspace flight after each suspension. Moving these checks ahead would miss supersession while a network request is pending.",
       "evidenceSet": 1
     },
@@ -40,7 +33,7 @@
     [
       {
         "file": "web/app/src/app/bootstrap/_tests/frontstage-startup-prefetch.test.ts",
-        "sha256": "a506a311d6cd3aaf22d8e78e9106e2212d8ab066fee06e2882881d66218addad"
+        "sha256": "1b069d679ce7c12cfe180a34c2281679ae40c78b7571642ea41592c63c3b7521"
       }
     ],
     [

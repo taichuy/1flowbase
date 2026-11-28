@@ -79,13 +79,19 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
     let installation = Uuid::now_v7();
     sqlx::query("insert into extension_installations(id,category,organization,artifact_id,artifact_version,plugin_id,contract_version,protocol,display_name,source_kind,trust_level,verification_status,desired_state,signature_status,metadata_json,created_by) values($1,'runtime-extensions','acme','unbounded','1.0.0','acme.unbounded','1flowbase.extension-bus/v1','stdio_json','Unbounded','uploaded','unverified','valid','disabled','missing','{}',$2)").bind(installation).bind(user).execute(state.store.pool()).await.unwrap();
     sqlx::query("insert into plugin_assignments(id,installation_id,workspace_id,provider_code,assigned_by) values($1,$2,$3,'acme.unbounded',$4)").bind(Uuid::now_v7()).bind(installation).bind(workspace).bind(user).execute(state.store.pool()).await.unwrap();
+    let mut historical_references = Vec::new();
     {
         let mut visible = composition.snapshots.lock().await;
-        for i in 0..600 {
+        // Keep the original 601-current publication load even after the refreshed scope leaves.
+        for i in 0..601 {
             visible.current.insert(Uuid::now_v7(), snapshot(i));
+        }
+        for i in 0..600 {
+            let old = snapshot(1000 + i);
+            historical_references.push(old.freeze_reference().unwrap());
             visible
                 .retained
-                .insert(format!("retained-{i}"), vec![snapshot(1000 + i)]);
+                .insert(old.graph.fingerprint().as_str().to_owned(), vec![old]);
         }
         for i in 0..5000 {
             let lifetime = Arc::new(SnapshotLifetime::default());
@@ -96,8 +102,8 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
                 .insert(format!("retired-{i}"), lifetime);
         }
     }
-    // Exercise actual candidate preparation beyond all previous host cardinality ceilings.
-    composition
+    // Seed the refreshed scope with the exact graph returned by real preparation at capacity.
+    let predecessor = composition
         .prepare_snapshot(
             workspace,
             &[],
@@ -108,21 +114,35 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
         )
         .await
         .unwrap();
+    let references = (0..600)
+        .map(|_| predecessor.freeze_reference().unwrap())
+        .collect::<Vec<_>>();
     composition
         .snapshots
         .lock()
         .await
         .current
-        .insert(workspace, snapshot(9999));
-    // Actual authority-locked publication retains its predecessor beyond the old ceiling.
+        .insert(workspace, predecessor.clone());
+    // With no bindings the workspace leaves current; the pinned graph still gates exact
+    // preparation from retained after the publication sweep.
     composition
         .rebuild_installation(installation)
         .await
         .unwrap();
-    let candidate = composition.snapshot(workspace).await.unwrap();
-    let references = (0..600)
-        .map(|_| candidate.freeze_reference().unwrap())
-        .collect::<Vec<_>>();
+    assert!(composition.snapshot(workspace).await.is_none());
+    let candidate = composition
+        .prepare_snapshot(
+            workspace,
+            &[],
+            &[],
+            &mut BTreeMap::new(),
+            &mut Vec::new(),
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(Arc::ptr_eq(&candidate.lifetime, &predecessor.lifetime));
+    assert_eq!(candidate.lifetime.reference_count(), 600);
     let retirement = candidate.lifetime.close().unwrap();
     assert!(retirement.ensure_unreferenced().is_err());
     assert!(
@@ -163,6 +183,7 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
     assert_eq!(visible.retired_targets.len(), 5000);
     assert!(visible.retired_targets["retired-0"].acquire().is_err());
     drop(visible);
+    drop(historical_references);
     composition.close_owned_admission();
     composition
         .wait_for_shutdown(std::time::Duration::from_secs(5))

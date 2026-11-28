@@ -1,21 +1,21 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/fixture.tsx","sha256":"602e1ee10307ced06791297916685cb2a4b3cf6c8b68fc7ce25944ec748b530d"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/instance-contract.test.tsx","sha256":"8d39e642ae3160521fc39d4d242036437083bb55a5451e7f2feb1e8122ac0e5e"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/tool-editor.test.tsx","sha256":"fcbe775aa76a0e4712d1c0bb76f080cda7e96d9f83b8c9e24b3056500a741d87"}]
+    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/instance-contract.test.tsx","sha256":"364abd9cbf68230f7ab47d616bd468fbcbe0be4099935c7005b38b95e8edcaae"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/tool-editor.test.tsx","sha256":"2ab231e2824e9f037b176da45dc52c85735b968e5ec2e32dd74913b667d17f67"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/fixture.tsx",
       "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "602e1ee10307ced06791297916685cb2a4b3cf6c8b68fc7ce25944ec748b530d",
-      "reason": "The mount effect captures mount, fences queued creation with disposed, and owns editorRef for its own one-time editor instance. readyRef is intentionally mutable lifecycle state reset by cleanup, not a DOM node to snapshot. createEditor is the stable vi.hoisted mock constructor captured once by the mock factory; value/onChange updates flow via refs, so adding those values would destroy the editor on typing. The directory-editor Vitest fixture owns a one-time markdown-editor adapter. Mount is captured; disposed fences the queued creation; latest value/onChange are read through refs and cleanup resets readyRef, nulls current editor and destroys that owned instance. createEditor is the vi.hoisted vditorMock.constructor captured when the vi.mock factory evaluates, not a changing prop. ObservePanelQueries is a fixture observer for query cleanup, not a production HMR surface. P21d reassessed 2026-11-17: Directory fixture changes add canonical directory snapshot mocks, permission grant helper, second-instance/default-entry data and exported request settling; modal mock differences are formatting. Its markdown adapter still captures a stable hoisted mock constructor, creates once in a disposed-fenced microtask, reads current value/onChange refs, and destroys its own editor at cleanup. ObservePanelQueries and setup exports remain Vitest-only. Instance-contract test adds OAuth tab to existing exact ordering.",
+      "sourceSha256": "812cd34ef19b76b1f4f185aae5224564bb32bef96db0870d178595b3ebcdc796",
+      "reason": "The mocked editor constructor is captured once by the mock factory, not supplied by a changing prop. The effect owns its installed editor, fences queued creation on disposal and resets a mutable readiness flag, not a DOM node retrieved during cleanup. Document changes use current refs without reinstantiating the editor.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/fixture.tsx",
       "rule": "react-doctor/only-export-components",
-      "sourceSha256": "602e1ee10307ced06791297916685cb2a4b3cf6c8b68fc7ce25944ec748b530d",
-      "reason": "This is a Vitest fixture/observer API, not a browser Fast Refresh component module. The directory-editor Vitest fixture owns a one-time markdown-editor adapter. Mount is captured; disposed fences the queued creation; latest value/onChange are read through refs and cleanup resets readyRef, nulls current editor and destroys that owned instance. createEditor is the vi.hoisted vditorMock.constructor captured when the vi.mock factory evaluates, not a changing prop. ObservePanelQueries is a fixture observer for query cleanup, not a production HMR surface. P21d reassessed 2026-11-17: Directory fixture changes add canonical directory snapshot mocks, permission grant helper, second-instance/default-entry data and exported request settling; modal mock differences are formatting. Its markdown adapter still captures a stable hoisted mock constructor, creates once in a disposed-fenced microtask, reads current value/onChange refs, and destroys its own editor at cleanup. ObservePanelQueries and setup exports remain Vitest-only. Instance-contract test adds OAuth tab to existing exact ordering.",
+      "sourceSha256": "812cd34ef19b76b1f4f185aae5224564bb32bef96db0870d178595b3ebcdc796",
+      "reason": "ObservePanelQueries registers provider clients for fixture settling/cleanup. The directory and tool scenarios import fixture helpers rather than mounting a production Fast Refresh boundary.",
       "evidenceSet": 0
     }
   ]

@@ -388,6 +388,8 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         revokeDraftRun: vi.fn()
       });
 
+      // A remount can retire an instance while its initial request is pending.
+      const requests: Promise<{ active: boolean; error: unknown } | null>[] = [];
       const ApiSpinThenCardBlock = ({
         ctx
       }: {
@@ -395,7 +397,19 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       }) => {
         const [done, setDone] = useState(false);
         useEffect(() => {
-          void ctx.api.get('/api/console/demo').then(() => setDone(true));
+          let active = true;
+          requests.push(
+            ctx.api.get('/api/console/demo').then(
+              () => {
+                if (active) setDone(true);
+                return null;
+              },
+              (error: unknown) => ({ active, error })
+            )
+          );
+          return () => {
+            active = false;
+          };
         }, [ctx.api]);
         return <div data-testid="ratchet-block">{done ? 'settled-card' : 'tiny-spin'}</div>;
       };
@@ -431,8 +445,9 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         }
       ]);
 
+      let view!: ReturnType<typeof render>;
       await act(async () => {
-        render(
+        view = render(
           <AppProviders>
             <FrontStagePage
               workspaceId="workspace-1"
@@ -524,6 +539,15 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         },
         { timeout: 2000 }
       );
+      view.unmount();
+      for (const rejection of await Promise.all(requests)) {
+        if (rejection !== null) {
+          expect(rejection.active).toBe(false);
+          expect(rejection.error).toEqual(
+            new Error('Native Block capability belongs to a stale instance.')
+          );
+        }
+      }
     } finally {
       globalThis.ResizeObserver = OriginalResizeObserver;
       vi.restoreAllMocks();

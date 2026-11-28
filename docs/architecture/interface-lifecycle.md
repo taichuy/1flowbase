@@ -27,6 +27,8 @@ flowchart LR
 
 MCP 管理目录由前端 view model 投影：本次构建复用已登记路径的祖先闭包，所有节点装配后只排序一次，保留同序项、实例根和全部绑定；目录索引不承担后端权限或业务状态。
 
+集合分页保留 `/api/console/mcp/{instances,tools,interface-capabilities}/page`。工具或接口 ID 恰为 `page` 时，客户端通过相应的 `by-id?tool_id=page` 或 `by-id?interface_id=page` 单项读取；不携带该参数的 `by-id` 仍是普通 ID。工具过滤保留原 `tool_ids` 逗号列表；需要无损传输 ID 时改用互斥的 `tool_ids_json` 字符串数组，缺省不过滤、空数组不匹配。管理页用分页摘要浏览，仅在打开工具时用该次详情初始化编辑草稿，不用已失效的摘要或缓存覆盖草稿。
+
 列表过滤的字符串入口只编译一次 `ResourceFilterExpr`，内存筛选和数据库查询消费同一已验证表达式。批量选择仍要求显式主键或非空过滤条件；无效 JSON、运算符与操作数由过滤器 owner 拒绝。Resource Action 的实际分派继续由 Kernel 与 Registry 承担，未接入生产的独立 Hook Pipeline 不作为执行层。
 
 协议翻译在 adapter 内使用独占可变的 `TranslationReportBuilder`，以索引查找来源路径并保持决定的插入顺序；完成后交付原有 `TranslationReport` DTO。索引不附着到可公开修改或反序列化的 DTO，重复决定、首个冲突及协议错误顺序保持原契约。

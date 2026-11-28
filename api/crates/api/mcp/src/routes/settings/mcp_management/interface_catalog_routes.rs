@@ -191,7 +191,7 @@ pub(crate) enum McpCatalogOutput {
     Catalog(McpCatalogResponse),
     Interfaces(Vec<McpInterfaceCatalogEntryResponse>),
     InterfacesPage(McpInterfaceCapabilityPageResponse),
-    Interface(McpInterfaceCatalogEntryResponse),
+    Interface(Box<McpInterfaceCatalogEntryResponse>),
     List(Vec<McpListItemSummaryResponse>),
     Export(McpExportPackageResponse),
 }
@@ -1073,7 +1073,9 @@ impl McpCatalogAdapter {
                 let entry =
                     interface_catalog::mcp_interface_detail_with(&self.0, actor, &interface_id)
                         .await?;
-                Ok(McpCatalogOutput::Interface(to_interface_response(entry)))
+                Ok(McpCatalogOutput::Interface(Box::new(
+                    to_interface_response(entry),
+                )))
             }
             McpCatalogInput::List(query) => {
                 let items = service

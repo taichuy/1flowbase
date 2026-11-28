@@ -92,7 +92,7 @@ async fn progressive_queries_filter_and_count_the_actual_workspace_rows() {
         page: 1,
         page_size: 1,
         keyword: None,
-        keyword_interface_ids: None,
+        interface_operations: Default::default(),
         execution_target_kind: None,
         interface_id: None,
         risk_level: None,
@@ -121,8 +121,30 @@ async fn progressive_queries_filter_and_count_the_actual_workspace_rows() {
         }
     }
     tools.page = 1;
+    // The second seeded tool is an Assistant client. Match its displayed operation,
+    // including a search crossing from the tool ID into the operation's prefix.
+    let assistant = &input.tools[1];
+    let McpToolExecutionTarget::AssistantClient { capability_code } = &assistant.execution_target
+    else {
+        panic!("expected an Assistant client in the bundle")
+    };
+    for keyword in [
+        format!("Assistant browser capability {capability_code}"),
+        format!("{} ASSISTANT browser", assistant.tool_id),
+    ] {
+        tools.keyword = Some(keyword);
+        let result = store
+            .list_mcp_tools_page(workspace_id, &tools)
+            .await
+            .unwrap();
+        assert_eq!(result.total, 1);
+        assert_eq!(result.items[0].tool_id, assistant.tool_id);
+    }
     tools.keyword = Some("GET /api/console/system/runtime-profile".into());
-    tools.keyword_interface_ids = Some(vec!["get_runtime_profile".into()]);
+    tools.interface_operations.insert(
+        "get_runtime_profile".into(),
+        "GET /api/console/system/runtime-profile".into(),
+    );
     tools.execution_target_kind = Some("interface_wrapper".into());
     tools.interface_id = Some("get_runtime_profile".into());
     tools.risk_level = Some("low".into());
@@ -145,7 +167,7 @@ async fn progressive_queries_filter_and_count_the_actual_workspace_rows() {
         0
     );
     tools.des_id_required = Some(true);
-    tools.keyword_interface_ids = None;
+    tools.interface_operations.clear();
     assert_eq!(
         store
             .list_mcp_tools_page(workspace_id, &tools)

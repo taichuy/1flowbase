@@ -53,21 +53,6 @@ test("parseCliArgs accepts pr frontend gate", () => {
   });
 });
 
-test("frontend coverage reuses the stable full-test exclusion inventory", () => {
-  const packageJson = JSON.parse(
-    fs.readFileSync(
-      path.join(__dirname, "../../../../web/app/package.json"),
-      "utf8",
-    ),
-  );
-  const stableArgs = packageJson.scripts.test.split(" run ")[1];
-  const coverageArgs =
-    packageJson.scripts["test:coverage"].split(" coverage ")[1];
-
-  assert.ok(stableArgs);
-  assert.equal(coverageArgs, stableArgs);
-});
-
 test("buildCommands maps full layer to lint, test, build and all style boundaries", () => {
   const repoRoot = "/repo-root";
   const commands = buildCommands({ layer: "full", repoRoot, env: {} });
@@ -242,8 +227,8 @@ test("explicit files bypass the fast exclusion list and reach budgeted Vitest wi
   t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
   const file = "src/shared/i18n/_tests/format.test.ts";
   const excludedFile = "src/features/settings/pages/settings-page/model-providers/_tests/use-model-provider-data.test.tsx";
-  const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, "../../../../web/app/package.json"), "utf8"));
-  assert.ok(packageJson.scripts.test.includes(`--exclude ${excludedFile}`));
+  const { exclusions } = require("../../run-frontend-vitest/layers.js");
+  assert.ok(exclusions.includes(excludedFile));
   const runtimeConfig = { frontend: { vitestMaxWorkers: 3 } };
   for (const selection of [[excludedFile], ["--", file, excludedFile, "-t", "decimal units"], [file, "--testNamePattern=decimal units"]]) {
     const calls = [];

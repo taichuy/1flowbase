@@ -339,6 +339,7 @@ pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
         ),
         ("tools/page", "list_mcp_tools_page", "mcp.tools.view"),
         ("tools/a-tool", "get_mcp_tool", "mcp.tools.view"),
+        ("tools/by-id", "get_mcp_tool", "mcp.tools.view"),
         (
             "interface-capabilities/page",
             "list_mcp_interface_capabilities_page",
@@ -346,6 +347,11 @@ pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
         ),
         (
             "interface-capabilities/an-interface",
+            "get_mcp_interface_capability",
+            "mcp.catalog.view",
+        ),
+        (
+            "interface-capabilities/by-id",
             "get_mcp_interface_capability",
             "mcp.catalog.view",
         ),
@@ -360,6 +366,17 @@ pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
             .find(|operation| operation.operation_id == access.operation_id)
             .unwrap();
         assert_eq!(operation.authorization_profile_id, profile_id, "{path}");
+    }
+    for (method, path, operation_id) in [
+        ("PUT", "tools/page", "mcp.tools.update"),
+        ("DELETE", "tools/page", "mcp.tools.delete"),
+        ("PUT", "instances/page", "mcp.instances.update"),
+        ("DELETE", "instances/page", "mcp.instances.delete"),
+    ] {
+        let access = registry
+            .access_for_console_route(method, &format!("/api/console/mcp/{path}"))
+            .unwrap();
+        assert_eq!(access.operation_id, operation_id);
     }
     assert_eq!(
         route_bindings(&user_api_keys),

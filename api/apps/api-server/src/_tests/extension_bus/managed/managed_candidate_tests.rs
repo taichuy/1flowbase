@@ -2,7 +2,7 @@
 use super::managed_activation_tests::{hook_input, hook_invocation, principal};
 use super::managed_snapshot_tests::RuntimeFixture;
 use crate::provider_runtime::ApiProviderRuntime;
-use control_plane::{plugin_management::*, ports::AuthRepository};
+use control_plane::{errors::ControlPlaneError, plugin_management::*, ports::AuthRepository};
 use control_plane_contracts::ports::*;
 use extension_contracts::*;
 use runtime_core::runtime_backend::{CapabilityRuntimePort, RuntimeManagedHookRequest};
@@ -497,21 +497,47 @@ async fn root_2007_ac_009_pause_revoke_retire_historical_authority() {
         .query(&fixture.actor, source)
         .await
         .unwrap();
-    // Assignment owner changes the durable pointer; the old revision must remain manageable.
-    fixture
+    // A disabled sibling cannot replace a serving selection through plain assignment.
+    let denied = fixture
         .management
         .assign_plugin(AssignPluginCommand {
             actor_user_id: fixture.actor.user_id,
             installation_id: target,
         })
         .await
+        .unwrap_err();
+    assert!(matches!(
+        denied.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::Conflict("plugin_installation_disabled"))
+    ));
+    fixture
+        .authority()
+        .grant(&fixture.actor, target, grant("a"))
+        .await
         .unwrap();
-    assert!(fixture
+    let switched = fixture.switch(target).await.unwrap().unwrap();
+    assert_eq!(switched.status, domain::PluginTaskStatus::Succeeded);
+    drop(
+        fixture
+            .runtime
+            .store
+            .lock_contribution_authority(&subject(target, workspace))
+            .await
+            .expect("the selected target owns live authority"),
+    );
+    let denied = fixture
         .runtime
         .store
         .lock_contribution_authority(&subject(source, workspace))
         .await
-        .is_err());
+        .err()
+        .expect("switching away must remove live authority for the old selection");
+    assert!(matches!(
+        denied.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::PermissionDenied(
+            "contribution_workspace_assignment_required"
+        ))
+    ));
     let history = fixture
         .authority()
         .query(&fixture.actor, source)
@@ -557,7 +583,15 @@ async fn root_2007_ac_009_pause_revoke_retire_historical_authority() {
         histories, 0,
         "root inspection of an empty scope cannot create authority history"
     );
-    // Explicit root re-enable is a new approval; retained graphs alone do not grant it.
+    // With the serving target disabled, plain assignment can establish scope again.
+    fixture
+        .management
+        .disable_plugin(DisablePluginCommand {
+            actor_user_id: fixture.actor.user_id,
+            installation_id: target,
+        })
+        .await
+        .unwrap();
     fixture
         .management
         .assign_plugin(AssignPluginCommand {
@@ -566,6 +600,11 @@ async fn root_2007_ac_009_pause_revoke_retire_historical_authority() {
         })
         .await
         .unwrap();
+    // Restoring membership does not undo revocation. Only root's explicit enable reapproves.
+    assert_eq!(
+        restarted.query(&fixture.actor, source).await.unwrap(),
+        revoked
+    );
     fixture
         .management
         .enable_plugin(EnablePluginCommand {

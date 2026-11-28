@@ -8,6 +8,7 @@ import {
   resolveMcpManagementTabKey,
   updateMcpManagementTabQuery
 } from './mcp-management-route-state';
+import { useMcpTablePagination } from './mcp-management-state';
 import { McpInstancesTab } from './McpInstancesTab';
 import { McpToolsTab } from './McpToolsTab';
 import { McpBundleActions } from './bundle/McpBundleActions';
@@ -15,6 +16,8 @@ import { ThirdPartyMcpTab } from './upstream/ThirdPartyMcpTab';
 import './mcp-management-panel.css';
 
 export function McpManagementPanel(_props: { canManage?: boolean } = {}) {
+  const instancesPagination = useMcpTablePagination();
+  const upstreamPagination = useMcpTablePagination();
   const locationSearch = useRouterState({
     select: (state) => state.location.search as Record<string, unknown>
   });
@@ -46,7 +49,7 @@ export function McpManagementPanel(_props: { canManage?: boolean } = {}) {
         {
           key: 'instances',
           label: i18nText('settings', 'auto.mcp_instances'),
-          children: activeTab === 'instances' ? <McpInstancesTab /> : null
+          children: activeTab === 'instances' ? <McpInstancesTab {...instancesPagination} /> : null
         },
         {
           key: 'tools',
@@ -59,6 +62,7 @@ export function McpManagementPanel(_props: { canManage?: boolean } = {}) {
           children:
             activeTab === 'third-party' ? (
               <ThirdPartyMcpTab
+                {...upstreamPagination}
                 onImported={() => updateMcpManagementTabQuery('tools')}
               />
             ) : null

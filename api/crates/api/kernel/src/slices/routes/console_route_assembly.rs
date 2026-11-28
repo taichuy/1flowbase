@@ -148,6 +148,34 @@ where
         self
     }
 
+    /// Axum picks a literal path before considering the HTTP method. For methods not
+    /// owned by this literal, re-match the sibling resource to extract its path ID
+    /// and call its existing handler (including its original authorization/CSRF).
+    pub fn fallback_to_resource(mut self, path: &str, resource: &Self) -> Self
+    where
+        S: HttpRouteState,
+    {
+        use axum::extract::{Request, State};
+        use tower::ServiceExt;
+        let resource = S::route_router(
+            S::new_router(),
+            &crate::external_route_assembly::axum_route_path(path),
+            resource.router.clone(),
+        );
+        self.router = self
+            .router
+            .fallback(move |State(state): State<S>, request: Request| {
+                let resource = resource.clone().with_state(state);
+                async move {
+                    resource
+                        .oneshot(request)
+                        .await
+                        .unwrap_or_else(|never| match never {})
+                }
+            });
+        self
+    }
+
     pub fn coordinator_control(mut self) -> Self {
         if let Some((_, _, request_class)) = self.methods.last_mut() {
             *request_class = Some(

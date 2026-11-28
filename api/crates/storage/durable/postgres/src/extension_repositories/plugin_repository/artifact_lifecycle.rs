@@ -15,9 +15,9 @@ impl PgControlPlaneStore {
         input: &RefreshPluginArtifactInstanceInput,
     ) -> Result<Option<domain::PluginArtifactInstanceRecord>> {
         let mut transaction = self.pool().begin().await?;
-        let managed = lock_managed_artifact_write(&mut transaction, input.installation_id).await?;
-        let (desired_raw, category_raw, contract_version): (String, String, String) = sqlx::query_as(
-            "select desired_state, category, contract_version from extension_installations where id=$1 and plugin_id is not null for share",
+        let managed = lock_managed_artifact_scopes(&mut transaction, input.installation_id).await?;
+        let (desired_raw, category_raw, contract_version, artifact_version): (String, String, String, String) = sqlx::query_as(
+            "select desired_state, category, contract_version, artifact_version from extension_installations where id=$1 and plugin_id is not null for share",
         )
         .bind(input.installation_id)
         .fetch_optional(&mut *transaction)
@@ -78,19 +78,18 @@ impl PgControlPlaneStore {
         }) {
             return Ok(Some(record.clone()));
         }
-        let before = match &managed {
-            Some(managed) => {
-                managed
-                    .facts_before(
-                        &mut transaction,
-                        existing
-                            .as_ref()
-                            .map(|r| (r.artifact_status, r.local_version.as_deref())),
-                        (input.artifact_status, input.local_version.as_deref()),
-                    )
-                    .await?
-            }
-            None => None,
+        let before = if managed {
+            facts_before_readiness_change(
+                &mut transaction,
+                &artifact_version,
+                existing
+                    .as_ref()
+                    .map(|r| (r.artifact_status, r.local_version.as_deref())),
+                (input.artifact_status, input.local_version.as_deref()),
+            )
+            .await?
+        } else {
+            None
         };
         let write = UpsertPluginArtifactInstanceInput {
             node_id: input.node_id.clone(),
@@ -133,7 +132,7 @@ impl PgControlPlaneStore {
             bail!("use try_mark_active_artifact_instance to mark runtime active");
         }
         let mut transaction = self.pool().begin().await?;
-        let managed = lock_managed_artifact_write(&mut transaction, input.installation_id).await?;
+        let managed = lock_managed_artifact_scopes(&mut transaction, input.installation_id).await?;
         let mut before = None;
         let (desired_raw, category_raw, contract_version, plugin_version, expected_checksum): (
             String,
@@ -228,14 +227,14 @@ impl PgControlPlaneStore {
                 last_error,
                 is_current,
             };
-            if let (None, Some(managed)) = (&before, &managed) {
-                before = managed
-                    .facts_before(
-                        &mut transaction,
-                        current.as_ref().map(|(s, v)| (*s, v.as_deref())),
-                        (write.artifact_status, write.local_version.as_deref()),
-                    )
-                    .await?;
+            if before.is_none() && managed {
+                before = facts_before_readiness_change(
+                    &mut transaction,
+                    &plugin_version,
+                    current.as_ref().map(|(s, v)| (*s, v.as_deref())),
+                    (write.artifact_status, write.local_version.as_deref()),
+                )
+                .await?;
             }
             if let Some(artifact) =
                 write_derived_node_artifact(&mut transaction, &write, updating).await?
@@ -271,9 +270,7 @@ impl PgControlPlaneStore {
         use ActivatePluginArtifactOutcome::{Activated, ArtifactInvalidated, Disabled};
         use PluginRuntimeStatus::{Active, Inactive};
         let mut transaction = self.pool().begin().await?;
-        // Runtime-only update: artifact status and version stay fixed, so dependency facts
-        // cannot change. Keep the scope locks for the canonical lock order.
-        lock_managed_artifact_write(&mut transaction, input.installation_id).await?;
+        let managed = lock_managed_artifact_scopes(&mut transaction, input.installation_id).await?;
         let installation =
             lock_artifact_installation(&mut transaction, input.installation_id).await?;
         let desired_state = installation.desired_state;
@@ -297,6 +294,14 @@ impl PgControlPlaneStore {
                 input.validate_manifest,
             )
             .await;
+        if matches && managed && desired_state == PluginDesiredState::ActiveRequested {
+            // Runtime publication does not change readiness facts. Validate the target once,
+            // under the same locks as the write; there is no provider delta to compare.
+            let facts = managed_dependency_facts(&mut transaction).await?;
+            if let Some(target) = facts.installations.get(&installation.id) {
+                facts.validate(target, None)?;
+            }
+        }
         let runtime_status = if matches { Active } else { Inactive };
         let availability_status = derive_contract_availability_status(
             desired_state,
@@ -343,9 +348,10 @@ impl PgControlPlaneStore {
     ) -> Result<domain::PluginArtifactInstanceRecord> {
         let mut transaction = self.pool().begin().await?;
         let before =
-            match lock_managed_artifact_write(&mut transaction, input.installation_id).await? {
-                Some(_) => Some(managed_dependency_facts(&mut transaction).await?),
-                None => None,
+            if lock_managed_artifact_scopes(&mut transaction, input.installation_id).await? {
+                Some(managed_dependency_facts(&mut transaction).await?)
+            } else {
+                None
             };
         // Lock the installation before the slot, including on the insert path (FK check).
         sqlx::query("select id from extension_installations where id = $1 for share")
@@ -1281,46 +1287,40 @@ pub(crate) async fn validate_managed_dependency_switch(
 #[path = "_tests/dependencies.rs"]
 mod dependency_tests;
 
-async fn lock_managed_artifact_write(
+async fn lock_managed_artifact_scopes(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     installation_id: Uuid,
-) -> Result<Option<ManagedArtifactWrite>> {
-    let artifact_version: Option<String> = sqlx::query_scalar(
-            "select artifact_version from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1'",
-        )
-        .bind(installation_id)
-        .fetch_optional(&mut **transaction)
-        .await?;
-    let Some(artifact_version) = artifact_version else {
-        return Ok(None);
-    };
-    super::lock_managed_desired_state_scopes(transaction, installation_id).await?;
-    Ok(Some(ManagedArtifactWrite { artifact_version }))
-}
-
-/// Scope locks of one managed artifact writer, taken in the canonical order.
-struct ManagedArtifactWrite {
-    artifact_version: String,
-}
-
-impl ManagedArtifactWrite {
-    /// `managed_dependency_facts` reads an artifact row only through `ready && local_version ==
-    /// artifact_version`. A write that keeps this predicate cannot change the facts, so the
-    /// before/after guard is needed only when it flips.
-    async fn facts_before(
-        &self,
-        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        current: Option<(domain::PluginArtifactInstanceStatus, Option<&str>)>,
-        next: (domain::PluginArtifactInstanceStatus, Option<&str>),
-    ) -> Result<Option<ManagedDependencyFacts>> {
-        let in_facts = |(status, version): (domain::PluginArtifactInstanceStatus, Option<&str>)| {
-            status.is_ready() && version == Some(self.artifact_version.as_str())
-        };
-        if current.is_some_and(in_facts) == in_facts(next) {
-            return Ok(None);
-        }
-        managed_dependency_facts(transaction).await.map(Some)
+) -> Result<bool> {
+    // A same-identity upsert can change contract_version. Take its fence first, then
+    // classify in a separate statement so a committed reclassification is visible.
+    lock_managed_dependency_scope(transaction).await?;
+    let managed = sqlx::query_scalar(
+        "select exists(select 1 from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1')",
+    )
+    .bind(installation_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    if managed {
+        super::lock_managed_workspaces_under_dependency_fence(transaction, &[installation_id])
+            .await?;
     }
+    Ok(managed)
+}
+
+/// Compare the facts query's membership predicate using the installation row locked FOR SHARE.
+async fn facts_before_readiness_change(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    locked_artifact_version: &str,
+    current: Option<(domain::PluginArtifactInstanceStatus, Option<&str>)>,
+    next: (domain::PluginArtifactInstanceStatus, Option<&str>),
+) -> Result<Option<ManagedDependencyFacts>> {
+    let in_facts = |(status, version): (domain::PluginArtifactInstanceStatus, Option<&str>)| {
+        status.is_ready() && version == Some(locked_artifact_version)
+    };
+    if current.is_some_and(in_facts) == in_facts(next) {
+        return Ok(None);
+    }
+    managed_dependency_facts(transaction).await.map(Some)
 }
 
 pub(crate) async fn lock_node_artifact_slot(
