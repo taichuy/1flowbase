@@ -68,3 +68,9 @@ test('both image lanes require the same bootstrap gate, CD before promoting the 
   const imageJob = quality.slice(quality.indexOf('  container-images-gate:'), quality.indexOf('  ai-gateway-protocol-conformance:'));
   assert.match(imageJob, /bash \.github\/scripts\/verify-builtin-application-templates\.sh "1flowbase-api-server:\$QUALITY_GATE_TARGET_SHA"/);
 });
+
+test('application template packaging uses the builder platform for both target architectures', () => {
+  const dockerfile = fs.readFileSync(path.join(root, 'docker/api-server.Dockerfile'), 'utf8');
+  assert.match(dockerfile, /^FROM --platform=\$BUILDPLATFORM \S+ AS application-template-bootstrap$/m);
+  assert.match(dockerfile, /^COPY --from=application-template-bootstrap \/application-templates \/app\/api\/resources\/application-templates$/m);
+});

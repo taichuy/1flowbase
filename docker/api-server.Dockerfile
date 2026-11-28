@@ -44,7 +44,8 @@ RUN chmod 0755 /usr/local/bin/package-model-pricing-bootstrap \
       "${MODEL_PRICING_REF}" \
       /model-pricing
 
-FROM node:24.22.1-alpine AS application-template-bootstrap
+# The bundled ZIP and receipt are target-independent; fetch and package them natively.
+FROM --platform=$BUILDPLATFORM node:24.22.1-alpine AS application-template-bootstrap
 
 ARG APPLICATION_TEMPLATE_REPOSITORY=taichuy/1flowbase-official-plugins
 # Immutable application template snapshot; changing a package also bumps its release_version.
