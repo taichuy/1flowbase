@@ -162,16 +162,6 @@ function localeFromFileName(fileName) {
   return fileName.replace(/\.json$/u, '');
 }
 
-function lineForIndex(content, index) {
-  let line = 1;
-  for (let cursor = 0; cursor < index; cursor += 1) {
-    if (content[cursor] === '\n') {
-      line += 1;
-    }
-  }
-  return line;
-}
-
 function readJsonStringToken(content, startIndex) {
   let cursor = startIndex + 1;
   while (cursor < content.length) {
@@ -198,11 +188,19 @@ function scanJsonDuplicateKeys({ relativePath, content }) {
   const objectStack = [];
   const pathStack = [];
   let index = 0;
+  let line = 1;
+  let lineStart = 0;
+  let snippet;
 
   while (index < content.length) {
     const char = content[index];
 
     if (/\s/u.test(char)) {
+      if (char === '\n') {
+        line += 1;
+        lineStart = index + 1;
+        snippet = undefined;
+      }
       index += 1;
       continue;
     }
@@ -211,7 +209,7 @@ function scanJsonDuplicateKeys({ relativePath, content }) {
 
     if (char === '{') {
       objectStack.push({
-        keys: new Map(),
+        keys: new Set(),
         expectingKey: true,
         expectingColon: false,
         pendingKey: null
@@ -258,49 +256,41 @@ function scanJsonDuplicateKeys({ relativePath, content }) {
     }
 
     if (char === '"') {
-      const line = lineForIndex(content, index);
+      // JSON.parse in the token reader rejects raw newlines inside strings.
       const token = readJsonStringToken(content, index);
       if (currentObject?.expectingKey) {
-        const keyPath = [...pathStack, token.value].join('.');
-        if (!I18N_KEY_SEGMENT_PATTERN.test(token.value)) {
-          findings.push(
-            createFinding({
-              severity: 'error',
+        const invalid = !I18N_KEY_SEGMENT_PATTERN.test(token.value);
+        const generated = !invalid && GENERATED_I18N_KEY_SEGMENT_PATTERN.test(token.value);
+        const duplicate = currentObject.keys.has(token.value);
+        if (invalid || generated || duplicate) {
+          if (snippet === undefined) {
+            const lineEnd = content.indexOf('\n', index);
+            snippet = content.slice(lineStart, lineEnd === -1 ? content.length : lineEnd).trim();
+          }
+          const key = [...pathStack, token.value].join('.');
+          const location = { severity: 'error', file: relativePath, line, key, snippet };
+          if (invalid) {
+            findings.push(createFinding({
+              ...location,
               rule: 'invalid-key-name',
-              file: relativePath,
-              line,
-              key: keyPath,
-              message: `i18n key segment "${token.value}" must use lowercase English letters joined with underscores`,
-              snippet: content.split(/\r?\n/u)[line - 1] || ''
-            })
-          );
-        } else if (GENERATED_I18N_KEY_SEGMENT_PATTERN.test(token.value)) {
-          findings.push(
-            createFinding({
-              severity: 'error',
+              message: `i18n key segment "${token.value}" must use lowercase English letters joined with underscores`
+            }));
+          } else if (generated) {
+            findings.push(createFinding({
+              ...location,
               rule: 'generated-key-name',
-              file: relativePath,
-              line,
-              key: keyPath,
-              message: `i18n key segment "${token.value}" looks generated; use readable semantic words such as version_switching_failed`,
-              snippet: content.split(/\r?\n/u)[line - 1] || ''
-            })
-          );
-        }
-        if (currentObject.keys.has(token.value)) {
-          findings.push(
-            createFinding({
-              severity: 'error',
+              message: `i18n key segment "${token.value}" looks generated; use readable semantic words such as version_switching_failed`
+            }));
+          }
+          if (duplicate) {
+            findings.push(createFinding({
+              ...location,
               rule: 'duplicate-json-key',
-              file: relativePath,
-              line,
-              key: keyPath,
-              message: `JSON object contains duplicate i18n key "${keyPath}"`,
-              snippet: content.split(/\r?\n/u)[line - 1] || ''
-            })
-          );
+              message: `JSON object contains duplicate i18n key "${key}"`
+            }));
+          }
         }
-        currentObject.keys.set(token.value, line);
+        currentObject.keys.add(token.value);
         currentObject.expectingKey = false;
         currentObject.expectingColon = true;
         currentObject.pendingKey = token.value;
