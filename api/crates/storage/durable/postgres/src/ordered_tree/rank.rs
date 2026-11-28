@@ -62,7 +62,7 @@ pub fn between(
     let encoded = match (left, right) {
         (None, None) => MID_DIGIT.to_string(),
         (Some(left), None) => format!("{}{MID_DIGIT}", left.as_str()),
-        (None, Some(right)) => before(right.as_str())?,
+        (None, Some(right)) => before(right.as_str(), 0)?,
         (Some(left), Some(right)) => between_encoded(left.as_str(), right.as_str())?,
     };
     let rank = FractionalRank::parse(encoded)?;
@@ -112,9 +112,7 @@ fn between_encoded(left: &str, right: &str) -> Result<String, RankError> {
         return Err(RankError::InvalidBounds);
     }
     if prefix_len == left.len() {
-        let mut rank = left.to_owned();
-        rank.push_str(&before(&right[prefix_len..])?);
-        return Ok(rank);
+        return before(right, prefix_len);
     }
 
     let left_digit = digit_index(left.as_bytes()[prefix_len])?;
@@ -128,16 +126,17 @@ fn between_encoded(left: &str, right: &str) -> Result<String, RankError> {
     Ok(format!("{left}{MID_DIGIT}"))
 }
 
-fn before(right: &str) -> Result<String, RankError> {
-    let (zeros, digit) = right
+fn before(right: &str, prefix_len: usize) -> Result<String, RankError> {
+    let (zeros, digit) = right[prefix_len..]
         .bytes()
         .enumerate()
         .find(|&(_, digit)| digit != ALPHABET[0])
         .ok_or(RankError::InvalidBounds)?;
     let midpoint = digit_index(digit)? / 2;
 
-    let mut rank = String::with_capacity(zeros + if midpoint == 0 { 2 } else { 1 });
-    rank.push_str(&right[..zeros]); // The prefix is entirely ASCII zeros.
+    let end = prefix_len + zeros;
+    let mut rank = String::with_capacity(end + if midpoint == 0 { 2 } else { 1 });
+    rank.push_str(&right[..end]); // The scanned suffix prefix is entirely ASCII zeros.
     rank.push(ALPHABET[midpoint] as char);
     if midpoint == 0 {
         rank.push(MID_DIGIT as char);

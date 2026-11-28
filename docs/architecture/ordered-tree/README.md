@@ -1,6 +1,6 @@
 # PostgreSQL tree storage
 
-The PostgreSQL adapter computes a rank before a right bound by scanning its leading ASCII zeroes once and emitting the same midpoint bytes. This keeps ordering and the existing rebalance trigger unchanged without recursive copies of long prefixes.
+The PostgreSQL adapter computes a rank before a right bound by scanning its leading ASCII zeroes once and emitting the same midpoint bytes. This keeps ordering and the existing rebalance trigger unchanged without recursive copies or a separate suffix buffer when the left bound is a prefix of the right bound.
 
 `parent_id` is the authoritative relationship; `sibling_rank` defines sibling order. The storage layer maintains a private, non-editable `tree_path ltree` column derived from stable UUID labels without hyphens. Renaming and reordering do not change paths. The column is not a public business field; custom fields cannot claim its name.
 
