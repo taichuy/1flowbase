@@ -5,7 +5,7 @@ import { useAuthStore } from '../../../../state/auth-store';
 import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 
 import {
   Alert,
@@ -46,7 +46,6 @@ import {
   nextMcpDirectoryExpandedKeys,
   normalizeMcpDirectoryPath
 } from './mcp-management-view-model';
-import { McpInstanceDiscoveryPolicyModal } from './McpInstanceDiscoveryPolicyModal';
 
 import { McpBundleExportModal } from './bundle/McpBundleExportModal';
 import { McpBundleImportFlow } from './bundle/McpBundleImportFlow';
@@ -56,6 +55,12 @@ import { DirectoryReadError } from './McpInstancesTab/DirectoryReadError';
 import { DirectoryPagedSelect } from './McpInstancesTab/DirectoryPagedSelect';
 import { useMcpDirectoryEditor } from './McpInstancesTab/use-mcp-directory-editor';
 import { useMcpInstanceActions } from './McpInstancesTab/use-mcp-instance-actions';
+
+const McpInstanceDiscoveryPolicyModal = lazy(() =>
+  import('./McpInstanceDiscoveryPolicyModal').then(
+    ({ McpInstanceDiscoveryPolicyModal }) => ({ default: McpInstanceDiscoveryPolicyModal })
+  )
+);
 
 const EMPTY_INSTANCES: never[] = [];
 
@@ -227,11 +232,13 @@ export function McpInstancesTab({ page, pageSize, setPosition }: McpTablePaginat
         }
       />
       {discoveryPolicyInstance ? (
-        <McpInstanceDiscoveryPolicyModal
-          instance={discoveryPolicyInstance}
-          open
-          onClose={() => setDiscoveryPolicyInstance(null)}
-        />
+        <Suspense fallback={null}>
+          <McpInstanceDiscoveryPolicyModal
+            instance={discoveryPolicyInstance}
+            open
+            onClose={() => setDiscoveryPolicyInstance(null)}
+          />
+        </Suspense>
       ) : null}
       <McpClientConfigurationModal
         instance={clientConfigurationInstance}

@@ -2,7 +2,7 @@ import {
   navigationQueryStaleTime,
   selectNavigationQueryScope
 } from '../../../state/navigation-query-scope';
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
 import { Navigate } from '@tanstack/react-router';
@@ -19,13 +19,19 @@ import {
   isSettingsSectionKey,
   settingsSectionItemsFromConsoleNavigation
 } from '../lib/settings-sections';
-import { PluginSettingsPage } from './settings-page/PluginSettingsPage';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { SettingsRouteShell } from './settings-page/shell/SettingsRouteShell';
 import { SettingsSectionBody } from './settings-page/shell/SettingsSectionBody';
 import { useSettingsSections } from './settings-page/shell/use-settings-sections';
 import type { RolePermissionTab } from '../components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../api/extensions/extensions';
 import type { NetworkCenterPage } from './network-center/NetworkCenterSection';
+
+const PluginSettingsPage = lazy(() =>
+  import('./settings-page/PluginSettingsPage').then(({ PluginSettingsPage }) => ({
+    default: PluginSettingsPage
+  }))
+);
 
 export function SettingsPage({
   requestedSectionKey,
@@ -165,10 +171,12 @@ export function SettingsPage({
           extensionCenterQ={extensionCenterQ}
         />
       ) : registeredPage ? (
-        <PluginSettingsPage
-          key={registeredPage.route_id}
-          route_id={registeredPage.route_id}
-        />
+        <Suspense fallback={<LoadingState compact />}>
+          <PluginSettingsPage
+            key={registeredPage.route_id}
+            route_id={registeredPage.route_id}
+          />
+        </Suspense>
       ) : null}
     </SettingsRouteShell>
   );

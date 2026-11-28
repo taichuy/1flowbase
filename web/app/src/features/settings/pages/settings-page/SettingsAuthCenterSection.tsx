@@ -1,7 +1,7 @@
 import BarsOutlined from '@ant-design/icons/es/icons/BarsOutlined';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
-import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState, type DragEvent } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -44,9 +44,14 @@ import {
   type SettingsAuthCenterOverview
 } from '../../api/identity-access/auth-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
-import { LoginEntryUiBlockStudio } from '../../components/auth-center/LoginEntryUiBlockStudio';
 
 import './auth-center-panel.css';
+
+const LoginEntryUiBlockStudio = lazy(() =>
+  import('../../components/auth-center/LoginEntryUiBlockStudio').then(
+    ({ LoginEntryUiBlockStudio }) => ({ default: LoginEntryUiBlockStudio })
+  )
+);
 
 type LoginEntryRow = SettingsAuthCenterOverview['login_entries'][number];
 
@@ -789,59 +794,61 @@ export function SettingsAuthCenterSection() {
         }}
       />
       {selectedUiLoginEntry ? (
-        <LoginEntryUiBlockStudio
-          loginEntryId={selectedUiLoginEntry.id}
-          loginEntryTitle={selectedUiLoginEntry.title}
-          authType={selectedUiLoginEntry.auth_type}
-          contextVariables={selectedUiLoginEntry.context_variables}
-          defaultSource={selectedUiLoginEntry.default_public_ui_block ?? null}
-          description={
-            typeof selectedUiLoginEntry.config_values.description === 'string'
-              ? selectedUiLoginEntry.config_values.description
-              : null
-          }
-          enabled={selectedUiLoginEntry.enabled}
-          interfacePathPrefixes={selectedUiLoginEntry.interface_path_prefixes}
-          publicVariables={selectedUiLoginEntry.public_variables}
-          selfRegistrationEnabled={
-            selectedUiLoginEntry.config_values.self_registration_enabled ===
-            true
-          }
-          workspaceId={actor?.current_workspace_id ?? ''}
-          errorMessage={
-            publicUiBlockMutation.isError
-              ? publicUiBlockMutation.error instanceof Error &&
-                publicUiBlockMutation.error.message.trim().length > 0
-                ? publicUiBlockMutation.error.message
-                : i18nText(
-                    'settings',
-                    'auto.auth_center_public_ui_update_failed'
-                  )
-              : null
-          }
-          open={selectedUiLoginEntryId != null}
-          readOnly={!canUpdatePublicUi || csrfToken == null}
-          saving={publicUiBlockMutation.isPending}
-          source={selectedUiLoginEntry.public_ui_block}
-          onClose={() => {
-            publicUiBlockMutation.reset();
-            setSelectedUiLoginEntryId(null);
-          }}
-          onSave={async (publicUiBlock) => {
-            await new Promise<void>((resolve, reject) => {
-              publicUiBlockMutation.mutate(
-                {
-                  loginEntryId: selectedUiLoginEntry.id,
-                  publicUiBlock
-                },
-                {
-                  onError: (error) => reject(error),
-                  onSuccess: () => resolve()
-                }
-              );
-            });
-          }}
-        />
+        <Suspense fallback={null}>
+          <LoginEntryUiBlockStudio
+            loginEntryId={selectedUiLoginEntry.id}
+            loginEntryTitle={selectedUiLoginEntry.title}
+            authType={selectedUiLoginEntry.auth_type}
+            contextVariables={selectedUiLoginEntry.context_variables}
+            defaultSource={selectedUiLoginEntry.default_public_ui_block ?? null}
+            description={
+              typeof selectedUiLoginEntry.config_values.description === 'string'
+                ? selectedUiLoginEntry.config_values.description
+                : null
+            }
+            enabled={selectedUiLoginEntry.enabled}
+            interfacePathPrefixes={selectedUiLoginEntry.interface_path_prefixes}
+            publicVariables={selectedUiLoginEntry.public_variables}
+            selfRegistrationEnabled={
+              selectedUiLoginEntry.config_values.self_registration_enabled ===
+              true
+            }
+            workspaceId={actor?.current_workspace_id ?? ''}
+            errorMessage={
+              publicUiBlockMutation.isError
+                ? publicUiBlockMutation.error instanceof Error &&
+                  publicUiBlockMutation.error.message.trim().length > 0
+                  ? publicUiBlockMutation.error.message
+                  : i18nText(
+                      'settings',
+                      'auto.auth_center_public_ui_update_failed'
+                    )
+                : null
+            }
+            open={selectedUiLoginEntryId != null}
+            readOnly={!canUpdatePublicUi || csrfToken == null}
+            saving={publicUiBlockMutation.isPending}
+            source={selectedUiLoginEntry.public_ui_block}
+            onClose={() => {
+              publicUiBlockMutation.reset();
+              setSelectedUiLoginEntryId(null);
+            }}
+            onSave={async (publicUiBlock) => {
+              await new Promise<void>((resolve, reject) => {
+                publicUiBlockMutation.mutate(
+                  {
+                    loginEntryId: selectedUiLoginEntry.id,
+                    publicUiBlock
+                  },
+                  {
+                    onError: (error) => reject(error),
+                    onSuccess: () => resolve()
+                  }
+                );
+              });
+            }}
+          />
+        </Suspense>
       ) : null}
       <Modal
         open={isLifecycleModalOpen}

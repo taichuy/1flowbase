@@ -32,6 +32,7 @@ import type { DataNode } from 'antd/es/tree';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
 import './host-infrastructure-panel.css';
 import {
@@ -75,6 +76,14 @@ export function HostInfrastructureMemoryObservationPanel({
 }: {
   canManage: boolean;
 }) {
+  return (
+    <SettingsSectionSurface heightMode="fill">
+      <MemoryObservationContent canManage={canManage} />
+    </SettingsSectionSurface>
+  );
+}
+
+function MemoryObservationContent({ canManage }: { canManage: boolean }) {
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [activeTabKey, setActiveTabKey] = useState(MEMORY_STATS_TAB_KEY);
   const [selectedInspectionPath, setSelectedInspectionPath] = useState<

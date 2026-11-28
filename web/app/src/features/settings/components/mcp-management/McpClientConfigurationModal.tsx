@@ -12,13 +12,12 @@ import KeyOutlined from '@ant-design/icons/es/icons/KeyOutlined';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Form, Input, Space, Tabs, Typography } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 
 import type { ConsoleMcpInstance } from '@1flowbase/api-client';
 import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
-import { McpCommandMarkdownPreview } from './McpCommandMarkdownPreview';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
   deleteSettingsMcpClientCredential,
@@ -112,6 +111,12 @@ function buildCommandMarkdown(
     .join('\n\n');
 }
 
+const McpCommandMarkdownPreview = lazy(() =>
+  import('./McpCommandMarkdownPreview').then(
+    ({ McpCommandMarkdownPreview }) => ({ default: McpCommandMarkdownPreview })
+  )
+);
+
 const renderAgentCommands = (
   commands:
     | {
@@ -126,13 +131,15 @@ const renderAgentCommands = (
         {i18nText('settingsMcpManagement', 'auto.install_update_commands')}
       </Typography.Title>
       {commands?.install ? (
-        <McpCommandMarkdownPreview
-          content={commands.install}
-          ariaLabel={i18nText(
-            'settingsMcpManagement',
-            'auto.install_update_command_preview'
-          )}
-        />
+        <Suspense fallback={null}>
+          <McpCommandMarkdownPreview
+            content={commands.install}
+            ariaLabel={i18nText(
+              'settingsMcpManagement',
+              'auto.install_update_command_preview'
+            )}
+          />
+        </Suspense>
       ) : (
         <Typography.Text type="secondary">
           {i18nText(
@@ -147,13 +154,15 @@ const renderAgentCommands = (
         {i18nText('settingsMcpManagement', 'auto.remove_commands')}
       </Typography.Title>
       {commands?.remove ? (
-        <McpCommandMarkdownPreview
-          content={commands.remove}
-          ariaLabel={i18nText(
-            'settingsMcpManagement',
-            'auto.remove_command_preview'
-          )}
-        />
+        <Suspense fallback={null}>
+          <McpCommandMarkdownPreview
+            content={commands.remove}
+            ariaLabel={i18nText(
+              'settingsMcpManagement',
+              'auto.remove_command_preview'
+            )}
+          />
+        </Suspense>
       ) : (
         <Alert
           type="warning"

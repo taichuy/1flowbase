@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Descriptions } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -18,15 +18,18 @@ import {
   type SettingsUiTemplateInput
 } from '../../api/ui-management';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
-import {
-  UiCodeTemplateStudio,
-  type UiCodeTemplateStudioMode
-} from './UiCodeTemplateStudio';
+import type { UiCodeTemplateStudioMode } from './UiCodeTemplateStudio';
 
 import {
   RegisteredBlocksTable,
   type BlockRow
 } from './registered-blocks/RegisteredBlocksTable';
+
+const UiCodeTemplateStudio = lazy(() =>
+  import('./UiCodeTemplateStudio').then(
+    ({ UiCodeTemplateStudio }) => ({ default: UiCodeTemplateStudio })
+  )
+);
 
 type StudioSession = {
   documentId: string;
@@ -215,18 +218,20 @@ function RegisteredBlocksContent({ scope }: { scope: string }) {
         />
       ) : null}
       {studio ? (
-        <UiCodeTemplateStudio
-          resourceKind="block"
-          documentId={studio.documentId}
-          initialValue={studio.initialValue}
-          mode={studio.mode}
-          officialTemplates={[]}
-          open
-          saving={save.isPending && save.variables.session === studio}
-          workspaceId={workspaceId}
-          onClose={closeStudio}
-          onSave={(value) => save.mutate({ value, session: studio })}
-        />
+        <Suspense fallback={null}>
+          <UiCodeTemplateStudio
+            resourceKind="block"
+            documentId={studio.documentId}
+            initialValue={studio.initialValue}
+            mode={studio.mode}
+            officialTemplates={[]}
+            open
+            saving={save.isPending && save.variables.session === studio}
+            workspaceId={workspaceId}
+            onClose={closeStudio}
+            onSave={(value) => save.mutate({ value, session: studio })}
+          />
+        </Suspense>
       ) : null}
       <ResizableDrawer
         title={detail?.title}

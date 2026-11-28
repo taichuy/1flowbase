@@ -11,10 +11,9 @@ import {
   Tabs,
   Typography
 } from 'antd';
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
-import { InlineJsonCodeEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
 import {
   type McpInputInterfaceParameter,
   type McpInputMappingValue,
@@ -23,6 +22,12 @@ import {
   parseMappingDefault,
   mappingDefaultError
 } from './mcp-input-mapping-model';
+
+const InlineJsonCodeEditor = lazy(() =>
+  import('../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel').then(
+    ({ InlineJsonCodeEditor }) => ({ default: InlineJsonCodeEditor })
+  )
+);
 
 function stringifyMapping(value: McpInputMappingValue) {
   return JSON.stringify(value, null, 2);
@@ -569,12 +574,14 @@ function InputMappingJsonSection({
 }) {
   return (
     <Space orientation="vertical" style={{ width: '100%' }}>
-      <InlineJsonCodeEditor
-        ariaLabel="input_mapping JSON"
-        className="mcp-input-mapping-editor__json"
-        value={jsonDraft.text}
-        onChange={onUpdateJsonText}
-      />
+      <Suspense fallback={null}>
+        <InlineJsonCodeEditor
+          ariaLabel="input_mapping JSON"
+          className="mcp-input-mapping-editor__json"
+          value={jsonDraft.text}
+          onChange={onUpdateJsonText}
+        />
+      </Suspense>
       <Typography.Text type={jsonDraft.error ? 'danger' : 'secondary'}>
         {jsonDraft.error || i18nText('settings', 'auto.support_json_parse')}
       </Typography.Text>

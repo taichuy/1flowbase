@@ -1,11 +1,22 @@
+import { lazy, Suspense } from 'react';
 import { Tabs } from 'antd';
 import { useNavigate } from '@tanstack/react-router';
+import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 
-import { NetworkEgressPoolsPanel } from '../../network-center/pools/NetworkEgressPoolsPanel';
 import { NetworkEgressProvidersPanel } from '../../network-center/providers/NetworkEgressProvidersPanel';
-import { NetworkEgressRoutesPanel } from '../../network-center/routes/NetworkEgressRoutesPanel';
 import { i18nText } from '../../../../shared/i18n/text';
 import './network-center-section.css';
+
+const NetworkEgressPoolsPanel = lazy(() =>
+  import('../../network-center/pools/NetworkEgressPoolsPanel').then(
+    ({ NetworkEgressPoolsPanel }) => ({ default: NetworkEgressPoolsPanel })
+  )
+);
+const NetworkEgressRoutesPanel = lazy(() =>
+  import('../../network-center/routes/NetworkEgressRoutesPanel').then(
+    ({ NetworkEgressRoutesPanel }) => ({ default: NetworkEgressRoutesPanel })
+  )
+);
 
 export type NetworkCenterPage =
   | 'proxy-types'
@@ -23,17 +34,25 @@ export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
         {
           key: 'proxy-types',
           label: i18nText('settings', 'auto.network_center_providers'),
-          children: <NetworkEgressProvidersPanel />
+          children: page === 'proxy-types' ? <NetworkEgressProvidersPanel /> : null
         },
         {
           key: 'proxy-pools',
           label: i18nText('settings', 'auto.network_center_pools'),
-          children: <NetworkEgressPoolsPanel />
+          children: page === 'proxy-pools' ? (
+            <Suspense fallback={<LoadingState compact />}>
+              <NetworkEgressPoolsPanel />
+            </Suspense>
+          ) : null
         },
         {
           key: 'routing-rules',
           label: i18nText('settings', 'auto.network_center_routes'),
-          children: <NetworkEgressRoutesPanel />
+          children: page === 'routing-rules' ? (
+            <Suspense fallback={<LoadingState compact />}>
+              <NetworkEgressRoutesPanel />
+            </Suspense>
+          ) : null
         }
       ]}
     />

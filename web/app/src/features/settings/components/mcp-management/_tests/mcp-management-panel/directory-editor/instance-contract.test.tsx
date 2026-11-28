@@ -95,7 +95,7 @@ describe('McpManagementPanel', () => {
       within(menu).getByRole('menuitem', { name: /目录发现配置$/ })
     );
 
-    const dialog = screen.getByRole('dialog', {
+    const dialog = await screen.findByRole('dialog', {
       name: '目录发现配置 · Ops MCP'
     });
     expect(

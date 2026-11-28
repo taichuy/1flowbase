@@ -28,7 +28,15 @@ const sceneOwners = {
   workspaceShell: ['/features/frontstage/pages/FrontstageWorkspacePage.tsx'],
   browse: ['/features/frontstage/pages/FrontStagePage.tsx'],
   studio: ['/features/frontstage/components/jsx-studio/FrontstageJsxStudioDrawer.tsx'],
-  loginStudio: ['/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx']
+  loginStudio: ['/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx'],
+  settingsShell: ['/features/settings/pages/SettingsPage.tsx'],
+  settingsMembers: ['/features/settings/pages/settings-page/MemberSettingsTabs.tsx'],
+  settingsModelProviders: ['/features/settings/pages/settings-page/ModelProviderSettingsTabs.tsx'],
+  settingsSystemRuntime: ['/features/settings/components/SystemRuntimePanel.tsx'],
+  settingsApplications: ['/features/settings/components/application-management/ApplicationManagementPanel.tsx'],
+  settingsAuthCenter: ['/features/settings/pages/settings-page/SettingsAuthCenterSection.tsx'],
+  settingsUiManagement: ['/features/settings/components/ui-management/UiManagementPanel.tsx'],
+  settingsMcp: ['/features/settings/pages/settings-page/SettingsMcpManagementSection.tsx']
 } as const;
 
 export function staticChunkClosure(
@@ -98,6 +106,63 @@ export function collectScenarioDemandManifest(bundle: Bundle) {
         throw new Error(
           `[scenario-demand] workspaceShell eagerly includes canvas/runtime module ${id} in ${file}`
         );
+      }
+    }
+  }
+
+  const noHeavyEditor = /\/(?:node_modules\/(?:monaco-editor|@monaco-editor\/react|vditor)\/|shared\/code-block\/monaco-runtime\.ts$)|virtual:1flowbase-native-module-declarations/u;
+  const noFrontstageRuntime = /^(?:frontstage-shell|native-host)(?:~|$)/u;
+  const noFrontstageOrEditor = /^(?:frontstage-shell|native-host|frontstage-canvas|editor-declarations)(?:~|$)/u;
+  const rules = {
+    settingsShell: {
+      modules: /\/FrontstageNativeTrustedBlockPortalHost\.tsx$|\/settings\/components\/ui-management\//u,
+      chunks: noFrontstageRuntime
+    },
+    settingsMembers: {
+      modules: /\/(?:features\/settings\/api\/billing\.ts|packages\/api-client\/src\/console\/administration\/billing\.ts|CreditManagementPanel\.tsx|DepartmentManagementPanel\.tsx)$/u,
+      chunks: noFrontstageRuntime
+    },
+    settingsModelProviders: {
+      modules: /\/(?:features\/settings\/api\/billing\.ts|packages\/api-client\/src\/console\/administration\/billing\.ts|PricingRulesPanel\.tsx|ModelProviderRequestLogsPanel\.tsx)$/u,
+      chunks: noFrontstageRuntime
+    },
+    settingsApplications: {
+      chunks: noFrontstageRuntime
+    },
+    settingsAuthCenter: {
+      modules: /\/LoginEntryUiBlockStudio\.tsx$/u,
+      chunks: noFrontstageOrEditor
+    },
+    settingsUiManagement: {
+      modules: /\/UiCodeTemplateStudio\.tsx$/u,
+      chunks: noFrontstageOrEditor
+    },
+    settingsMcp: {
+      chunks: noFrontstageRuntime
+    }
+  } satisfies Partial<Record<keyof typeof sceneOwners, { modules?: RegExp; chunks?: RegExp }>>;
+
+  for (const [scene, rule] of Object.entries<{ modules?: RegExp; chunks?: RegExp }>(rules)) {
+    for (const file of scenes[scene]!.staticClosure) {
+      const name = byFile.get(file)!.name;
+      if (rule.chunks?.test(name)) {
+        throw new Error(`[scenario-demand] ${scene} eagerly includes ${name} in ${file}`);
+      }
+      const leak = owners.get(file)!.find((id) =>
+        noHeavyEditor.test(id) || rule.modules?.test(id)
+      );
+      if (leak) {
+        throw new Error(`[scenario-demand] ${scene} eagerly includes ${leak} in ${file}`);
+      }
+    }
+  }
+
+  for (const scene of ['signIn', 'authenticatedStartup', 'shell', 'workspaceShell', 'browse']) {
+    for (const file of scenes[scene]!.staticClosure) {
+      const name = byFile.get(file)!.name;
+      const splitter = owners.get(file)!.find((id) => /\/node_modules\/antd\/(?:es|lib)\/splitter\//u.test(id));
+      if (/^settings-shared(?:~|$)/u.test(name) || splitter) {
+        throw new Error(`[scenario-demand] ${scene} eagerly includes ${splitter ?? name} in ${file}`);
       }
     }
   }
