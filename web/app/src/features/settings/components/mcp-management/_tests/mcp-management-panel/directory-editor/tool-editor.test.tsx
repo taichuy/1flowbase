@@ -136,7 +136,7 @@ describe('McpManagementPanel', () => {
 
     await clickSegmentedOption(dialog, 'input_mapping');
     expect(within(dialog).getByText('parameter_schema')).toBeInTheDocument();
-    await click(within(dialog).getByRole('tab', { name: 'JSON 解析' }));
+    await click(await within(dialog).findByRole('tab', { name: 'JSON 解析' }));
     await change(
       await within(dialog).findByLabelText('JSON Schema 内容', undefined, {
         timeout: 10000

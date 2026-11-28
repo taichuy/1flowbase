@@ -1,15 +1,24 @@
+import { lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Spin } from 'antd';
+import { Alert, Button, Spin, Tabs } from 'antd';
 import {
   fetchSettingsDepartmentAccess,
   settingsDepartmentAccessQueryKey
 } from '../../api/identity-access/departments';
-import { DepartmentManagementPanel } from '../../components/organization/DepartmentManagementPanel';
-import { Tabs } from 'antd';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
-import { CreditManagementPanel } from '../../components/billing/CreditManagementPanel';
 import { MemberManagementPanel } from '../../components/MemberManagementPanel';
 import { i18nText } from '../../../../shared/i18n/text';
+
+const DepartmentManagementPanel = lazy(() =>
+  import('../../components/organization/DepartmentManagementPanel').then(
+    ({ DepartmentManagementPanel }) => ({ default: DepartmentManagementPanel })
+  )
+);
+const CreditManagementPanel = lazy(() =>
+  import('../../components/billing/CreditManagementPanel').then(
+    ({ CreditManagementPanel }) => ({ default: CreditManagementPanel })
+  )
+);
 
 export function MemberSettingsTabs({
   canManageMembers
@@ -17,9 +26,17 @@ export function MemberSettingsTabs({
   canManageMembers: boolean;
 }) {
   const navigate = useNavigate();
+  const requestedTab = useRouterState({
+    select: (state) => state.location.search.tabs
+  });
+  const activeTab =
+    requestedTab === 'credits' || requestedTab === 'departments'
+      ? requestedTab
+      : 'members';
   const accessQuery = useQuery({
     queryKey: settingsDepartmentAccessQueryKey,
-    queryFn: fetchSettingsDepartmentAccess
+    queryFn: fetchSettingsDepartmentAccess,
+    enabled: activeTab !== 'credits'
   });
   const departmentAccess = accessQuery.data ?? {
     can_list: false,
@@ -29,19 +46,10 @@ export function MemberSettingsTabs({
     can_assign_roles: false,
     can_replace_member_departments: false
   };
-  const activeTab = useRouterState({
-    select: (state) => state.location.search.tabs
-  });
 
   return (
     <Tabs
-      activeKey={
-        activeTab === 'credits'
-          ? 'credits'
-          : activeTab === 'departments'
-            ? 'departments'
-            : 'members'
-      }
+      activeKey={activeTab}
       onChange={(tabs) =>
         void navigate({ to: '/settings/members', search: { tabs } })
       }
@@ -49,7 +57,7 @@ export function MemberSettingsTabs({
         {
           key: 'members',
           label: i18nText('settings', 'auto.user_management'),
-          children: (
+          children: activeTab === 'members' ? (
             <MemberManagementPanel
               canManageMembers={canManageMembers}
               canManageRoleBindings={departmentAccess.can_assign_roles}
@@ -59,12 +67,12 @@ export function MemberSettingsTabs({
                 departmentAccess.can_replace_member_departments
               }
             />
-          )
+          ) : null
         },
         {
           key: 'departments',
           label: i18nText('settings', 'organization.management'),
-          children: accessQuery.isLoading ? (
+          children: activeTab !== 'departments' ? null : accessQuery.isLoading ? (
             <Spin />
           ) : accessQuery.isError ? (
             <Alert
@@ -77,13 +85,19 @@ export function MemberSettingsTabs({
               }
             />
           ) : (
-            <DepartmentManagementPanel access={departmentAccess} />
+            <Suspense fallback={<Spin />}>
+              <DepartmentManagementPanel access={departmentAccess} />
+            </Suspense>
           )
         },
         {
           key: 'credits',
           label: i18nText('settings', 'auto.billing_user_credit'),
-          children: <CreditManagementPanel canManage={canManageMembers} />
+          children: activeTab === 'credits' ? (
+            <Suspense fallback={<Spin />}>
+              <CreditManagementPanel canManage={canManageMembers} />
+            </Suspense>
+          ) : null
         }
       ]}
     />

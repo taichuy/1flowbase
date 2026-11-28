@@ -1,6 +1,7 @@
 import { resetAuthStore } from '../../../../state/auth-store';
 import { preferenceWriteCases, setPreferenceActor } from '../../../../test/fixtures/preference-auth';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { createApplicationQueryClient } from '../../../../app/bootstrap/authenticated-navigation';
 import { App } from 'antd';
 import {
   act,
@@ -260,9 +261,7 @@ function runtimeProcessList() {
 }
 
 function renderPanel() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } }
-  });
+  const queryClient = createApplicationQueryClient();
   const view = render(
     <QueryClientProvider client={queryClient}>
       <App>
@@ -371,12 +370,18 @@ describe('SystemRuntimePanel', () => {
     expect(
       systemRuntimeApi.fetchSettingsSystemRuntimeProfile
     ).toHaveBeenCalledTimes(1);
+    expect(
+      systemRuntimeApi.fetchSettingsSystemRuntimeProcesses
+    ).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
     expect(
       systemRuntimeApi.fetchSettingsSystemRuntimeProfile
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      systemRuntimeApi.fetchSettingsSystemRuntimeProcesses
     ).toHaveBeenCalledTimes(2);
 
     Object.defineProperty(document, 'visibilityState', {
@@ -389,6 +394,9 @@ describe('SystemRuntimePanel', () => {
     });
     expect(
       systemRuntimeApi.fetchSettingsSystemRuntimeProfile
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      systemRuntimeApi.fetchSettingsSystemRuntimeProcesses
     ).toHaveBeenCalledTimes(2);
   });
 

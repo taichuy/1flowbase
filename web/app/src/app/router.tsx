@@ -61,6 +61,7 @@ import {
   loadAppShellFrameModule,
   loadFrontstageWorkspacePageModule
 } from './bootstrap/authenticated-shell-preload';
+import { SettingsRoutePage } from '../features/settings/pages/settings-page/shell/settings-section-loaders';
 import { recoverDevModuleGraph } from './bootstrap/dev-module-recovery';
 
 let applicationDetailPageFlight:
@@ -109,11 +110,6 @@ const FrontstageWorkspacePage = lazy(() =>
 const MePage = lazy(() =>
   import('../features/me/pages/MePage').then((module) => ({
     default: module.MePage
-  }))
-);
-const SettingsPage = lazy(() =>
-  import('../features/settings/pages/SettingsPage').then((module) => ({
-    default: module.SettingsPage
   }))
 );
 const McpAuthorizePage = lazy(() =>
@@ -427,7 +423,7 @@ function renderSettingsRoute(
 ) {
   return (
     <RouteGuard routeId="settings">
-      <SettingsPage
+      <SettingsRoutePage
         requestedSectionKey={requestedSectionKey}
         modelProviderTab={modelProviderTab}
         rolePermissionTab={rolePermissionTab}

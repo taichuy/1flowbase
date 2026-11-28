@@ -250,7 +250,7 @@ export function productAntDesignChunk(id: string): string | undefined {
   if (['breadcrumb', 'menu', 'steps', 'tabs'].includes(component))
     return 'antd-navigation';
   if (
-    ['card', 'collapse', 'image', 'statistic', 'timeline'].includes(component)
+    ['card', 'collapse', 'image', 'splitter', 'statistic', 'timeline'].includes(component)
   )
     return 'antd-display';
   if (
@@ -263,7 +263,6 @@ export function productAntDesignChunk(id: string): string | undefined {
       'float-button',
       'masonry',
       'qr-code',
-      'splitter',
       'tour'
     ].includes(component)
   )

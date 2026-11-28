@@ -220,6 +220,7 @@ async function renderPanel() {
     );
     mountedViews.add(view);
   });
+  await screen.findByRole('button', { name: '新建模板' }, { timeout: 10_000 });
   return view;
 }
 

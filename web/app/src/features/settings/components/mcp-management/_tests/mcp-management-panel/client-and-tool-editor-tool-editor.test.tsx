@@ -217,7 +217,7 @@ describe('McpManagementPanel', () => {
     await domEvents.click(
       within(dialog).getByRole('button', { name: '获取返回结构' })
     );
-    expect(within(dialog).getByDisplayValue('run_id')).toBeInTheDocument();
+    expect(await within(dialog).findByDisplayValue('run_id')).toBeInTheDocument();
     expect(within(dialog).queryByDisplayValue('type')).not.toBeInTheDocument();
     expect(
       within(dialog).queryByDisplayValue('required')

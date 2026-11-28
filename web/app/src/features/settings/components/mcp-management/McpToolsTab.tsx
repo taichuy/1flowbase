@@ -28,7 +28,7 @@ import {
   Tooltip,
   Typography
 } from 'antd';
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import type {
   ConsoleMcpProxyInputMapping,
   ConsoleMcpProxyOutputMapping,
@@ -55,8 +55,6 @@ import {
 } from '../../../../shared/ui/data-table/DataTableLayout';
 import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
-import { MarkdownIrEditor } from '../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor';
-import { JsonSchemaInlineEditor } from '../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel';
 import {
   buildRandomToolIdSeed,
   buildReadableToolId
@@ -82,6 +80,17 @@ import {
   MCP_TOOLS_PAGE_SIZE,
   type McpToolsRouteState
 } from './McpToolsTab/route-state';
+
+const MarkdownIrEditor = lazy(() =>
+  import('../../../../shared/ui/markdown-ir-editor/MarkdownIrEditor').then(
+    ({ MarkdownIrEditor }) => ({ default: MarkdownIrEditor })
+  )
+);
+const JsonSchemaInlineEditor = lazy(() =>
+  import('../../../agent-flow/components/detail/fields/json-schema/JsonSchemaSettingsPanel').then(
+    ({ JsonSchemaInlineEditor }) => ({ default: JsonSchemaInlineEditor })
+  )
+);
 
 export function McpToolsTab(_props: { canManage?: boolean } = {}) {
   const can = useConsoleOperationAccess();
@@ -681,9 +690,11 @@ export function McpToolsTab(_props: { canManage?: boolean } = {}) {
             >
               <Input />
             </Form.Item>
-            <Form.Item name="full_description" label="full_description">
-              <MarkdownIrEditor ariaLabel="full_description" />
-            </Form.Item>
+            <Suspense fallback={<Spin />}>
+              <Form.Item name="full_description" label="full_description">
+                <MarkdownIrEditor ariaLabel="full_description" />
+              </Form.Item>
+            </Suspense>
           </div>
           <div hidden={step !== 'interface'}>
             {editingTool?.execution_target.kind === 'assistant_client' ? (
@@ -800,14 +811,16 @@ export function McpToolsTab(_props: { canManage?: boolean } = {}) {
                     }
                   >
                     {({ getFieldValue }) => (
-                      <JsonSchemaInlineEditor
-                        fallbackRootType="object"
-                        resetKey={`parameter:${schemaEditorRevision}`}
-                        schema={schemaRecord(getFieldValue('parameter_schema'))}
-                        structureMode="fields"
-                        onChange={setParameterSchemaValue}
-                        onValidityChange={setParameterSchemaValidity}
-                      />
+                      <Suspense fallback={<Spin />}>
+                        <JsonSchemaInlineEditor
+                          fallbackRootType="object"
+                          resetKey={`parameter:${schemaEditorRevision}`}
+                          schema={schemaRecord(getFieldValue('parameter_schema'))}
+                          structureMode="fields"
+                          onChange={setParameterSchemaValue}
+                          onValidityChange={setParameterSchemaValidity}
+                        />
+                      </Suspense>
                     )}
                   </Form.Item>
                   <Typography.Text strong>input_mapping</Typography.Text>
@@ -890,14 +903,16 @@ export function McpToolsTab(_props: { canManage?: boolean } = {}) {
                     }
                   >
                     {({ getFieldValue }) => (
-                      <JsonSchemaInlineEditor
-                        fallbackRootType="object"
-                        resetKey={`result:${schemaEditorRevision}`}
-                        schema={schemaRecord(getFieldValue('result_schema'))}
-                        structureMode="fields"
-                        onChange={setResultSchemaValue}
-                        onValidityChange={setResultSchemaValidity}
-                      />
+                      <Suspense fallback={<Spin />}>
+                        <JsonSchemaInlineEditor
+                          fallbackRootType="object"
+                          resetKey={`result:${schemaEditorRevision}`}
+                          schema={schemaRecord(getFieldValue('result_schema'))}
+                          structureMode="fields"
+                          onChange={setResultSchemaValue}
+                          onValidityChange={setResultSchemaValidity}
+                        />
+                      </Suspense>
                     )}
                   </Form.Item>
                   <Typography.Text strong>output_mapping</Typography.Text>
@@ -950,14 +965,16 @@ export function McpToolsTab(_props: { canManage?: boolean } = {}) {
                   >
                     {({ getFieldValue }) => (
                       <div className="mcp-management__schema-editor">
-                        <JsonSchemaInlineEditor
-                          fallbackRootType="object"
-                          resetKey={`output:${schemaEditorRevision}`}
-                          schema={schemaRecord(getFieldValue('output_mapping'))}
-                          structureMode="fields"
-                          onChange={setOutputMappingValue}
-                          onValidityChange={setOutputMappingValidity}
-                        />
+                        <Suspense fallback={<Spin />}>
+                          <JsonSchemaInlineEditor
+                            fallbackRootType="object"
+                            resetKey={`output:${schemaEditorRevision}`}
+                            schema={schemaRecord(getFieldValue('output_mapping'))}
+                            structureMode="fields"
+                            onChange={setOutputMappingValue}
+                            onValidityChange={setOutputMappingValidity}
+                          />
+                        </Suspense>
                       </div>
                     )}
                   </Form.Item>

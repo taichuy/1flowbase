@@ -411,6 +411,7 @@ export function SystemRuntimePanel() {
     queryFn: fetchSettingsSystemRuntimeProfile,
     enabled: pageVisible,
     retry: false,
+    staleTime: 0,
     refetchInterval: pageVisible ? POLL_INTERVAL_MILLISECONDS : false,
     refetchIntervalInBackground: false
   });
@@ -420,6 +421,7 @@ export function SystemRuntimePanel() {
     queryFn: fetchSettingsSystemRuntimeProcesses,
     enabled: pageVisible,
     retry: false,
+    staleTime: 0,
     refetchInterval: pageVisible ? POLL_INTERVAL_MILLISECONDS : false,
     refetchIntervalInBackground: false
   });
