@@ -100,6 +100,23 @@ test('scanJsonDuplicateKeys reports generated i18n key names', () => {
   assert.equal(generatedKeyNames[0].line, 3);
 });
 
+test('scanner retains ordered diagnostics on shared CRLF lines and escaped keys', () => {
+  const content = String.raw`{
+  "outer": {"badKey":"quoted \"\n", "bad\u004bey": "again"},
+  "key_abcdef": "generated", "key_abcdef": "again"}`.replaceAll('\n', '\r\n');
+  const findings = scanJsonDuplicateKeys({ relativePath: 'i18n/en_US.json', content });
+
+  assert.deepEqual(findings.map(({ severity, rule, line, key, snippet }) =>
+    [severity, rule, line, key, snippet]), [
+    ['error', 'invalid-key-name', 2, 'outer.badKey', content.split('\r\n')[1].trim()],
+    ['error', 'invalid-key-name', 2, 'outer.badKey', content.split('\r\n')[1].trim()],
+    ['error', 'duplicate-json-key', 2, 'outer.badKey', content.split('\r\n')[1].trim()],
+    ['error', 'generated-key-name', 3, 'key_abcdef', content.split('\r\n')[2].trim()],
+    ['error', 'generated-key-name', 3, 'key_abcdef', content.split('\r\n')[2].trim()],
+    ['error', 'duplicate-json-key', 3, 'key_abcdef', content.split('\r\n')[2].trim()]
+  ]);
+});
+
 test('collectI18nHygieneFindings reports locale and key contract errors', () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'oneflowbase-i18n-hygiene-')

@@ -41,7 +41,6 @@ pub mod node_contribution_repository;
 pub mod orchestration_runtime_repository;
 pub mod ordered_tree;
 pub mod physical_schema_repository;
-pub mod privacy_masking_repository;
 #[path = "extension_repositories/plugin_data_repository.rs"]
 pub mod plugin_data_repository;
 #[path = "extension_repositories/plugin_installation_commit_repository.rs"]
@@ -52,6 +51,7 @@ pub mod plugin_repository;
 mod plugin_settings_template_repository;
 #[path = "extension_repositories/plugin_worker_repository.rs"]
 pub mod plugin_worker_repository;
+pub mod privacy_masking_repository;
 #[path = "integration_repositories/provider_protocol_capsule_store.rs"]
 mod provider_protocol_capsule_store;
 pub mod repositories;

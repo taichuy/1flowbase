@@ -201,6 +201,7 @@
     "model_failover_queue_snapshots",
     "model_provider_request_logs",
     "node_runs",
+    "privacy_masking_logs",
     "retained_frontend_module_assets",
     "runtime_artifacts",
     "runtime_audit_hashes",

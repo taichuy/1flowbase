@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, error::Error, fmt};
+use std::{error::Error, fmt};
 
 const ALPHABET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const MID_DIGIT: u8 = b'U';
@@ -62,7 +62,7 @@ pub fn between(
     let encoded = match (left, right) {
         (None, None) => MID_DIGIT.to_string(),
         (Some(left), None) => format!("{}{MID_DIGIT}", left.as_str()),
-        (None, Some(right)) => before(right.as_str())?,
+        (None, Some(right)) => before(right.as_str(), 0)?,
         (Some(left), Some(right)) => between_encoded(left.as_str(), right.as_str())?,
     };
     let rank = FractionalRank::parse(encoded)?;
@@ -112,9 +112,7 @@ fn between_encoded(left: &str, right: &str) -> Result<String, RankError> {
         return Err(RankError::InvalidBounds);
     }
     if prefix_len == left.len() {
-        let mut rank = left.to_owned();
-        rank.push_str(&before(&right[prefix_len..])?);
-        return Ok(rank);
+        return before(right, prefix_len);
     }
 
     let left_digit = digit_index(left.as_bytes()[prefix_len])?;
@@ -128,17 +126,18 @@ fn between_encoded(left: &str, right: &str) -> Result<String, RankError> {
     Ok(format!("{left}{MID_DIGIT}"))
 }
 
-fn before(right: &str) -> Result<String, RankError> {
-    let first = *right.as_bytes().first().ok_or(RankError::InvalidBounds)?;
-    let right_digit = digit_index(first)?;
-    if right_digit == 0 {
-        let mut rank = String::from("0");
-        rank.push_str(&before(&right[1..])?);
-        return Ok(rank);
-    }
+fn before(right: &str, prefix_len: usize) -> Result<String, RankError> {
+    let (zeros, digit) = right[prefix_len..]
+        .bytes()
+        .enumerate()
+        .find(|&(_, digit)| digit != ALPHABET[0])
+        .ok_or(RankError::InvalidBounds)?;
+    let midpoint = digit_index(digit)? / 2;
 
-    let midpoint = right_digit / 2;
-    let mut rank = String::from(ALPHABET[midpoint] as char);
+    let end = prefix_len + zeros;
+    let mut rank = String::with_capacity(end + if midpoint == 0 { 2 } else { 1 });
+    rank.push_str(&right[..end]); // The scanned suffix prefix is entirely ASCII zeros.
+    rank.push(ALPHABET[midpoint] as char);
     if midpoint == 0 {
         rank.push(MID_DIGIT as char);
     }
@@ -147,15 +146,7 @@ fn before(right: &str) -> Result<String, RankError> {
 
 fn digit_index(digit: u8) -> Result<usize, RankError> {
     ALPHABET
-        .binary_search_by(|candidate| {
-            if *candidate < digit {
-                Ordering::Less
-            } else if *candidate > digit {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
-        })
+        .binary_search(&digit)
         .map_err(|_| RankError::InvalidEncoding)
 }
 

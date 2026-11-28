@@ -523,7 +523,15 @@ fn is_config_secret(value: &str) -> bool {
     let lower = trimmed.to_ascii_lowercase();
     if matches!(
         lower.as_str(),
-        "true" | "false" | "null" | "none" | "undefined" | "password" | "secret" | "token" | "changeme"
+        "true"
+            | "false"
+            | "null"
+            | "none"
+            | "undefined"
+            | "password"
+            | "secret"
+            | "token"
+            | "changeme"
     ) {
         return false;
     }
@@ -558,17 +566,13 @@ fn is_real_email(value: &str) -> bool {
         return false;
     };
     let lower = domain.to_ascii_lowercase();
-    if matches!(
+    !(matches!(
         lower.as_str(),
         "example.com" | "example.org" | "example.net" | "localhost" | "test.local"
     ) || lower.ends_with(".example")
         || lower.ends_with(".test")
         || lower.ends_with(".invalid")
-        || lower.ends_with(".localhost")
-    {
-        return false;
-    }
-    true
+        || lower.ends_with(".localhost"))
 }
 
 fn is_cn_phone_context(text: &str, start: usize, end: usize) -> bool {
@@ -584,10 +588,9 @@ fn is_cn_phone_context(text: &str, start: usize, end: usize) -> bool {
     // If preceded by assignment operator (`:`, `=`, `>`), inspect field name
     if let Some(sep_idx) = lower_before.rfind(|c| matches!(c, ':' | '=' | '>')) {
         let after_sep = lower_before[sep_idx + 1..].trim();
-        let clean_after = after_sep.trim_matches(|c| matches!(c, '"' | '\'' | ' ' | '\t'));
+        let clean_after = after_sep.trim_matches(['"', '\'', ' ', '\t']);
         if clean_after.is_empty() {
-            let field_slice = lower_before[..sep_idx]
-                .trim_end_matches(|c: char| matches!(c, '"' | '\'' | ' ' | '\t' | '/'));
+            let field_slice = lower_before[..sep_idx].trim_end_matches(['"', '\'', ' ', '\t', '/']);
             let field_name = field_slice
                 .rsplit(|c: char| !c.is_alphanumeric() && c != '_' && c != '-')
                 .next()
@@ -618,16 +621,32 @@ fn is_cn_phone_context(text: &str, start: usize, end: usize) -> bool {
 
     // In prose, reject numbers immediately preceded by order/id/ticket keywords
     const ID_WORDS: &[&str] = &[
-        "order", "order_id", "uid", "id", "no.", "no", "#", "number", "ticket", "invoice",
-        "订单号", "订单编号", "订单", "单号", "编号", "流水号", "工单号", "工单", "运单号",
-        "快递单号", "交易号", "序号", "账单号",
+        "order",
+        "order_id",
+        "uid",
+        "id",
+        "no.",
+        "no",
+        "#",
+        "number",
+        "ticket",
+        "invoice",
+        "订单号",
+        "订单编号",
+        "订单",
+        "单号",
+        "编号",
+        "流水号",
+        "工单号",
+        "工单",
+        "运单号",
+        "快递单号",
+        "交易号",
+        "序号",
+        "账单号",
     ];
-    let prose_tail = lower_before
-        .trim_end_matches(|c: char| matches!(c, ':' | '：' | '=' | '"' | '\'' | ' ' | '\t'));
-    if ID_WORDS.iter().any(|word| prose_tail.ends_with(word)) {
-        return false;
-    }
-    true
+    let prose_tail = lower_before.trim_end_matches([':', '：', '=', '"', '\'', ' ', '\t']);
+    !ID_WORDS.iter().any(|word| prose_tail.ends_with(word))
 }
 
 fn is_valid_cn_id_card(value: &str) -> bool {
@@ -651,7 +670,7 @@ fn is_valid_cn_id_card(value: &str) -> bool {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
         2 => {
-            if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+            if (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400) {
                 29
             } else {
                 28
@@ -700,7 +719,7 @@ fn is_valid_luhn_card(value: &str) -> bool {
         sum += n;
         double = !double;
     }
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 fn is_public_ipv4_context(text: &str, start: usize, end: usize) -> bool {
@@ -727,10 +746,7 @@ fn is_public_ipv4_context(text: &str, start: usize, end: usize) -> bool {
     }
     let window_start = floor_char_boundary(text, start.saturating_sub(24));
     let before = text[window_start..start].to_ascii_lowercase();
-    if before.contains("version") || before.ends_with('v') {
-        return false;
-    }
-    true
+    !(before.contains("version") || before.ends_with('v'))
 }
 
 pub(crate) fn floor_char_boundary(text: &str, mut idx: usize) -> usize {

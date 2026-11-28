@@ -169,8 +169,7 @@ where
                 }
             }
         }
-        if let (Some(kernel), Some(prepared)) =
-            (privacy_kernel.as_ref(), privacy_prepared.as_ref())
+        if let (Some(kernel), Some(prepared)) = (privacy_kernel.as_ref(), privacy_prepared.as_ref())
         {
             kernel.finalize_invocation(prepared, None).await;
         }
@@ -203,7 +202,10 @@ where
                     protocol: inv.protocol.clone(),
                 };
                 let prepared = kernel.prepare_invocation(&privacy_ctx, &mut inv).await?;
-                input = plugin_framework::provider_contract::ProviderCountTokensInput::from_invocation(inv);
+                input =
+                    plugin_framework::provider_contract::ProviderCountTokensInput::from_invocation(
+                        inv,
+                    );
                 prepared
             } else {
                 None
@@ -231,8 +233,7 @@ where
                 .await
         }
         .await;
-        if let (Some(kernel), Some(prepared)) =
-            (privacy_kernel.as_ref(), privacy_prepared.as_ref())
+        if let (Some(kernel), Some(prepared)) = (privacy_kernel.as_ref(), privacy_prepared.as_ref())
         {
             kernel.finalize_invocation(prepared, None).await;
         }
@@ -775,236 +776,237 @@ where
                         },
                     };
                     for mut event in batch {
-                    ingress_sequence += 1;
-                    let ingress_ms = provider_invoke_started.elapsed().as_millis() as u64;
-                    let event_kind = provider_stream_event_kind(&event);
-                    let size_bytes = serialized_frame_size(&event);
-                    orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
+                        ingress_sequence += 1;
+                        let ingress_ms = provider_invoke_started.elapsed().as_millis() as u64;
+                        let event_kind = provider_stream_event_kind(&event);
+                        let size_bytes = serialized_frame_size(&event);
+                        orchestration_runtime::execution_engine::canonicalize_provider_stream_event_tool_call_name(
                             &mut event,
                             &canonical_tool_registry_for_task,
                         );
-                    native_observer.observe(&event);
-                    record_first_token_timing(
-                        &first_token_timing_for_task,
-                        &event,
-                        provider_invoke_started_at,
-                        provider_invoke_started,
-                    );
-                    let canonical_deltas = canonical_writer.write(&event)?;
-                    if capture_native_history {
-                        if let ProviderStreamEvent::OutputItem {
-                            phase,
-                            output_index,
-                            item,
-                        } = &event
-                        {
-                            let mut items = native_output_items_for_task
-                                .lock()
-                                .map_err(|_| anyhow!("native output history lock poisoned"))?;
-                            // The canonical writer above owns phase/identity validation.
-                            // Keep open slots so Added without Done cannot look like empty prewarm.
-                            items.insert(
-                                *output_index,
-                                match phase {
-                                    ProviderOutputItemPhase::Added => None,
-                                    ProviderOutputItemPhase::Done => Some(item.clone()),
-                                },
-                            );
-                        }
-                    }
-                    let progress_event = client_progress.observe(&node_id, node_run_id, &event);
-                    let mut tool_delivery =
-                        committed_tool_delivery_candidate(&node_id, node_run_id, &event)?;
-                    if let Some(delivery) = tool_delivery.as_mut() {
-                        client_progress.bind_delivery(delivery);
-                    }
-                    if let Some(delivery) = &tool_delivery {
-                        let context =
-                            flow_execution_context_for_task.as_ref().ok_or_else(|| {
-                                anyhow!("tool delivery requires a flow execution context")
-                            })?;
-                        context
-                            .tool_delivery_events
-                            .lock()
-                            .map_err(|_| anyhow!("tool delivery buffer lock is poisoned"))?
-                            .push(delivery.clone());
-                    }
-                    if let (
-                        true,
-                        None,
-                        Some(flow_run_id),
-                        ProviderStreamEvent::OutputItem {
-                            phase: ProviderOutputItemPhase::Done,
-                            output_index,
-                            item,
-                        },
-                    ) = (
-                        capture_native_history,
-                        tool_delivery.as_ref(),
-                        flow_run_id,
-                        &event,
-                    ) {
-                        let mut fact = debug_stream_events::provider_output_item_done(
-                            &node_id,
-                            node_run_id,
-                            *output_index,
-                            item.clone(),
+                        native_observer.observe(&event);
+                        record_first_token_timing(
+                            &first_token_timing_for_task,
+                            &event,
+                            provider_invoke_started_at,
+                            provider_invoke_started,
                         );
-                        fact.payload["response_round_id"] = json!(response_round_id_for_task);
-                        runtime_event_persister::persist_runtime_event_payload_for_generation(
-                            &repository_for_events,
-                            flow_run_id,
-                            &fact,
-                            generation_writer_for_task.as_deref(),
-                        )
-                        .await?;
-                    }
-                    project_canonical_provider_deltas(
-                        runtime_event_stream.as_ref(),
-                        flow_run_id,
-                        answer_presentation.as_ref(),
-                        &node_id,
-                        node_run_id,
-                        &canonical_deltas,
-                    )
-                    .await;
-                    if let (Some(stream), Some(flow_run_id)) = (&runtime_event_stream, flow_run_id)
-                    {
-                        let mut runtime_events = match &event {
-                            ProviderStreamEvent::TextDelta { .. }
-                            | ProviderStreamEvent::ReasoningDelta { .. }
-                            | ProviderStreamEvent::Finish { .. }
-                            | ProviderStreamEvent::Error { .. } => Vec::new(),
-                            ProviderStreamEvent::ReasoningSignatureDelta { signature } => {
-                                vec![debug_stream_events::reasoning_signature_delta(
-                                    &node_id,
-                                    node_run_id,
-                                    signature.clone(),
-                                )]
-                            }
-                            ProviderStreamEvent::ResponsesOutputDelta { event } => {
-                                vec![debug_stream_events::provider_responses_output_delta(
-                                    &node_id,
-                                    node_run_id,
-                                    event.clone(),
-                                )]
-                            }
-                            ProviderStreamEvent::OutputItem {
+                        let canonical_deltas = canonical_writer.write(&event)?;
+                        if capture_native_history {
+                            if let ProviderStreamEvent::OutputItem {
                                 phase,
                                 output_index,
                                 item,
-                            } if tool_delivery.is_none() => vec![match phase {
-                                ProviderOutputItemPhase::Added => {
-                                    debug_stream_events::provider_output_item_added(
-                                        &node_id,
-                                        node_run_id,
-                                        *output_index,
-                                        item.clone(),
-                                    )
-                                }
-                                ProviderOutputItemPhase::Done => {
-                                    debug_stream_events::provider_output_item_done(
-                                        &node_id,
-                                        node_run_id,
-                                        *output_index,
-                                        item.clone(),
-                                    )
-                                }
-                            }],
-                            ProviderStreamEvent::OutputItem { .. } => Vec::new(),
-                            ProviderStreamEvent::UsageSnapshot { usage } => {
-                                vec![debug_stream_events::usage_snapshot(
-                                    &node_id,
-                                    node_run_id,
-                                    usage,
-                                )]
-                            }
-                            _ => Vec::new(),
-                        };
-                        if let Some(progress_event) = progress_event {
-                            runtime_events.insert(0, progress_event);
-                        }
-                        for runtime_event in runtime_events {
-                            let event_type = runtime_event.event_type.clone();
-                            let source = runtime_event.source;
-                            let mut stream_event = runtime_event;
-                            if capture_native_history
-                                && stream_event.event_type == "provider_output_item_done"
+                            } = &event
                             {
-                                stream_event.payload["response_round_id"] =
-                                    json!(response_round_id_for_task);
+                                let mut items = native_output_items_for_task
+                                    .lock()
+                                    .map_err(|_| anyhow!("native output history lock poisoned"))?;
+                                // The canonical writer above owns phase/identity validation.
+                                // Keep open slots so Added without Done cannot look like empty prewarm.
+                                items.insert(
+                                    *output_index,
+                                    match phase {
+                                        ProviderOutputItemPhase::Added => None,
+                                        ProviderOutputItemPhase::Done => Some(item.clone()),
+                                    },
+                                );
                             }
-                            if debug_stream_events::is_answer_presentation_delta_payload(
-                                &stream_event.payload,
-                            ) {
-                                stream_event.persist_required = false;
-                            }
-                            let durable_log_fact =
-                                stream_event.event_type == "provider_output_item_done";
-                            if durable_log_fact {
-                                // Non-tool native items were committed above; executable
-                                // items are committed with their callback wait or sampling terminal.
-                                stream_event.persist_required = false;
-                            }
-                            match runtime_events::forward_required_runtime_event(
+                        }
+                        let progress_event = client_progress.observe(&node_id, node_run_id, &event);
+                        let mut tool_delivery =
+                            committed_tool_delivery_candidate(&node_id, node_run_id, &event)?;
+                        if let Some(delivery) = tool_delivery.as_mut() {
+                            client_progress.bind_delivery(delivery);
+                        }
+                        if let Some(delivery) = &tool_delivery {
+                            let context =
+                                flow_execution_context_for_task.as_ref().ok_or_else(|| {
+                                    anyhow!("tool delivery requires a flow execution context")
+                                })?;
+                            context
+                                .tool_delivery_events
+                                .lock()
+                                .map_err(|_| anyhow!("tool delivery buffer lock is poisoned"))?
+                                .push(delivery.clone());
+                        }
+                        if let (
+                            true,
+                            None,
+                            Some(flow_run_id),
+                            ProviderStreamEvent::OutputItem {
+                                phase: ProviderOutputItemPhase::Done,
+                                output_index,
+                                item,
+                            },
+                        ) = (
+                            capture_native_history,
+                            tool_delivery.as_ref(),
+                            flow_run_id,
+                            &event,
+                        ) {
+                            let mut fact = debug_stream_events::provider_output_item_done(
+                                &node_id,
+                                node_run_id,
+                                *output_index,
+                                item.clone(),
+                            );
+                            fact.payload["response_round_id"] = json!(response_round_id_for_task);
+                            runtime_event_persister::persist_runtime_event_payload_for_generation(
                                 &repository_for_events,
-                                stream.as_ref(),
                                 flow_run_id,
-                                stream_event,
+                                &fact,
                                 generation_writer_for_task.as_deref(),
                             )
-                            .await
-                            {
-                                Ok(_) => {}
-                                Err(error) => {
-                                    if durable_log_fact {
-                                        return Err(error);
+                            .await?;
+                        }
+                        project_canonical_provider_deltas(
+                            runtime_event_stream.as_ref(),
+                            flow_run_id,
+                            answer_presentation.as_ref(),
+                            &node_id,
+                            node_run_id,
+                            &canonical_deltas,
+                        )
+                        .await;
+                        if let (Some(stream), Some(flow_run_id)) =
+                            (&runtime_event_stream, flow_run_id)
+                        {
+                            let mut runtime_events = match &event {
+                                ProviderStreamEvent::TextDelta { .. }
+                                | ProviderStreamEvent::ReasoningDelta { .. }
+                                | ProviderStreamEvent::Finish { .. }
+                                | ProviderStreamEvent::Error { .. } => Vec::new(),
+                                ProviderStreamEvent::ReasoningSignatureDelta { signature } => {
+                                    vec![debug_stream_events::reasoning_signature_delta(
+                                        &node_id,
+                                        node_run_id,
+                                        signature.clone(),
+                                    )]
+                                }
+                                ProviderStreamEvent::ResponsesOutputDelta { event } => {
+                                    vec![debug_stream_events::provider_responses_output_delta(
+                                        &node_id,
+                                        node_run_id,
+                                        event.clone(),
+                                    )]
+                                }
+                                ProviderStreamEvent::OutputItem {
+                                    phase,
+                                    output_index,
+                                    item,
+                                } if tool_delivery.is_none() => vec![match phase {
+                                    ProviderOutputItemPhase::Added => {
+                                        debug_stream_events::provider_output_item_added(
+                                            &node_id,
+                                            node_run_id,
+                                            *output_index,
+                                            item.clone(),
+                                        )
                                     }
-                                    if is_expected_runtime_event_stream_closed_error(&error) {
-                                        tracing::debug!(
-                                            flow_run_id = %flow_run_id,
-                                            event_type = %event_type,
-                                            source = ?source,
-                                            error = %error,
-                                            "provider runtime event append skipped because stream is already closed"
-                                        );
-                                    } else {
-                                        tracing::warn!(
-                                            flow_run_id = %flow_run_id,
-                                            event_type = %event_type,
-                                            source = ?source,
-                                            error = %error,
-                                            "failed to append provider runtime event"
-                                        );
+                                    ProviderOutputItemPhase::Done => {
+                                        debug_stream_events::provider_output_item_done(
+                                            &node_id,
+                                            node_run_id,
+                                            *output_index,
+                                            item.clone(),
+                                        )
+                                    }
+                                }],
+                                ProviderStreamEvent::OutputItem { .. } => Vec::new(),
+                                ProviderStreamEvent::UsageSnapshot { usage } => {
+                                    vec![debug_stream_events::usage_snapshot(
+                                        &node_id,
+                                        node_run_id,
+                                        usage,
+                                    )]
+                                }
+                                _ => Vec::new(),
+                            };
+                            if let Some(progress_event) = progress_event {
+                                runtime_events.insert(0, progress_event);
+                            }
+                            for runtime_event in runtime_events {
+                                let event_type = runtime_event.event_type.clone();
+                                let source = runtime_event.source;
+                                let mut stream_event = runtime_event;
+                                if capture_native_history
+                                    && stream_event.event_type == "provider_output_item_done"
+                                {
+                                    stream_event.payload["response_round_id"] =
+                                        json!(response_round_id_for_task);
+                                }
+                                if debug_stream_events::is_answer_presentation_delta_payload(
+                                    &stream_event.payload,
+                                ) {
+                                    stream_event.persist_required = false;
+                                }
+                                let durable_log_fact =
+                                    stream_event.event_type == "provider_output_item_done";
+                                if durable_log_fact {
+                                    // Non-tool native items were committed above; executable
+                                    // items are committed with their callback wait or sampling terminal.
+                                    stream_event.persist_required = false;
+                                }
+                                match runtime_events::forward_required_runtime_event(
+                                    &repository_for_events,
+                                    stream.as_ref(),
+                                    flow_run_id,
+                                    stream_event,
+                                    generation_writer_for_task.as_deref(),
+                                )
+                                .await
+                                {
+                                    Ok(_) => {}
+                                    Err(error) => {
+                                        if durable_log_fact {
+                                            return Err(error);
+                                        }
+                                        if is_expected_runtime_event_stream_closed_error(&error) {
+                                            tracing::debug!(
+                                                flow_run_id = %flow_run_id,
+                                                event_type = %event_type,
+                                                source = ?source,
+                                                error = %error,
+                                                "provider runtime event append skipped because stream is already closed"
+                                            );
+                                        } else {
+                                            tracing::warn!(
+                                                flow_run_id = %flow_run_id,
+                                                event_type = %event_type,
+                                                source = ?source,
+                                                error = %error,
+                                                "failed to append provider runtime event"
+                                            );
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    provider_stream_timing_for_task
-                        .lock()
-                        .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
-                        .observe(
-                            ingress_sequence,
-                            event_kind,
-                            size_bytes,
-                            ingress_ms,
-                            provider_invoke_started.elapsed().as_millis() as u64,
-                        )?;
-                    if tool_delivery.is_none() {
-                        if let Some(sender) = &live_sender {
-                            sender
-                                .send(LiveProviderStreamEvent {
-                                    node_id: node_id.clone(),
-                                    node_run_id,
-                                    event: event.clone(),
-                                })
-                                .await
-                                .map_err(|_| {
-                                    anyhow!("required live provider event writer closed")
-                                })?;
+                        provider_stream_timing_for_task
+                            .lock()
+                            .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
+                            .observe(
+                                ingress_sequence,
+                                event_kind,
+                                size_bytes,
+                                ingress_ms,
+                                provider_invoke_started.elapsed().as_millis() as u64,
+                            )?;
+                        if tool_delivery.is_none() {
+                            if let Some(sender) = &live_sender {
+                                sender
+                                    .send(LiveProviderStreamEvent {
+                                        node_id: node_id.clone(),
+                                        node_run_id,
+                                        event: event.clone(),
+                                    })
+                                    .await
+                                    .map_err(|_| {
+                                        anyhow!("required live provider event writer closed")
+                                    })?;
+                            }
                         }
-                    }
                     }
                 }
                 let completion_deltas = canonical_writer.complete()?;
@@ -1154,8 +1156,7 @@ where
                 prepared.restore_completed_output_counting(&mut output.events, &mut output.result);
             }
         }
-        if let (Some(kernel), Some(prepared)) =
-            (privacy_kernel.as_ref(), privacy_prepared.as_ref())
+        if let (Some(kernel), Some(prepared)) = (privacy_kernel.as_ref(), privacy_prepared.as_ref())
         {
             kernel
                 .finalize_invocation(

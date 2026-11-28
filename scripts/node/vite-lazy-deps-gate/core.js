@@ -286,31 +286,39 @@ function collectLazyHelperImports(source, filePath) {
   });
 }
 
+// SettingsSectionBody renders these loaders through lazy(), while navigation can
+// call the same table for prefetch. Only this render registry owns route boundaries.
+function collectSettingsSectionImports(source) {
+  const declaration = /\bexport\s+const\s+settingsSections\s*=\s*\{/u.exec(source);
+  if (!declaration) return [];
+  const bodyStart = declaration.index + declaration[0].length - 1;
+  const body = extractDelimitedContent(source, bodyStart, '{', '}');
+  return [...(body ?? '').matchAll(DYNAMIC_IMPORT_PATTERN)].map((match) => ({
+    specifier: match[1],
+    index: bodyStart + 1 + match.index,
+  }));
+}
+
 function discoverLazyImports({ repoRoot }) {
   const sourceRoot = path.join(repoRoot, 'web', 'app', 'src');
   const entries = [];
 
   for (const filePath of listSourceFiles(sourceRoot)) {
-    const source = readText(filePath);
-    const stripped = stripComments(source);
-    LAZY_IMPORT_PATTERN.lastIndex = 0;
-    let match = LAZY_IMPORT_PATTERN.exec(stripped);
-
-    while (match) {
-      entries.push({
-        source: toRepoRelative(repoRoot, filePath),
-        sourceLine: lineNumberAt(stripped, match.index),
-        specifier: match[1],
-        resolvedPath: resolveSourceFile(filePath, match[1]),
-      });
-      match = LAZY_IMPORT_PATTERN.exec(stripped);
+    const source = toRepoRelative(repoRoot, filePath);
+    const stripped = stripComments(readText(filePath));
+    const imports = [...stripped.matchAll(LAZY_IMPORT_PATTERN)].map((match) => ({
+      specifier: match[1], index: match.index,
+    }));
+    imports.push(...collectLazyHelperImports(stripped, filePath));
+    if (source === 'web/app/src/features/settings/pages/settings-page/shell/settings-section-loaders.ts') {
+      imports.push(...collectSettingsSectionImports(stripped));
     }
-    for (const helper of collectLazyHelperImports(stripped, filePath)) {
+    for (const { specifier, index } of imports) {
       entries.push({
-        source: toRepoRelative(repoRoot, filePath),
-        sourceLine: lineNumberAt(stripped, helper.index),
-        specifier: helper.specifier,
-        resolvedPath: resolveSourceFile(filePath, helper.specifier),
+        source,
+        sourceLine: lineNumberAt(stripped, index),
+        specifier,
+        resolvedPath: resolveSourceFile(filePath, specifier),
       });
     }
   }

@@ -203,13 +203,11 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
             let mut audit_log = audit_log;
             audit_log.payload["migrated_instance_count"] = serde_json::json!(migrated_instances);
             append_audit(transaction, &audit_log, revision).await?;
-            let privacy_observer = self
-                .authority
-                .privacy_masking_invalidation_observer
-                .clone();
+            let privacy_observer = self.authority.privacy_masking_invalidation_observer.clone();
             let retired_installation = retire_current.then_some(self.current);
             self.authority.transaction.commit().await?;
-            if let (Some(observer), Some(installation_id)) = (privacy_observer, retired_installation)
+            if let (Some(observer), Some(installation_id)) =
+                (privacy_observer, retired_installation)
             {
                 observer.invalidate_installation(installation_id);
             }
@@ -1116,9 +1114,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         Ok(Box::new(PgManagedInstallationSwitchLease {
             authority: PgContributionAuthorityLease {
                 lifecycle_observer: self.lifecycle_observer.clone(),
-            privacy_masking_invalidation_observer: self
-                .privacy_masking_invalidation_observer
-                .clone(),
+                privacy_masking_invalidation_observer: self
+                    .privacy_masking_invalidation_observer
+                    .clone(),
                 managed_operations: self.managed_operations.clone(),
                 transaction,
                 snapshots,
@@ -1324,7 +1322,8 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             control_plane_contracts::ports::LifecycleDeliveryPauseReason::AuthorityRevoked,
         )
         .await?;
-        let invalidate_privacy = revoked_permission == extension_contracts::PRIVACY_POLICY_SYNC_PERMISSION;
+        let invalidate_privacy =
+            revoked_permission == extension_contracts::PRIVACY_POLICY_SYNC_PERMISSION;
         if invalidate_privacy {
             crate::privacy_masking_repository::delete_policies_for_installations_in_tx(
                 &mut transaction,

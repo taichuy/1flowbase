@@ -279,6 +279,35 @@ test('analyzeStaticLazyDeps ignores virtual and interpolated lazy graph specifie
   assert.deepEqual(result.lazyOnlyDependencies, []);
 });
 
+test('settings section loaders require smoke evidence and surface lazy dependencies', (t) => {
+  const fixture = createFixtureRepo({
+    optimizeDepsInclude: ['present-lazy'],
+    manifestEntries: [{
+      source: 'web/app/src/app/router.tsx',
+      specifier: '../features/lazy/LazyPage',
+      smokePaths: ['/lazy/example']
+    }]
+  });
+  t.after(() => fs.rmSync(fixture.repoRoot, { recursive: true, force: true }));
+  const owner = 'web/app/src/features/settings/pages/settings-page/shell';
+  writeFile(fixture.repoRoot, `${owner}/settings-section-loaders.ts`, [
+    'export const settingsSections = {',
+    "  'ui-section': () => import('./UiSection').then(({ UiSection }) => ({ default: UiSection }))",
+    '};',
+    "export const unrelatedPrefetch = () => import('./OtherSection');"
+  ].join('\n'));
+  writeFile(fixture.repoRoot, `${owner}/UiSection.tsx`, "import 'missing-lazy';\n");
+  writeFile(fixture.repoRoot, `${owner}/OtherSection.tsx`, 'export const ignored = true;\n');
+
+  const { findings, lazyEntries } = analyzeStaticLazyDeps(fixture);
+  assert.deepEqual(lazyEntries.filter(({ source }) => source.startsWith(owner))
+    .map(({ specifier, line }) => [specifier, line]), [['./UiSection', 2]]);
+  assert.ok(findings.some(({ code, specifier }) =>
+    code === 'missing-smoke-manifest' && specifier === './UiSection'));
+  assert.ok(findings.some(({ code, dependency }) =>
+    code === 'missing-optimize-dep' && dependency === 'missing-lazy'));
+});
+
 test('analyzeStaticLazyDeps reports lazy route imports missing smoke manifest coverage', () => {
   const { repoRoot, manifestPath } = createFixtureRepo({
     optimizeDepsInclude: ['present-lazy'],
