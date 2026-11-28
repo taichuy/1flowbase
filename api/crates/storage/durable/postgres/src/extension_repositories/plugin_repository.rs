@@ -2,11 +2,14 @@ use anyhow::{bail, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{
     ports::{
+        ActivatePluginArtifactInstanceInput, ActivatePluginArtifactOutcome,
         CommitPluginFamilyUninstallInput, CommitPluginInstallationInput,
-        CreatePluginAssignmentInput, CreatePluginTaskInput, PluginRepository,
-        RecordPluginArtifactCleanupFailureInput, UpdatePluginDesiredStateInput,
-        UpdatePluginTaskStatusInput, UpsertPluginArtifactInstanceInput,
-        UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
+        CommitProviderVersionSwitchInput, CreatePluginAssignmentInput, CreatePluginTaskInput,
+        PluginRepository, ProviderVersionSwitchOutcome, RecordPluginArtifactCleanupFailureInput,
+        RecordPluginRuntimeStatusInput, RefreshPluginArtifactInstanceInput,
+        UpdatePluginDesiredStateInput, UpdatePluginTaskStatusInput,
+        UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+        UpsertPluginPackageCatalogProjectionInput,
     },
     ControlPlaneContractError as ControlPlaneError,
 };
@@ -65,7 +68,7 @@ fn map_assignment(row: sqlx::postgres::PgRow) -> Result<domain::PluginAssignment
     })
 }
 
-fn map_artifact_instance(
+pub(super) fn map_artifact_instance(
     row: sqlx::postgres::PgRow,
 ) -> Result<domain::PluginArtifactInstanceRecord> {
     PgPluginMapper::to_artifact_instance_record(StoredPluginArtifactInstanceRow {
@@ -133,9 +136,40 @@ pub(crate) async fn lock_managed_desired_state_scopes(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     installation_id: Uuid,
 ) -> Result<()> {
+    lock_managed_desired_state_scopes_many(transaction, &[installation_id]).await
+}
+
+async fn lock_managed_desired_state_scopes_many(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    installation_ids: &[Uuid],
+) -> Result<()> {
+    // SYSTEM_SCOPE_ID is the smallest UUID; the remaining locks follow batch authority order.
     lock_managed_dependency_scope(transaction).await?;
-    let workspaces: Vec<Uuid> = sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 union select workspace_id from plugin_assignments where installation_id=$1 union select '00000000-0000-0000-0000-000000000000'::uuid from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) order by workspace_id")
-        .bind(installation_id).fetch_all(&mut **transaction).await?;
+    lock_managed_workspaces_under_dependency_fence(transaction, installation_ids).await
+}
+
+async fn lock_managed_workspaces_under_dependency_fence(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    installation_ids: &[Uuid],
+) -> Result<()> {
+    let workspaces: Vec<Uuid> = sqlx::query_scalar(
+        r#"
+        select workspace_id from plugin_contribution_authorization_revisions
+        where installation_id = any($1)
+        union
+        select workspace_id from plugin_assignments where installation_id = any($1)
+        union
+        select $2::uuid from extension_installations
+        where id = any($1) and contract_version = '1flowbase.extension-bus/v1'
+          and coalesce(metadata_json #>> '{managed_service,scope}' = 'system'
+              or metadata_json -> 'binding_targets' = '["system"]'::jsonb, false)
+        order by workspace_id asc
+        "#,
+    )
+    .bind(installation_ids)
+    .bind(domain::SYSTEM_SCOPE_ID)
+    .fetch_all(&mut **transaction)
+    .await?;
     for workspace in workspaces {
         crate::plugin_contribution_authority_repository::lock_managed_workspace(
             transaction,
@@ -144,6 +178,71 @@ pub(crate) async fn lock_managed_desired_state_scopes(
         .await?;
     }
     Ok(())
+}
+
+async fn write_plugin_desired_state(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    input: &UpdatePluginDesiredStateInput,
+) -> Result<domain::PluginInstallationRecord> {
+    let row = sqlx::query(
+        r#"
+            update extension_installations
+            set
+                desired_state = $2,
+                updated_by = $3,
+                updated_at = now()
+            where id = $1 and plugin_id is not null
+            returning
+                id,
+                scope_id,
+                category,
+                organization,
+                artifact_id as provider_code,
+                plugin_id,
+                artifact_version as plugin_version,
+                contract_version,
+                protocol,
+                display_name,
+                source_kind,
+                trust_level,
+                verification_status,
+                desired_state,
+                expected_checksum,
+                signature_status,
+                signature_algorithm,
+                signing_key_id,
+                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
+                metadata_json,
+                is_system_reserved,
+                created_by,
+                updated_by,
+                created_at,
+                updated_at
+            "#,
+    )
+    .bind(input.installation_id)
+    .bind(input.desired_state.as_str())
+    .bind(input.actor_user_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+
+    let installation = row
+        .map(map_installation)
+        .transpose()?
+        .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+    if installation.contract_version == "1flowbase.extension-bus/v1"
+        && input.desired_state == domain::PluginDesiredState::Disabled
+    {
+        crate::lifecycle_outbox_repository::pause_managed_installation_deliveries(
+            transaction,
+            input.installation_id,
+            None,
+            None,
+            control_plane_contracts::ports::LifecycleDeliveryPauseReason::InstallationInactive,
+        )
+        .await?;
+    }
+    Ok(installation)
 }
 
 #[async_trait]
@@ -179,13 +278,10 @@ impl PluginRepository for PgControlPlaneStore {
         &self,
         target: &domain::NativePluginTarget,
         node_id: &str,
-        status: domain::PluginRuntimeStatus,
-        last_error: Option<&str>,
+        outcome: control_plane_contracts::ports::NativePluginStartupOutcome<'_>,
     ) -> Result<()> {
-        crate::native_plugin_target_repository::complete_startup(
-            self, target, node_id, status, last_error,
-        )
-        .await
+        crate::native_plugin_target_repository::complete_startup(self, target, node_id, outcome)
+            .await
     }
 
     async fn begin_plugin_installation(
@@ -216,9 +312,9 @@ impl PluginRepository for PgControlPlaneStore {
                 .bind(&input.plugin_id)
                 .fetch_optional(&mut *transaction)
                 .await?;
-        lock_managed_desired_state_scopes(
+        lock_managed_workspaces_under_dependency_fence(
             &mut transaction,
-            existing_id.unwrap_or(input.installation_id),
+            &[existing_id.unwrap_or(input.installation_id)],
         )
         .await?;
         let before = managed_dependency_facts(&mut transaction).await?;
@@ -644,67 +740,17 @@ impl PluginRepository for PgControlPlaneStore {
             return crate::native_plugin_target_repository::update_desired_state(self, input).await;
         }
         let mut transaction = self.pool().begin().await?;
+        lock_plugin_family(
+            &mut transaction,
+            installation.category.as_str(),
+            &installation.organization,
+            &installation.provider_code,
+        )
+        .await?;
         lock_managed_desired_state_scopes(&mut transaction, input.installation_id).await?;
         guard_managed_desired_state(&mut transaction, input.installation_id, input.desired_state)
             .await?;
-        let row = sqlx::query(
-            r#"
-            update extension_installations
-            set
-                desired_state = $2,
-                updated_by = $3,
-                updated_at = now()
-            where id = $1 and plugin_id is not null
-            returning
-                id,
-                scope_id,
-                category,
-                organization,
-                artifact_id as provider_code,
-                plugin_id,
-                artifact_version as plugin_version,
-                contract_version,
-                protocol,
-                display_name,
-                source_kind,
-                trust_level,
-                verification_status,
-                desired_state,
-                expected_checksum,
-                signature_status,
-                signature_algorithm,
-                signing_key_id,
-                receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility,
-                metadata_json,
-                is_system_reserved,
-                created_by,
-                updated_by,
-                created_at,
-                updated_at
-            "#,
-        )
-        .bind(input.installation_id)
-        .bind(input.desired_state.as_str())
-        .bind(input.actor_user_id)
-        .fetch_optional(&mut *transaction)
-        .await?;
-
-        let installation = row
-            .map(map_installation)
-            .transpose()?
-            .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-        if installation.contract_version == "1flowbase.extension-bus/v1"
-            && input.desired_state == domain::PluginDesiredState::Disabled
-        {
-            crate::lifecycle_outbox_repository::pause_managed_installation_deliveries(
-                &mut transaction,
-                input.installation_id,
-                None,
-                None,
-                control_plane_contracts::ports::LifecycleDeliveryPauseReason::InstallationInactive,
-            )
-            .await?;
-        }
+        let installation = write_plugin_desired_state(&mut transaction, input).await?;
         transaction.commit().await?;
         Ok(installation)
     }
@@ -750,6 +796,27 @@ impl PluginRepository for PgControlPlaneStore {
         input: &UpsertPluginArtifactInstanceInput,
     ) -> Result<domain::PluginArtifactInstanceRecord> {
         self.upsert_artifact_instance_impl(input).await
+    }
+
+    async fn refresh_artifact_instance(
+        &self,
+        input: &RefreshPluginArtifactInstanceInput,
+    ) -> Result<Option<domain::PluginArtifactInstanceRecord>> {
+        self.refresh_artifact_instance_impl(input).await
+    }
+
+    async fn record_artifact_runtime_status(
+        &self,
+        input: &RecordPluginRuntimeStatusInput,
+    ) -> Result<domain::PluginArtifactInstanceRecord> {
+        self.record_artifact_runtime_status_impl(input).await
+    }
+
+    async fn try_mark_active_artifact_instance(
+        &self,
+        input: &ActivatePluginArtifactInstanceInput,
+    ) -> Result<ActivatePluginArtifactOutcome> {
+        self.try_mark_active_artifact_instance_impl(input).await
     }
 
     async fn select_network_egress_current(
@@ -866,6 +933,7 @@ impl PluginRepository for PgControlPlaneStore {
             input.workspace_id,
         )
         .await?;
+        version_retirement::ensure_assignment_target_assignable(&mut transaction, input).await?;
         let row = sqlx::query(
             r#"
             insert into plugin_assignments (
@@ -912,6 +980,9 @@ impl PluginRepository for PgControlPlaneStore {
             input.workspace_id,
         )
         .await?;
+        if version_retirement::should_skip_initial_assignment(&mut transaction, input).await? {
+            return Ok(None);
+        }
         let row = sqlx::query("insert into plugin_assignments (id,installation_id,workspace_id,provider_code,assigned_by) values ($1,$2,$3,$4,$5) on conflict (workspace_id,provider_code) do nothing returning id,installation_id,workspace_id,provider_code,assigned_by,created_at")
             .bind(Uuid::now_v7()).bind(input.installation_id).bind(input.workspace_id)
             .bind(&input.provider_code).bind(input.actor_user_id)
@@ -938,6 +1009,39 @@ impl PluginRepository for PgControlPlaneStore {
         .await?;
 
         rows.into_iter().map(map_assignment).collect()
+    }
+
+    async fn retire_unreferenced_installation(
+        &self,
+        input: &UpdatePluginDesiredStateInput,
+    ) -> Result<Option<domain::PluginInstallationRecord>> {
+        self.retire_unreferenced_installation_impl(input).await
+    }
+
+    async fn rollback_unreferenced_installation(
+        &self,
+        input: &UpdatePluginDesiredStateInput,
+    ) -> Result<Option<domain::PluginInstallationRecord>> {
+        self.rollback_unreferenced_installation_impl(input).await
+    }
+
+    async fn commit_provider_version_switch(
+        &self,
+        input: &CommitProviderVersionSwitchInput,
+    ) -> Result<ProviderVersionSwitchOutcome> {
+        self.commit_provider_version_switch_impl(input).await
+    }
+
+    async fn list_referenced_installation_ids(&self) -> Result<Vec<Uuid>> {
+        referenced_installation_ids(self.pool(), None).await
+    }
+
+    async fn installation_has_live_references(&self, installation_id: Uuid) -> Result<bool> {
+        Ok(
+            !referenced_installation_ids(self.pool(), Some(installation_id))
+                .await?
+                .is_empty(),
+        )
     }
 
     async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
@@ -1112,8 +1216,20 @@ impl PluginRepository for PgControlPlaneStore {
 
 #[path = "plugin_repository/artifact_lifecycle.rs"]
 mod artifact_lifecycle;
+#[path = "plugin_repository/locked_artifact.rs"]
+mod locked_artifact;
+pub(crate) use locked_artifact::verify_locked_node_artifact_on_disk;
+#[path = "plugin_repository/version_retirement.rs"]
+mod version_retirement;
+
+pub(crate) use version_retirement::{
+    lock_active_plugin_reference_target, lock_active_plugin_workspace_assignment,
+    lock_assigned_active_plugin_reference_target, lock_plugin_family, lock_plugin_reference_target,
+    referenced_installation_ids,
+};
 
 use artifact_lifecycle::guard_managed_desired_state;
 pub(crate) use artifact_lifecycle::{
-    lock_managed_dependency_scope, managed_dependency_facts, validate_managed_dependency_switch,
+    lock_managed_dependency_scope, lock_node_artifact_slot, lock_node_artifact_slot_shared,
+    managed_dependency_facts, validate_managed_dependency_switch,
 };

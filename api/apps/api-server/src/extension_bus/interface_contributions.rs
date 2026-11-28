@@ -202,7 +202,7 @@ pub(crate) fn production_interface_contributions(
     let console_role_access = crate::routes::role_access_interface::role_access_port(
         control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
         state.store.clone(),
-        state.console_operation_registry.inventory().clone(),
+        state.console_operation_registry.shared_inventory(),
         state.settings_feature_registry.inventory().features.clone(),
         state.bootstrap_workspace_id,
         state.event_workflow_changes.clone(),
@@ -287,7 +287,7 @@ pub(crate) fn production_interface_contributions(
             store: state.store.clone(),
             openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
                 store: state.store.clone(),
-                console_operations: state.console_operation_registry.inventory().clone(),
+                console_operations: state.console_operation_registry.shared_inventory(),
                 interface_registry: None,
                 api_docs: Arc::clone(&state.api_docs),
                 template_catalog: state.runtime_engine.template_catalog().clone(),

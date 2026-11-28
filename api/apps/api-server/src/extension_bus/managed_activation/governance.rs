@@ -235,20 +235,28 @@ impl ManagedExtensionComposition {
                 }
             }
         }
-        let shared_handles = visible
+        let is_retiring = |candidate: &ManagedWorkspaceSnapshot| {
+            snapshots
+                .iter()
+                .any(|retired| candidate.same_execution_snapshot(retired))
+        };
+        let still_owned = visible
             .current
             .values()
-            .chain(visible.retained.values().flatten().filter(|candidate| {
-                !snapshots
-                    .iter()
-                    .any(|retired| candidate.same_execution_snapshot(retired))
-            }))
-            .flat_map(|snapshot| {
-                snapshot
-                    .bindings
+            .chain(
+                visible
+                    .retained
                     .values()
-                    .map(|binding| binding.handle.clone())
-            })
+                    .flatten()
+                    .filter(|s| !is_retiring(s)),
+            )
+            .flat_map(|snapshot| snapshot.bindings.values());
+        let still_owned_installations = still_owned
+            .clone()
+            .map(|binding| binding.installation.id)
+            .collect::<std::collections::BTreeSet<_>>();
+        let still_owned_identities = still_owned
+            .map(|binding| binding.handle.identity().clone())
             .collect::<Vec<_>>();
         let mut lifetimes = Vec::new();
         let mut retirements = Vec::new();
@@ -267,25 +275,23 @@ impl ManagedExtensionComposition {
             retirement.ensure_unreferenced()?;
         }
         let mut handles = Vec::new();
+        let mut retired_installations = BTreeMap::new();
         for binding in snapshots
             .iter()
             .flat_map(|snapshot| snapshot.bindings.values())
         {
-            if !handles.contains(&binding.handle) {
+            retired_installations.insert(binding.installation.id, binding.installation.as_ref());
+            // The host mounts only one generation per identity. A newer owned generation
+            // means an earlier attempt already removed this one; never retire its replacement.
+            if !still_owned_identities.contains(binding.handle.identity())
+                && !handles.contains(&binding.handle)
+            {
                 handles.push(binding.handle.clone());
             }
         }
         // Other graphs may still own the same runtime handle. Their admissions remain open;
         // the retiring graph's own calls are covered by its explicit snapshot references.
-        let exclusive_handles = handles
-            .iter()
-            .filter(|handle| !shared_handles.contains(handle))
-            .cloned()
-            .collect::<Vec<_>>();
-        let drain = self
-            .backend
-            .drain_managed_contributions(&exclusive_handles)
-            .await?;
+        let drain = self.backend.drain_managed_contributions(&handles).await?;
         tokio::time::timeout(std::time::Duration::from_secs(5), drain.wait_drained())
             .await
             .context("managed retirement drain timed out")??;
@@ -370,33 +376,37 @@ impl ManagedExtensionComposition {
         // Also cover historical targets that are no longer represented by an in-memory graph.
         // All selected lifetimes remain closed until this check and retirement finish.
         self.check_artifact_backlog(removing_installations).await?;
+        // Assembly prevents ownership changes while the host and projection are updated.
+        // Keep the retained entries and reversible lifetime guards until both operations succeed.
+        for handle in handles {
+            self.backend
+                .deactivate_managed_contribution(&handle)
+                .await?;
+        }
+        for (id, installation) in retired_installations {
+            if !still_owned_installations.contains(&id) {
+                control_plane::plugin_management::mark_current_node_plugin_runtime_status(
+                    &self.store,
+                    &self.node_id,
+                    installation,
+                    domain::PluginRuntimeStatus::Inactive,
+                    None,
+                )
+                .await?;
+            }
+        }
         let mut visible = self.snapshots.lock().await;
         for retained in visible.retained.values_mut() {
-            retained.retain(|s| {
-                !snapshots
-                    .iter()
-                    .any(|retired| s.same_execution_snapshot(retired))
-            });
+            retained.retain(|snapshot| !is_retiring(snapshot));
         }
         visible
             .retained
             .retain(|_, snapshots| !snapshots.is_empty());
-        let still_owned = visible
-            .current
-            .values()
-            .chain(visible.retained.values().flatten())
-            .flat_map(|s| s.bindings.values().map(|b| b.handle.clone()))
-            .collect::<Vec<_>>();
         for retirement in &retirements {
             retirement.retire();
         }
         visible.retired_targets.extend(retirement_markers);
         drop(visible);
-        for handle in handles.into_iter().filter(|h| !still_owned.contains(h)) {
-            self.backend
-                .deactivate_managed_contribution(&handle)
-                .await?;
-        }
         drop(drain);
         Ok(())
     }

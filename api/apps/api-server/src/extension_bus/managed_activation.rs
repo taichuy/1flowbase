@@ -39,10 +39,14 @@ struct ManagedSnapshots {
 
 struct PreparedPackage {
     installation: domain::PluginInstallationRecord,
+    local_artifact: domain::PluginArtifactInstanceRecord,
     manifest: ManagedManifest,
     artifact_fingerprint: ManagedArtifactFingerprint,
     authority: domain::PluginContributionAuthoritySnapshot,
 }
+
+#[cfg(test)]
+pub(crate) type BeforeAuthorityReleaseHook = futures_util::future::BoxFuture<'static, Result<()>>;
 
 pub(crate) struct ManagedExtensionComposition {
     source_observer: std::sync::OnceLock<
@@ -64,6 +68,8 @@ pub(crate) struct ManagedExtensionComposition {
     execution_epoch: Uuid,
     assembly: Arc<Mutex<()>>,
     operations: Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
+    #[cfg(test)]
+    pub(crate) before_authority_release: std::sync::Mutex<Option<BeforeAuthorityReleaseHook>>,
 }
 
 impl ManagedExtensionComposition {
@@ -89,6 +95,8 @@ impl ManagedExtensionComposition {
             execution_epoch: Uuid::now_v7(),
             assembly: Arc::new(Mutex::new(())),
             operations,
+            #[cfg(test)]
+            before_authority_release: Default::default(),
         }
     }
 
@@ -267,7 +275,7 @@ impl ManagedExtensionComposition {
             .collect::<Vec<_>>();
         let lease = self
             .store
-            .lock_contribution_authority_batch(&scopes)
+            .lock_contribution_authority_batch(&[], &scopes, false, None)
             .await?;
         let allowed = bindings
             .into_iter()

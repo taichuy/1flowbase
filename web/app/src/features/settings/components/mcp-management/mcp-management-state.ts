@@ -3,7 +3,14 @@ import type {
   ConsoleMcpTool,
   ConsoleMcpToolBinding
 } from '@1flowbase/api-client';
-import type { SetStateAction } from 'react';
+import { useState, type SetStateAction } from 'react';
+
+export function useMcpTablePagination() {
+  const [position, setPosition] = useState({ page: 1, pageSize: 20 });
+  return { ...position, setPosition };
+}
+
+export type McpTablePagination = ReturnType<typeof useMcpTablePagination>;
 
 export type McpDirectoryEditorMode = 'group' | 'binding';
 
@@ -13,7 +20,6 @@ export interface McpInstancesState {
   instanceModalOpen: boolean;
   directoryModalOpen: boolean;
   directoryEditorMode: McpDirectoryEditorMode;
-  requestedInstanceId: string;
   selectedDirectoryKey: string;
 }
 
@@ -32,22 +38,16 @@ export type McpInstancesAction =
       type: 'setDirectoryEditorMode';
       value: SetStateAction<McpDirectoryEditorMode>;
     }
-  | { type: 'setRequestedInstanceId'; value: SetStateAction<string> }
   | { type: 'setSelectedDirectoryKey'; value: SetStateAction<string> };
 
-export function createInitialMcpInstancesState(
-  requestedInstanceId: string
-): McpInstancesState {
-  return {
-    editingInstance: null,
-    editingBinding: null,
-    instanceModalOpen: false,
-    directoryModalOpen: false,
-    directoryEditorMode: 'group',
-    requestedInstanceId,
-    selectedDirectoryKey: ''
-  };
-}
+export const initialMcpInstancesState: McpInstancesState = {
+  editingInstance: null,
+  editingBinding: null,
+  instanceModalOpen: false,
+  directoryModalOpen: false,
+  directoryEditorMode: 'group',
+  selectedDirectoryKey: ''
+};
 
 export interface McpToolsState {
   modalOpen: boolean;
@@ -115,14 +115,6 @@ export function mcpInstancesReducer(
         directoryEditorMode: resolveSetState(
           action.value,
           state.directoryEditorMode
-        )
-      };
-    case 'setRequestedInstanceId':
-      return {
-        ...state,
-        requestedInstanceId: resolveSetState(
-          action.value,
-          state.requestedInstanceId
         )
       };
     case 'setSelectedDirectoryKey':

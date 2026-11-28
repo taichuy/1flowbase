@@ -486,7 +486,7 @@ impl ApiRuntimeServices {
     async fn activate_provider_distribution_runtime(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<domain::LoadedRuntimeArtifactIdentity> {
         let package_root = installation.local_path().ok_or_else(|| {
             anyhow::anyhow!("distribution runtime has no local package materialization")
         })?;
@@ -495,16 +495,16 @@ impl ApiRuntimeServices {
             &installation.plugin_id,
             PathBuf::from(package_root).as_path(),
         )?;
-        self.runtime_backend
+        let identity = self
+            .runtime_backend
             .activate_provider_distribution_rule(runtime_package_activation(
                 installation,
-                None,
                 self.local_artifact_references,
             )?)
             .await
             .map_err(map_runtime_backend_error)?;
         *snapshot = next;
-        Ok(())
+        Ok(identity)
     }
 
     async fn deactivate_provider_distribution_runtime(
@@ -876,13 +876,14 @@ impl ApiProviderRuntime {
     async fn ensure_provider_loaded(
         &self,
         binding: &ModelProviderSlotBinding,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<domain::LoadedRuntimeArtifactIdentity> {
         let ensure_loaded_started = std::time::Instant::now();
         let result = self
             .services
             .runtime_backend
             .activate_provider(RuntimePackageActivation {
                 plugin_id: binding.plugin_id.clone(),
+                expected_manifest_fingerprint: binding.manifest_fingerprint.clone(),
                 artifact: RuntimeArtifactReference::new(binding.artifact_reference())?,
                 source_identity: Some(binding.source_identity.clone()),
                 legacy_eligibility: binding
@@ -902,12 +903,11 @@ impl ApiProviderRuntime {
     async fn ensure_capability_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<domain::LoadedRuntimeArtifactIdentity> {
         self.services
             .runtime_backend
             .activate_capability(runtime_package_activation(
                 installation,
-                None,
                 self.services.local_artifact_references,
             )?)
             .await
@@ -917,13 +917,12 @@ impl ApiProviderRuntime {
     async fn ensure_data_source_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()> {
-        let templates = self
+    ) -> anyhow::Result<domain::LoadedRuntimeArtifactIdentity> {
+        let loaded = self
             .services
             .runtime_backend
             .activate_data_source(runtime_package_activation(
                 installation,
-                None,
                 self.services.local_artifact_references,
             )?)
             .await
@@ -933,7 +932,7 @@ impl ApiProviderRuntime {
             .replace_provider(
                 installation.plugin_id.clone(),
                 &installation.provider_code,
-                templates,
+                loaded.templates,
             )
             .map_err(|error| {
                 ControlPlaneError::Conflict(match error {
@@ -941,7 +940,7 @@ impl ApiProviderRuntime {
                     _ => "data_model_template_unavailable",
                 })
             })?;
-        Ok(())
+        Ok(loaded.identity)
     }
 
     async fn ensure_network_egress_loaded(
@@ -950,30 +949,16 @@ impl ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
         secret: NetworkEgressSecretMaterial,
     ) -> anyhow::Result<()> {
-        let source_identity = format!(
-            "installation_id={};checksum={};manifest_fingerprint={};updated_at={}",
-            installation.id,
-            installation.expected_checksum.as_deref().unwrap_or(""),
-            installation
-                .artifact
-                .manifest_fingerprint
-                .as_deref()
-                .unwrap_or(""),
-            installation.updated_at.unix_timestamp_nanos()
-        );
         self.services
             .runtime_backend
-            .network_egress_activate(RuntimeNetworkEgressActivation {
-                runtime_id: provider_id.to_string(),
-                plugin_id: installation.plugin_id.clone(),
-                artifact: runtime_artifact_reference(
-                    installation,
-                    self.services.local_artifact_references,
-                )?,
-                source_identity,
-                secret_json: secret.secret_json,
-            })
+            .network_egress_activate(runtime_network_egress_activation(
+                provider_id,
+                installation,
+                secret,
+                self.services.local_artifact_references,
+            )?)
             .await
+            .map(|_| ())
             .map_err(map_runtime_backend_error)
     }
 }
@@ -1045,6 +1030,9 @@ fn runtime_artifact_reference(
     installation: &domain::LocalPluginInstallationRecord,
     local_artifact_references: bool,
 ) -> anyhow::Result<RuntimeArtifactReference> {
+    if domain::has_local_artifact_warning(installation.artifact.last_error.as_deref()) {
+        return Err(ControlPlaneError::PluginUnavailable.into());
+    }
     if local_artifact_references {
         RuntimeArtifactReference::new(
             installation
@@ -1057,15 +1045,29 @@ fn runtime_artifact_reference(
     }
 }
 
+fn runtime_artifact_source_identity(
+    installation: &domain::LocalPluginInstallationRecord,
+) -> String {
+    let artifact = &installation.artifact;
+    format!(
+        "{}:{:?}:{:?}:{:?}:{}",
+        installation.id,
+        artifact.local_version,
+        artifact.local_checksum,
+        artifact.manifest_fingerprint,
+        installation.updated_at.unix_timestamp_nanos()
+    )
+}
+
 fn runtime_package_activation(
     installation: &domain::LocalPluginInstallationRecord,
-    source_identity: Option<String>,
     local_artifact_references: bool,
 ) -> anyhow::Result<RuntimePackageActivation> {
     Ok(RuntimePackageActivation {
         plugin_id: installation.plugin_id.clone(),
         artifact: runtime_artifact_reference(installation, local_artifact_references)?,
-        source_identity,
+        source_identity: Some(runtime_artifact_source_identity(installation)),
+        expected_manifest_fingerprint: installation.artifact.manifest_fingerprint.clone(),
         legacy_eligibility: legacy_manifest_eligibility(installation)?
             .as_ref()
             .map(runtime_legacy_eligibility),
@@ -1082,17 +1084,8 @@ fn runtime_network_egress_activation(
         runtime_id: provider_id.to_string(),
         plugin_id: installation.plugin_id.clone(),
         artifact: runtime_artifact_reference(installation, local_artifact_references)?,
-        source_identity: format!(
-            "installation_id={};checksum={};manifest_fingerprint={};updated_at={}",
-            installation.id,
-            installation.expected_checksum.as_deref().unwrap_or(""),
-            installation
-                .artifact
-                .manifest_fingerprint
-                .as_deref()
-                .unwrap_or(""),
-            installation.updated_at.unix_timestamp_nanos()
-        ),
+        source_identity: runtime_artifact_source_identity(installation),
+        expected_manifest_fingerprint: installation.artifact.manifest_fingerprint.clone(),
         secret_json: secret.secret_json,
     })
 }

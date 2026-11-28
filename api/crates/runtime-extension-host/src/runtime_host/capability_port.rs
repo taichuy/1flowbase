@@ -56,17 +56,16 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
         &self,
         handle: &extension_contracts::extension_bus::ManagedExecutionHandle,
     ) -> Result<(), RuntimeBackendError> {
-        let scope = self
-            .managed_workers
-            .write()
-            .await
-            .unmount(handle)
-            .map_err(RuntimeBackendError::from)?;
-        let pool = self
-            .managed_workers
-            .read()
-            .await
-            .service_pool_for_handle(handle)?;
+        let (scope, pool) = {
+            let mut workers = self.managed_workers.write().await;
+            if !workers.has_identity(handle.identity()) {
+                return Ok(());
+            }
+            (
+                workers.unmount(handle)?,
+                workers.service_pool_for_handle(handle)?,
+            )
+        };
         if let Some(pool) = pool {
             pool.retire_all().await?;
         }
@@ -181,22 +180,19 @@ impl CapabilityRuntimePort for RuntimeExtensionHost {
     async fn activate_capability(
         &self,
         request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError> {
         self.ensure_activating()?;
         let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
+        let eligibility = request.legacy_eligibility.map(legacy_eligibility);
         let mut host = self.capability_host.write().await;
-        if host.is_loaded(&request.plugin_id) {
-            return Ok(());
-        }
-        match request.legacy_eligibility {
-            Some(eligibility) => {
-                host.load_legacy_installed(&package_root, &legacy_eligibility(eligibility))
-                    .await
-            }
-            None => host.load(&package_root).await,
-        }
-        .map(|_| ())
-        .map_err(RuntimeBackendError::from)
+        host.load_if_needed(
+            &package_root,
+            &request.plugin_id,
+            request.expected_manifest_fingerprint.as_deref(),
+            eligibility.as_ref(),
+        )
+        .await
+        .map_err(Into::into)
     }
 
     async fn deactivate_capability(&self, plugin_id: &str) -> Result<(), RuntimeBackendError> {

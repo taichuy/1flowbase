@@ -30,3 +30,8 @@ pub use runtime_host::{RuntimeArtifactResolver, RuntimeExtensionHost};
 mod file_read_host;
 
 mod execution_gate_host;
+
+// Keep the host allocator policy out of third-party workers without clearing their environment.
+fn sanitize_worker_command_env(command: &mut tokio::process::Command) {
+    command.env_remove("_RJEM_MALLOC_CONF");
+}

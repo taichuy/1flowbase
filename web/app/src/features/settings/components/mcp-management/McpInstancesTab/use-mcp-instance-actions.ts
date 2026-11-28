@@ -2,10 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Form } from 'antd';
 import { useState } from 'react';
 
-import type {
-  ConsoleMcpCatalog,
-  ConsoleMcpInstance
-} from '@1flowbase/api-client';
+import type { ConsoleMcpInstance } from '@1flowbase/api-client';
 import {
   createSettingsMcpInstance,
   copySettingsMcpInstance,
@@ -14,6 +11,7 @@ import {
   fetchSettingsMcpBundleExportDefaults,
   settingsMcpBundleExportDefaultsQueryKey,
   settingsMcpCatalogQueryKey,
+  settingsMcpInstancesQueryKey,
   updateSettingsMcpInstance,
   type ExportSettingsMcpBundleBody
 } from '../../../api/mcp-management';
@@ -37,22 +35,15 @@ type InstanceEditorSession = Pick<
 >;
 
 /** Owns instance save/copy/delete, export/download and connection/policy dialog selection. */
-export function useMcpInstanceActions(
-  catalog: ConsoleMcpCatalog,
-  {
-    editingInstance,
-    setEditingInstance,
-    setInstanceModalOpen
-  }: InstanceEditorSession
-) {
+export function useMcpInstanceActions({
+  editingInstance,
+  setEditingInstance,
+  setInstanceModalOpen
+}: InstanceEditorSession) {
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
 
-  const exportDefaults = useQuery({
-    queryKey: settingsMcpBundleExportDefaultsQueryKey,
-    queryFn: fetchSettingsMcpBundleExportDefaults,
-  });
   const [instanceForm] = Form.useForm<InstanceFormValues>();
   const [copyInstanceForm] = Form.useForm<CopyInstanceFormValues>();
   const [discoveryPolicyInstance, setDiscoveryPolicyInstance] =
@@ -66,6 +57,17 @@ export function useMcpInstanceActions(
   const [exportingInstanceBundle, setExportingInstanceBundle] = useState(false);
   const [restoreSource, setRestoreSource] =
     useState<McpBundleImportSource | null>(null);
+  const exportDefaults = useQuery({
+    queryKey: settingsMcpBundleExportDefaultsQueryKey,
+    queryFn: fetchSettingsMcpBundleExportDefaults,
+    enabled: Boolean(bundleExportInstance)
+  });
+
+  const invalidateInstances = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: settingsMcpInstancesQueryKey }),
+      queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey })
+    ]);
 
   const saveInstanceMutation = useMutation({
     mutationFn: (values: InstanceFormValues) => {
@@ -83,9 +85,7 @@ export function useMcpInstanceActions(
       message.success(i18nText('settings', 'auto.mcp_saved'));
       setInstanceModalOpen(false);
       setEditingInstance(null);
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
+      await invalidateInstances();
     }
   });
   const deleteInstanceMutation = useMutation({
@@ -94,9 +94,7 @@ export function useMcpInstanceActions(
     onSuccess: async () => {
       notifyWebMcpRegistrationsChanged();
       message.success(i18nText('settings', 'auto.mcp_deleted'));
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
+      await invalidateInstances();
     }
   });
   const copyInstanceMutation = useMutation({
@@ -113,9 +111,7 @@ export function useMcpInstanceActions(
       );
       setCopyingInstance(null);
       copyInstanceForm.resetFields();
-      await queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
+      await invalidateInstances();
     }
   });
   async function handleExportInstanceBundle(
@@ -141,11 +137,6 @@ export function useMcpInstanceActions(
     }
   }
 
-  const selectedDiscoveryPolicy = discoveryPolicyInstance
-    ? catalog.discovery_policies.find(
-        (policy) => policy.instance_record_id === discoveryPolicyInstance.id
-      )
-    : undefined;
   return {
     exportDefaults,
     instanceForm,
@@ -164,7 +155,6 @@ export function useMcpInstanceActions(
     saveInstanceMutation,
     deleteInstanceMutation,
     copyInstanceMutation,
-    handleExportInstanceBundle,
-    selectedDiscoveryPolicy
+    handleExportInstanceBundle
   };
 }

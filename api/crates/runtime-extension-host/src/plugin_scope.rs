@@ -150,11 +150,7 @@ impl PluginScope {
 
     pub(crate) fn begin_drain(self: &Arc<Self>) -> FrameworkResult<PluginScopeDrain> {
         let mut admission = self.lock_admission()?;
-        if admission.state != PluginScopeState::Mounted {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "managed scope is already disposing",
-            ));
-        }
+        // A retry may need to wait for an already-closing scope as well.
         admission.drains = admission.drains.checked_add(1).ok_or_else(|| {
             PluginFrameworkError::invalid_provider_package("managed drain count exhausted")
         })?;

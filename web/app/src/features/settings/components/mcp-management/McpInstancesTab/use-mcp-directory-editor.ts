@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { App, Form } from 'antd';
 import {
   useCallback,
@@ -9,12 +10,16 @@ import {
   type SetStateAction
 } from 'react';
 import type {
-  ConsoleMcpCatalog,
   ConsoleMcpInstance,
   ConsoleMcpToolBinding,
   ConsoleMcpGroup,
-  ConsoleMcpInstanceDirectory
+  ConsoleMcpInstanceDirectory,
+  ConsoleMcpToolSummary
 } from '@1flowbase/api-client';
+import {
+  fetchSettingsMcpToolsPage,
+  settingsMcpToolsQueryKey
+} from '../../../api/mcp-management';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { i18nText } from '../../../../../shared/i18n/text';
@@ -23,7 +28,7 @@ import {
   normalizeMcpDirectoryPath
 } from '../mcp-management-view-model';
 import {
-  createInitialMcpInstancesState,
+  initialMcpInstancesState,
   mcpInstancesReducer,
   type McpDirectoryEditorMode
 } from '../mcp-management-state';
@@ -32,9 +37,34 @@ import {
   buildMcpDirectoryEditorTreeData,
   type McpDirectoryTreeDropInfo
 } from './directory-tree';
-import { countMcpInstanceDirectoryItems } from './catalog-view';
 import { useDirectoryDraft } from './use-directory-draft';
 import type { GroupFormValues, BindingFormValues } from './editor-types';
+
+const DIRECTORY_TOOL_LOOKUP_CHUNK_SIZE = 100;
+
+async function fetchToolSummariesByIds(
+  toolIds: string[]
+): Promise<ConsoleMcpToolSummary[]> {
+  if (toolIds.length === 0) return [];
+  const chunks: string[][] = [];
+  for (
+    let index = 0;
+    index < toolIds.length;
+    index += DIRECTORY_TOOL_LOOKUP_CHUNK_SIZE
+  ) {
+    chunks.push(toolIds.slice(index, index + DIRECTORY_TOOL_LOOKUP_CHUNK_SIZE));
+  }
+  const pages = await Promise.all(
+    chunks.map((chunk) =>
+      fetchSettingsMcpToolsPage({
+        page: 1,
+        page_size: chunk.length,
+        tool_ids: chunk
+      })
+    )
+  );
+  return pages.flatMap((page) => page.items);
+}
 
 function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
   if (
@@ -50,7 +80,7 @@ function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
 }
 
 /** Node editing buffers are independent of the confirmed directory draft and its persistence. */
-export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
+export function useMcpDirectoryEditor() {
   const can = useConsoleOperationAccess();
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
@@ -90,6 +120,8 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
   const [expandedDirectoryKeys, setExpandedDirectoryKeys] = useState<string[]>(
     []
   );
+  const [selectedInstance, setSelectedInstance] = useState<ConsoleMcpInstance>();
+  const [pickedTool, setPickedTool] = useState<ConsoleMcpToolSummary>();
   const groupSavedValuesRef = useRef<GroupFormValues | null>(null);
   const editingGroupIdRef = useRef<string | null>(null);
   const bindingSavedValuesRef = useRef<BindingFormValues | null>(null);
@@ -98,8 +130,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
   const pendingDirectorySessionChangeRef = useRef<(() => void) | null>(null);
   const [instancesState, dispatch] = useReducer(
     mcpInstancesReducer,
-    catalog.instances[0]?.instance_id ?? '',
-    createInitialMcpInstancesState
+    initialMcpInstancesState
   );
   const {
     editingInstance,
@@ -107,7 +138,6 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     instanceModalOpen,
     directoryModalOpen,
     directoryEditorMode,
-    requestedInstanceId,
     selectedDirectoryKey
   } = instancesState;
   const setEditingInstance = useCallback(
@@ -135,19 +165,11 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
       dispatch({ type: 'setDirectoryEditorMode', value }),
     []
   );
-  const setRequestedInstanceId = useCallback(
-    (value: SetStateAction<string>) =>
-      dispatch({ type: 'setRequestedInstanceId', value }),
-    []
-  );
   const setSelectedDirectoryKey = useCallback(
     (value: SetStateAction<string>) =>
       dispatch({ type: 'setSelectedDirectoryKey', value }),
     []
   );
-  const selectedInstance =
-    catalog.instances.find((row) => row.instance_id === requestedInstanceId) ??
-    catalog.instances[0];
   const selectedInstanceGroups = useMemo(
     () => draft.snapshot?.groups ?? [],
     [draft.snapshot]
@@ -156,6 +178,24 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     () => draft.snapshot?.bindings ?? [],
     [draft.snapshot]
   );
+  const boundToolIds = useMemo(
+    () =>
+      [...new Set(selectedInstanceBindings.map((row) => row.tool_id))].sort(),
+    [selectedInstanceBindings]
+  );
+  const canReadTools = can('list_mcp_tools_page');
+  const boundToolsQuery = useQuery({
+    queryKey: [...settingsMcpToolsQueryKey, 'directory-bound', boundToolIds],
+    queryFn: () => fetchToolSummariesByIds(boundToolIds),
+    enabled: directoryModalOpen && canReadTools && boundToolIds.length > 0
+  });
+  const directoryTools = useMemo(() => {
+    if (!canReadTools) return [];
+    const bound = boundToolsQuery.isError ? [] : boundToolsQuery.data ?? [];
+    return pickedTool && !bound.some((tool) => tool.tool_id === pickedTool.tool_id)
+      ? [...bound, pickedTool] : bound;
+  }, [boundToolsQuery.data, boundToolsQuery.isError, canReadTools, pickedTool]);
+  const selectedTool = directoryTools.find((tool) => tool.tool_id === watchedToolId);
   const groupByPath = useMemo(
     () => new Map(selectedInstanceGroups.map((row) => [row.path, row])),
     [selectedInstanceGroups]
@@ -168,10 +208,6 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     label: row.tool_id,
     value: row.id
   }));
-  const { groupCounts, toolCounts } = useMemo(
-    () => countMcpInstanceDirectoryItems(catalog),
-    [catalog]
-  );
 
   const directorySnapshot = draft.snapshot;
   const resolveDirectoryId = draft.resolveId;
@@ -259,7 +295,8 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     );
   }
   async function openDirectory(instance: ConsoleMcpInstance) {
-    setRequestedInstanceId(instance.instance_id);
+    setSelectedInstance(instance);
+    setPickedTool(undefined);
     setDirectoryModalOpen(true);
     setEditingBinding(null);
     setDirectoryEditorMode('group');
@@ -363,14 +400,9 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
       bindingForm.resetFields();
     }, true);
   }
-  function changeDirectoryInstance(instanceId: string) {
-    const instance = catalog.instances.find(
-      (row) => row.instance_id === instanceId
-    );
-    if (instance && !draft.saveDirectoryMutation.isPending)
-      requestDirectorySessionChange(() => {
-        void openDirectory(instance);
-      }, true);
+  function changeDirectoryInstance(instance: ConsoleMcpInstance) {
+    if (!draft.saveDirectoryMutation.isPending)
+      requestDirectorySessionChange(() => { void openDirectory(instance); }, true);
   }
   function selectedDirectoryPath() {
     if (selectedDirectoryKey.startsWith('group:'))
@@ -424,6 +456,8 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     groupSavedValuesRef.current = values;
   }
   function startToolMount(path = selectedDirectoryPath()) {
+    if (!canReadTools) return;
+    setPickedTool(undefined);
     expandDirectoryPath(path);
     setDirectoryEditorMode('binding');
     setDirectoryEditorIntent('create');
@@ -516,12 +550,14 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
             row.tool_id === editingBinding.tool_id &&
             row.group_path === editingBinding.group_path
         ));
-    const tool = catalog.tools.find((row) => row.tool_id === values.tool_id);
-    if (!tool) return;
+    const toolRecordId = old?.tool_record_id ?? (
+      canReadTools && pickedTool?.tool_id === values.tool_id ? pickedTool.id : undefined
+    );
+    if (!toolRecordId) return;
     const saved: ConsoleMcpToolBinding = {
       id: old?.id ?? `draft:${crypto.randomUUID()}`,
       instance_record_id: draft.snapshot.instance_record_id,
-      tool_record_id: tool.id,
+      tool_record_id: toolRecordId,
       tool_id: values.tool_id,
       group_path:
         old?.group_path ?? normalizeMcpDirectoryPath(values.group_path),
@@ -648,7 +684,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
         selectedInstance,
         selectedInstanceGroups,
         selectedInstanceBindings,
-        tools: catalog.tools,
+        tools: directoryTools,
         groupByPath,
         directoryEditorMode,
         watchedPath,
@@ -664,7 +700,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
       selectedInstance,
       selectedInstanceGroups,
       selectedInstanceBindings,
-      catalog.tools,
+      directoryTools,
       groupByPath,
       directoryEditorMode,
       watchedPath,
@@ -685,16 +721,11 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     watchedDisplayName,
     watchedGroupDescriptionShort,
     parentGroupPath,
-    setParentGroupPath,
     directoryEditorIntent,
-    setDirectoryEditorIntent,
     directoryDraftActive,
-    setDirectoryDraftActive,
     directoryDraftVersion,
     expandedDirectoryKeys,
     setExpandedDirectoryKeys,
-    groupSavedValuesRef,
-    bindingSavedValuesRef,
     discardDirectoryChangesOpen,
     setDiscardDirectoryChangesOpen,
     pendingDirectorySessionChangeRef,
@@ -705,24 +736,18 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     directoryEditorMode,
     selectedDirectoryKey,
     setEditingInstance,
-    setEditingBinding,
     setInstanceModalOpen,
-    setDirectoryModalOpen,
-    setDirectoryEditorMode,
-    setRequestedInstanceId,
-    setSelectedDirectoryKey,
-    groupCounts,
-    toolCounts,
     selectedInstance,
+    selectedTool,
+    setPickedTool,
+    canReadTools,
+    boundToolsQuery,
     bindingOptions,
     treeData,
     handleTreeDrop,
-    applyDirectoryPathToForms,
     applyBindingSelection,
-    directorySessionHasChanges,
     requestDirectorySessionChange,
     closeDirectoryModal,
-    selectedDirectoryPath,
     groupCreationPathPrefix,
     groupCreationPath,
     startChildGroupCreation,

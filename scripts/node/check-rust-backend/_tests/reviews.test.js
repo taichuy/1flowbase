@@ -241,11 +241,11 @@ test('anchor-scoped reviews tolerate unrelated multi-file edits while failing cl
     && item.reviewProblems.some(problem => problem.includes(`SHA256 changed: ${callerFile}`))));
 });
 
-test('host construction and managed hashing reviews reject changed runtime boundaries', (t) => {
+test('host construction and native settings reviews reject changed blocking boundaries', (t) => {
   const repoRoot = path.resolve(__dirname, '../../../..');
   const baseline = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json'), 'utf8'));
   const entries = baseline.allowedFindings.filter(entry =>
-    ['host-fingerprint-construction', 'managed-executable-blocking-pool'].includes(entry.id));
+    ['host-fingerprint-construction', 'native-settings-preparation-blocking-pool'].includes(entry.id));
   assert.equal(entries.length, 2);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'host-boundary-reviews-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -272,9 +272,9 @@ test('host construction and managed hashing reviews reject changed runtime bound
   for (const [file, before, after, reviewId] of [
     ['api/crates/runtime-profile/src/profile.rs', 'host_fingerprint: self.host_fingerprint.clone()',
       'host_fingerprint: detect_host_fingerprint()?', 'host-fingerprint-construction'],
-    ['api/crates/runtime-extension-host/src/runtime_host.rs',
-      'tokio::task::spawn_blocking(move || {\n            let _permit = hash_permit;\n            binding.verify_executable()\n        })',
-      'binding.verify_executable()', 'managed-executable-blocking-pool'],
+    ['api/crates/control-plane/src/plugin_management/install/plugin_settings_templates.rs',
+      'tokio::task::spawn_blocking(prepare)', 'std::future::ready(prepare())',
+      'native-settings-preparation-blocking-pool'],
   ]) {
     const original = fs.readFileSync(path.join(root, file), 'utf8');
     assert.ok(original.includes(before), `${reviewId}: current reviewed boundary`);

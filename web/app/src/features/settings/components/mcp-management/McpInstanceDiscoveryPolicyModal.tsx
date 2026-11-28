@@ -1,13 +1,15 @@
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   Form,
   InputNumber,
   Col,
   Row,
   Space,
+  Spin,
   Switch,
   Typography,
   App
@@ -19,7 +21,9 @@ import type {
 } from '@1flowbase/api-client';
 
 import {
+  fetchSettingsMcpInstanceDiscoveryPolicy,
   settingsMcpCatalogQueryKey,
+  settingsMcpInstanceDiscoveryPolicyQueryKey,
   updateSettingsMcpInstanceDiscoveryPolicy
 } from '../../api/mcp-management';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -107,13 +111,11 @@ function ReturnFieldsEditor({
 
 export function McpInstanceDiscoveryPolicyModal({
   instance,
-  policy,
   open,
   onClose
 }: {
   canManage?: boolean;
   instance: ConsoleMcpInstance;
-  policy: ConsoleMcpInstanceDiscoveryPolicy;
   open: boolean;
   onClose: () => void;
 }) {
@@ -123,19 +125,28 @@ export function McpInstanceDiscoveryPolicyModal({
   const queryClient = useQueryClient();
   const [form] = Form.useForm<DiscoveryPolicyFormValues>();
   const returnFieldsValidRef = useRef(true);
-  const initialValues = useMemo<DiscoveryPolicyFormValues>(
-    () => ({
-      list_default_limit: policy.list_default_limit,
-      list_max_depth: policy.list_max_depth,
-      list_regex_enabled: policy.list_regex_enabled,
-      list_regex_max_length: policy.list_regex_max_length,
-      list_return_fields: policy.list_return_fields as string[]
-    }),
+  const policyQuery = useQuery({
+    queryKey: settingsMcpInstanceDiscoveryPolicyQueryKey(instance.instance_id),
+    queryFn: () => fetchSettingsMcpInstanceDiscoveryPolicy(instance.instance_id),
+    enabled: open
+  });
+  const policy = policyQuery.data;
+  const initialValues = useMemo<DiscoveryPolicyFormValues | undefined>(
+    () =>
+      policy
+        ? {
+            list_default_limit: policy.list_default_limit,
+            list_max_depth: policy.list_max_depth,
+            list_regex_enabled: policy.list_regex_enabled,
+            list_regex_max_length: policy.list_regex_max_length,
+            list_return_fields: policy.list_return_fields as string[]
+          }
+        : undefined,
     [policy]
   );
 
   useEffect(() => {
-    if (open) {
+    if (open && initialValues) {
       form.setFieldsValue(initialValues);
     }
   }, [form, initialValues, open]);
@@ -155,9 +166,16 @@ export function McpInstanceDiscoveryPolicyModal({
       ),
     onSuccess: () => {
       message.success(i18nText('settings', 'auto.mcp_saved'));
-      void queryClient.invalidateQueries({
-        queryKey: settingsMcpCatalogQueryKey
-      });
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: settingsMcpInstanceDiscoveryPolicyQueryKey(
+            instance.instance_id
+          )
+        }),
+        queryClient.invalidateQueries({
+          queryKey: settingsMcpCatalogQueryKey
+        })
+      ]);
       onClose();
     },
     onError: (error) => {
@@ -178,7 +196,7 @@ export function McpInstanceDiscoveryPolicyModal({
           <Button
             type="primary"
             icon={<SaveOutlined />}
-            disabled={!can('mcp.discovery_policy.update')}
+            disabled={!can('mcp.discovery_policy.update') || !initialValues}
             loading={saveMutation.isPending}
             onClick={() => {
               if (!returnFieldsValidRef.current) {
@@ -208,6 +226,14 @@ export function McpInstanceDiscoveryPolicyModal({
         <Typography.Text type="secondary">
           {instance.instance_id}
         </Typography.Text>
+        {policyQuery.isLoading ? (
+          <Spin />
+        ) : policyQuery.isError || !initialValues ? (
+          <Alert
+            type="error"
+            title={i18nText('settings', 'auto.mcp_load_failed')}
+          />
+        ) : (
         <Form
           disabled={!can('mcp.discovery_policy.update')}
           form={form}
@@ -276,6 +302,7 @@ export function McpInstanceDiscoveryPolicyModal({
             />
           </Form.Item>
         </Form>
+        )}
       </Space>
     </FixedHeightModal>
   );

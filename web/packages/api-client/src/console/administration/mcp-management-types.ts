@@ -13,6 +13,26 @@ export interface ConsoleMcpInstance {
   created_at: string;
   updated_at: string;
   llm_tool_registration: ConsoleMcpLlmToolRegistration;
+  group_count?: number;
+  tool_count?: number;
+}
+
+export interface ConsoleMcpInstancesQuery {
+  status?: string;
+}
+
+export interface ConsoleMcpInstancesPageQuery {
+  page?: number;
+  page_size?: number;
+  status?: string;
+  keyword?: string;
+}
+
+export interface ConsoleMcpInstancePage {
+  items: ConsoleMcpInstance[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export type WebMcpExposure = 'disabled' | 'authenticated_session';
@@ -94,6 +114,47 @@ export interface ConsoleMcpProxyOutputMappingEntry {
 
 export interface ConsoleMcpProxyOutputMapping {
   mappings: ConsoleMcpProxyOutputMappingEntry[];
+}
+
+export interface ConsoleMcpToolSummary {
+  id: string;
+  workspace_id: string;
+  tool_id: string;
+  name: string;
+  short_description: string;
+  execution_target: ConsoleMcpToolExecutionTarget;
+  operation: string;
+  permission_code: string | null;
+  risk_level: string;
+  des_id: string;
+  des_id_required: boolean;
+  status: string;
+  availability_status: ConsoleMcpToolAvailabilityStatus;
+  availability_reason: string | null;
+  revision: number;
+  managed_by: ConsoleMcpManagedBundleSource | null;
+}
+
+export interface ConsoleMcpToolsPageQuery {
+  page?: number;
+  page_size?: number;
+  keyword?: string;
+  execution_target_kind?:
+    | 'interface_wrapper'
+    | 'mcp_proxy'
+    | 'assistant_client';
+  interface_id?: string;
+  risk_level?: string;
+  status?: string;
+  des_id_required?: boolean;
+  tool_ids?: string[];
+}
+
+export interface ConsoleMcpToolSummaryPage {
+  items: ConsoleMcpToolSummary[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export interface ConsoleMcpTool {
@@ -301,6 +362,35 @@ export interface ConsoleMcpCatalog {
   tools: ConsoleMcpTool[];
   bindings: ConsoleMcpToolBinding[];
   discovery_policies: ConsoleMcpInstanceDiscoveryPolicy[];
+}
+
+export interface ConsoleMcpInterfaceCapabilitySummary {
+  interface_id: string;
+  method: string;
+  path: string;
+  name: string;
+  short_description: string;
+  permission_code: string | null;
+  risk_level: string;
+  bindable: boolean;
+  disabled_reason: string | null;
+}
+
+export interface ConsoleMcpInterfaceCapabilitiesPageQuery {
+  bindable_only?: boolean;
+  q?: string;
+  method?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export interface ConsoleMcpInterfaceCapabilityPage {
+  items: ConsoleMcpInterfaceCapabilitySummary[];
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+  next_offset: number | null;
 }
 
 export interface ConsoleMcpInterfaceCapability {

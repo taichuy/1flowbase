@@ -22,6 +22,7 @@ pub(super) async fn exchange(
         return Err(invalid("managed capability request exceeds frame limit"));
     }
     let mut command = Command::new(&binding.runtime_executable);
+    crate::sanitize_worker_command_env(&mut command);
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

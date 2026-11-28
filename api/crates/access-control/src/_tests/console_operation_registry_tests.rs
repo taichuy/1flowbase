@@ -959,3 +959,32 @@ fn plugin_locale_display_requires_the_matching_managed_service_owner() {
     )
     .is_err());
 }
+
+#[test]
+fn shared_inventory_reuses_same_arc_allocation_within_registry() {
+    let settings_registry = applications_settings_registry();
+    let registry = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [operation(
+            "settings.applications.view",
+            ConsolePolicyGroup::SettingsFeature("system.applications".to_string()),
+            ConsoleAuthorization::Simple,
+            vec![route("GET", "/api/console/settings/applications")],
+        )],
+        [],
+    )
+    .unwrap()
+    .with_interface_metadata([interface(
+        "get_settings_applications",
+        "GET",
+        "/api/console/settings/applications",
+        "List applications",
+        "List settings applications",
+    )])
+    .unwrap();
+    let first = registry.shared_inventory();
+    let second = registry.shared_inventory();
+    assert!(std::sync::Arc::ptr_eq(&first, &second));
+    assert!(std::ptr::eq(first.as_ref(), registry.inventory()));
+    assert_eq!(first.interfaces.len(), 1);
+}

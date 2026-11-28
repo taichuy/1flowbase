@@ -404,6 +404,7 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
     for plugin_id in PROVIDERS {
         let runtime_plugin_id = versioned_plugin_id(&extension_root, plugin_id);
         host.activate_provider(RuntimePackageActivation {
+            expected_manifest_fingerprint: None,
             plugin_id: runtime_plugin_id.clone(),
             artifact: RuntimeArtifactReference::new(plugin_id).unwrap(),
             source_identity: Some(format!("official-conformance:{plugin_id}")),
@@ -473,6 +474,7 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
     let clash_plugin_id = versioned_plugin_id(&extension_root, "clash-proxy");
     let clash_error = host
         .network_egress_preflight(RuntimeNetworkEgressActivation {
+            expected_manifest_fingerprint: None,
             runtime_id: "clash-conformance".to_string(),
             plugin_id: clash_plugin_id,
             artifact: RuntimeArtifactReference::new("clash-proxy").unwrap(),
@@ -566,6 +568,7 @@ async fn drs_008_013_session_retry_executes_through_real_host_and_plugin_data() 
         "session-retry-distribution",
     );
     host.activate_provider_distribution_rule(RuntimePackageActivation {
+        expected_manifest_fingerprint: None,
         plugin_id: plugin_id.clone(),
         artifact: RuntimeArtifactReference::new("session-retry-distribution").unwrap(),
         source_identity: None,

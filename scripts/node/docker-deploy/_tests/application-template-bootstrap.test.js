@@ -79,3 +79,13 @@ test('both API image targets inherit templates and compose passes the opt-out sw
     assert.match(source, /API_APPLICATION_TEMPLATE_AUTO_UPDATE: \$\{API_APPLICATION_TEMPLATE_AUTO_UPDATE:-true\}/);
   }
 });
+
+test('API image and Compose default to the host-only jemalloc THP policy', () => {
+  const image = fs.readFileSync(path.join(__dirname, '../../../../docker/api-server.Dockerfile'), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(image, /^ENV MALLOC_ARENA_MAX=8\nENV _RJEM_MALLOC_CONF="thp:never,background_thread:true"$/m);
+  for (const file of ['docker-compose.yaml', 'docker-compose.dev.yaml', 'docker-compose.external-db.yaml']) {
+    const compose = fs.readFileSync(path.join(__dirname, '../../../../docker', file), 'utf8').replace(/\r\n/g, '\n');
+    const api = compose.split(/^  api:\s*$/m)[1].split(/^  \S/m)[0];
+    assert.match(api, /^      _RJEM_MALLOC_CONF: \$\{API_JEMALLOC_CONF:-thp:never,background_thread:true\}$/m, file);
+  }
+});

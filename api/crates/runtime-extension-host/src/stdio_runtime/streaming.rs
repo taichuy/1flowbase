@@ -42,6 +42,7 @@ pub(crate) async fn call_executable_streaming(
         host_calls: _,
     } = context;
     let mut command = Command::new(executable_path);
+    crate::sanitize_worker_command_env(&mut command);
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

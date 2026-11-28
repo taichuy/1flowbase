@@ -24,8 +24,8 @@ impl ProviderRuntimePort for CapturingCompactRuntime {
     async fn ensure_loaded(
         &self,
         _installation: &domain::LocalPluginInstallationRecord,
-    ) -> Result<()> {
-        Ok(())
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
+        Ok(None)
     }
 
     async fn validate_provider(
@@ -173,8 +173,8 @@ impl ProviderRuntimePort for CapturingCountTokensRuntime {
     async fn ensure_loaded(
         &self,
         _installation: &domain::LocalPluginInstallationRecord,
-    ) -> Result<()> {
-        Ok(())
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
+        Ok(None)
     }
 
     async fn validate_provider(

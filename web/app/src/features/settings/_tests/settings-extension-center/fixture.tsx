@@ -73,6 +73,16 @@ const mcpManagementApi = vi.hoisted(() => ({
     'mcp-management',
     'catalog'
   ] as const,
+  settingsMcpInstancesQueryKey: [
+    'settings',
+    'mcp-management',
+    'instances'
+  ] as const,
+  settingsMcpToolsQueryKey: [
+    'settings',
+    'mcp-management',
+    'tools'
+  ] as const,
   previewSettingsMcpBundle: vi.fn(),
   importSettingsMcpBundle: vi.fn(),
   previewSettingsOfficialMcpBundle: vi.fn(),

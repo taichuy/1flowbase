@@ -1,9 +1,11 @@
+import type { ConsoleMcpInstance, ConsoleMcpToolSummary } from '@1flowbase/api-client';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../../state/auth-store';
 import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
+import { useEffect } from 'react';
 
 import {
   Alert,
@@ -29,8 +31,13 @@ import {
   McpInstanceEditorModal
 } from './McpInstancesTab/McpInstanceModals';
 
-import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
-import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
+import {
+  fetchSettingsMcpInstancesPage,
+  fetchSettingsMcpToolsPage,
+  settingsMcpToolsQueryKey,
+  invalidateSettingsMcpInstancesAndTools,
+  settingsMcpInstancesQueryKey
+} from '../../api/mcp-management';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
@@ -44,19 +51,35 @@ import { McpInstanceDiscoveryPolicyModal } from './McpInstanceDiscoveryPolicyMod
 import { McpBundleExportModal } from './bundle/McpBundleExportModal';
 import { McpBundleImportFlow } from './bundle/McpBundleImportFlow';
 
+import type { McpTablePagination } from './mcp-management-state';
+import { DirectoryReadError } from './McpInstancesTab/DirectoryReadError';
+import { DirectoryPagedSelect } from './McpInstancesTab/DirectoryPagedSelect';
 import { useMcpDirectoryEditor } from './McpInstancesTab/use-mcp-directory-editor';
 import { useMcpInstanceActions } from './McpInstancesTab/use-mcp-instance-actions';
 
-export function McpInstancesTab({
-  catalog
-}: {
-  canManage?: boolean;
-  catalog: ConsoleMcpCatalog;
-}) {
+const EMPTY_INSTANCES: never[] = [];
+
+export function McpInstancesTab({ page, pageSize, setPosition }: McpTablePagination) {
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken ?? '');
   const queryClient = useQueryClient();
-  const directory = useMcpDirectoryEditor(catalog);
+  const instancesQuery = useQuery({
+    queryKey: [...settingsMcpInstancesQueryKey, 'page', { page, page_size: pageSize }],
+    queryFn: () =>
+      fetchSettingsMcpInstancesPage({ page, page_size: pageSize })
+  });
+  const instances = instancesQuery.data?.items ?? EMPTY_INSTANCES;
+  const totalInstances = instancesQuery.data?.total ?? 0;
+
+  useEffect(() => {
+    if (!instancesQuery.data) return;
+    const maxPage = Math.max(1, Math.ceil(totalInstances / pageSize));
+    if (page > maxPage) {
+      setPosition({ page: maxPage, pageSize });
+    }
+  }, [instancesQuery.data, page, pageSize, setPosition, totalInstances]);
+
+  const directory = useMcpDirectoryEditor();
   const {
     groupForm,
     bindingForm,
@@ -81,9 +104,11 @@ export function McpInstancesTab({
     selectedDirectoryKey,
     setEditingInstance,
     setInstanceModalOpen,
-    groupCounts,
-    toolCounts,
     selectedInstance,
+    selectedTool,
+    canReadTools,
+    setPickedTool,
+    boundToolsQuery,
     bindingOptions,
     treeData,
     handleTreeDrop,
@@ -129,15 +154,22 @@ export function McpInstancesTab({
     saveInstanceMutation,
     deleteInstanceMutation,
     copyInstanceMutation,
-    handleExportInstanceBundle,
-    selectedDiscoveryPolicy
-  } = useMcpInstanceActions(catalog, directory);
-  const selectedTool = catalog.tools.find(
-    (tool) => tool.tool_id === watchedToolId
-  );
+    handleExportInstanceBundle
+  } = useMcpInstanceActions(directory);
+  const choosingTool = nodeEditing && directoryEditorMode === 'binding' && !editingBinding;
   const toolMountPath = watchedToolId
     ? buildMcpChildGroupPath(watchedGroupPath, watchedToolId)
     : normalizeMcpDirectoryPath(watchedGroupPath);
+
+  if (instancesQuery.isError) {
+    return (
+      <Alert
+        type="error"
+        title={i18nText('settings', 'auto.mcp_load_failed')}
+      />
+    );
+  }
+
   return (
     <div className="mcp-management__table-tab">
       <McpInstanceTable
@@ -153,9 +185,14 @@ export function McpInstancesTab({
           });
           setInstanceModalOpen(true);
         }}
-        instances={catalog.instances}
-        groupCounts={groupCounts}
-        toolCounts={toolCounts}
+        instances={instances}
+        total={totalInstances}
+        page={page}
+        pageSize={pageSize}
+        loading={instancesQuery.isLoading}
+        onPageChange={(nextPage, nextSize) => {
+          setPosition({ page: nextPage, pageSize: nextSize });
+        }}
         onEdit={(record) => {
           setEditingInstance(record);
           instanceForm.setFieldsValue({
@@ -189,10 +226,9 @@ export function McpInstancesTab({
           deleteInstanceMutation.mutateAsync(record.instance_id)
         }
       />
-      {discoveryPolicyInstance && selectedDiscoveryPolicy ? (
+      {discoveryPolicyInstance ? (
         <McpInstanceDiscoveryPolicyModal
           instance={discoveryPolicyInstance}
-          policy={selectedDiscoveryPolicy}
           open
           onClose={() => setDiscoveryPolicyInstance(null)}
         />
@@ -235,9 +271,7 @@ export function McpInstancesTab({
         csrfToken={csrfToken}
         onClose={() => setRestoreSource(null)}
         onApplied={async () => {
-          await queryClient.invalidateQueries({
-            queryKey: settingsMcpCatalogQueryKey
-          });
+          await invalidateSettingsMcpInstancesAndTools(queryClient);
         }}
       />
       {directoryModalOpen && selectedInstance ? (
@@ -290,17 +324,18 @@ export function McpInstancesTab({
                 >
                   {i18nText('settings', 'auto.instance_name')}
                 </Typography.Text>
-                {nodeEditing ? (
-                  <Select
+                {nodeEditing && can('list_mcp_instances_page') ? (
+                  <DirectoryPagedSelect<ConsoleMcpInstance>
                     aria-label={i18nText('settings', 'auto.instance_name')}
                     className="mcp-management__instance-select"
                     value={selectedInstance.instance_id}
+                    selected={selectedInstance}
                     disabled={saveDirectoryMutation.isPending}
-                    options={catalog.instances.map((instance) => ({
-                      label: `${instance.name} (${instance.instance_id})`,
-                      value: instance.instance_id
-                    }))}
-                    onChange={changeDirectoryInstance}
+                    queryKey={settingsMcpInstancesQueryKey}
+                    fetchPage={fetchSettingsMcpInstancesPage}
+                    getId={(instance) => instance.instance_id}
+                    getLabel={(instance) => `${instance.name} (${instance.instance_id})`}
+                    onPick={changeDirectoryInstance}
                   />
                 ) : (
                   <Typography.Text>
@@ -357,6 +392,7 @@ export function McpInstancesTab({
                   )}
                   disabled={
                     !can('mcp.directory.replace') ||
+                    !canReadTools ||
                     !directorySnapshot ||
                     directoryLoading
                   }
@@ -368,6 +404,14 @@ export function McpInstancesTab({
                 </Button>
               </Flex>
 
+              {!canReadTools && (can('mcp.directory.replace') || Boolean(directorySnapshot?.bindings.length)) ? (
+                <Alert
+                  type="warning"
+                  title={i18nText('settingsMcpManagement', 'auto.directory_tools_permission')}
+                />
+              ) : canReadTools && boundToolsQuery.isError ? (
+                <DirectoryReadError error={boundToolsQuery.error} retry={() => void boundToolsQuery.refetch()} />
+              ) : null}
               <McpDirectoryTree
                 key={`${directoryEditorMode}:${
                   directoryDraftActive ? directoryDraftVersion : 'stable'
@@ -468,7 +512,7 @@ export function McpInstancesTab({
                           'auto.save_node'
                         )}
                         disabled={
-                          !can('mcp.directory.replace') || directoryLoading
+                          !can('mcp.directory.replace') || directoryLoading || (choosingTool && !canReadTools)
                         }
                         onClick={() =>
                           directoryEditorMode === 'group'
@@ -742,20 +786,23 @@ export function McpInstancesTab({
                   </Form.Item>
                   <Form.Item
                     name="tool_id"
-                    hidden={!nodeEditing || Boolean(editingBinding)}
+                    hidden={!choosingTool || !canReadTools}
                     label={i18nText(
                       'settingsMcpManagement',
                       'auto.select_tool'
                     )}
                     rules={[{ required: true }]}
                   >
-                    <Select
-                      disabled={Boolean(editingBinding)}
-                      options={catalog.tools.map((tool) => ({
-                        label: tool.name,
-                        value: tool.tool_id
-                      }))}
-                    />
+                    {choosingTool && canReadTools ? (
+                      <DirectoryPagedSelect<ConsoleMcpToolSummary>
+                        selected={selectedTool}
+                        queryKey={settingsMcpToolsQueryKey}
+                        fetchPage={fetchSettingsMcpToolsPage}
+                        getId={(tool) => tool.tool_id}
+                        getLabel={(tool) => tool.name}
+                        onPick={setPickedTool}
+                      />
+                    ) : <Input hidden />}
                   </Form.Item>
                   {selectedTool ? (
                     <Descriptions

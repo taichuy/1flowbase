@@ -16,11 +16,8 @@ import { modelProviderOptionsContract } from '../test/model-provider-contract-fi
 import {
   styleBoundaryApplicationRunRecord,
   styleBoundaryMcpCatalog,
-  styleBoundaryMcpInterfaceCapabilities,
   styleBoundaryNodeContributions
 } from './scene-fixtures/settings/catalogs';
-
-export { styleBoundaryMcpCatalog, styleBoundaryMcpInterfaceCapabilities };
 
 export function seedStyleBoundaryAuth() {
   useAuthStore.getState().setAuthenticated({

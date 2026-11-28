@@ -266,26 +266,32 @@ export function listVisibleSelectorOptions(
         displayLabel: variable.title
       }))
     : [];
-  const environmentOptions = environmentVariables.map((variable) => ({
-    nodeId: environmentVariableNodeId,
-    nodeLabel: i18nText('agentFlow', 'auto.environment_variables'),
-    outputKey: variable.name,
-    outputLabel: formatEnvironmentVariableTitle(variable.name),
-    valueType: variable.value_type,
-    value: [environmentVariableNodeId, variable.name],
-    displayLabel: formatEnvironmentVariableTitle(variable.name)
-  }));
+  const environmentOptions = environmentVariables.map((variable) => {
+    const label = formatEnvironmentVariableTitle(variable.name);
+    return {
+      nodeId: environmentVariableNodeId,
+      nodeLabel: i18nText('agentFlow', 'auto.environment_variables'),
+      outputKey: variable.name,
+      outputLabel: label,
+      valueType: variable.value_type,
+      value: [environmentVariableNodeId, variable.name],
+      displayLabel: label
+    };
+  });
   const conversationOptions = isWorkflowDocument
     ? []
-    : listConversationVariables(document).map((variable) => ({
-        nodeId: conversationVariableNodeId,
-        nodeLabel: i18nText('agentFlow', 'auto.conversation_variables'),
-        outputKey: variable.name,
-        outputLabel: formatConversationVariableTitle(variable.name),
-        valueType: variable.valueType,
-        value: [conversationVariableNodeId, variable.name],
-        displayLabel: formatConversationVariableTitle(variable.name)
-      }));
+    : listConversationVariables(document).map((variable) => {
+        const label = formatConversationVariableTitle(variable.name);
+        return {
+          nodeId: conversationVariableNodeId,
+          nodeLabel: i18nText('agentFlow', 'auto.conversation_variables'),
+          outputKey: variable.name,
+          outputLabel: label,
+          valueType: variable.valueType,
+          value: [conversationVariableNodeId, variable.name],
+          displayLabel: label
+        };
+      });
 
   const nodeOptions = document.graph.nodes
     .filter((node) => visibleNodeIds.has(node.id))
@@ -380,64 +386,43 @@ export function listLlmProtocolContextSelectorOptions(
 }
 
 export function toCascaderSelectorOptions(options: FlowSelectorOption[]) {
-  const groups = new Map<
-    string,
-    {
-      label: string;
-      value: string;
-      children: CascaderSelectorOption[];
-    }
+  type Group = CascaderSelectorOption & { children: CascaderSelectorOption[] };
+  const groups = new Map<string, Group>();
+  const siblings = new WeakMap<
+    CascaderSelectorOption[],
+    Map<string, CascaderSelectorOption>
   >();
 
-  for (const option of options) {
-    if (!groups.has(option.nodeId)) {
-      groups.set(option.nodeId, {
-        label: option.nodeLabel,
-        value: option.nodeId,
-        children: []
-      });
-    }
-
-    const group = groups.get(option.nodeId);
+  for (const { nodeId, nodeLabel, value, outputLabel } of options) {
+    let group = groups.get(nodeId);
     if (!group) {
-      continue;
+      group = { label: nodeLabel, value: nodeId, children: [] };
+      groups.set(nodeId, group);
     }
 
-    appendCascaderSelectorPath(
-      group.children,
-      option.value.slice(1),
-      option.outputLabel
-    );
-  }
+    let children = group.children;
+    for (let i = 1; i < value.length; i++) {
+      const segment = value[i];
+      if (!segment) break;
 
+      let index = siblings.get(children);
+      if (!index) {
+        index = new Map();
+        siblings.set(children, index);
+      }
+      const leaf = i === value.length - 1;
+      let child = index.get(segment);
+      if (!child) {
+        child = { label: leaf ? outputLabel : segment, value: segment };
+        children.push(child);
+        index.set(segment, child);
+      } else if (leaf) {
+        child.label = outputLabel;
+      }
+      if (!leaf) children = (child.children ??= []);
+    }
+  }
   return [...groups.values()];
-}
-
-function appendCascaderSelectorPath(
-  children: CascaderSelectorOption[],
-  path: string[],
-  outputLabel: string
-) {
-  const [segment, ...rest] = path;
-
-  if (!segment) {
-    return;
-  }
-
-  const label = rest.length === 0 ? outputLabel : segment;
-  let child = children.find((candidate) => candidate.value === segment);
-
-  if (!child) {
-    child = { label, value: segment };
-    children.push(child);
-  } else if (rest.length === 0) {
-    child.label = label;
-  }
-
-  if (rest.length > 0) {
-    child.children ??= [];
-    appendCascaderSelectorPath(child.children, rest, outputLabel);
-  }
 }
 
 export function isSelectorVisible(

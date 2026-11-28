@@ -127,3 +127,7 @@ path = "tests/event_center_configuration/mod.rs"
 [[test]]
 name = "plugin_resource_archive_upgrade"
 path = "tests/plugin_resource_archive_upgrade.rs"
+
+[[test]]
+name = "plugin_version_reconciliation"
+path = "tests/plugin_version_reconciliation/mod.rs"

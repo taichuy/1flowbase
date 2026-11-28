@@ -16,9 +16,9 @@ use crate::{
         CreateModelFailoverQueueSnapshotInput, CreateModelFailoverQueueTemplateInput,
         CreateModelProviderCatalogSourceInput, CreateModelProviderInstanceInput,
         CreateModelProviderPreviewSessionInput, ModelProviderRepository,
-        ReassignModelProviderInstancesInput, UpdateModelProviderInstanceInput,
-        UpsertModelProviderCatalogCacheInput, UpsertModelProviderCatalogEntryInput,
-        UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
+        UpdateModelProviderInstanceInput, UpsertModelProviderCatalogCacheInput,
+        UpsertModelProviderCatalogEntryInput, UpsertModelProviderMainInstanceInput,
+        UpsertModelProviderSecretInput,
     },
 };
 
@@ -69,13 +69,6 @@ impl ModelProviderRepository for MemoryModelCatalogRepository {
     async fn list_instances_by_provider_code(
         &self,
         _provider_code: &str,
-    ) -> Result<Vec<domain::ModelProviderInstanceRecord>> {
-        Ok(Vec::new())
-    }
-
-    async fn reassign_instances_to_installation(
-        &self,
-        _input: &ReassignModelProviderInstancesInput,
     ) -> Result<Vec<domain::ModelProviderInstanceRecord>> {
         Ok(Vec::new())
     }

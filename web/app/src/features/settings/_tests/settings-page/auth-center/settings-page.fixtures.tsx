@@ -1,6 +1,6 @@
 import { act, render, waitFor, within } from '@testing-library/react';
 import { Grid } from 'antd';
-import { beforeAll, beforeEach, expect, vi } from 'vitest';
+import { beforeEach, expect, vi } from 'vitest';
 
 const echartsMock = vi.hoisted(() => ({
   chart: {
@@ -392,6 +392,9 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
   };
 });
 
+// Collect the real shared route modules before either suite starts rendering.
+import '../../../../../app-shell/AppShellFrame';
+import '../../../pages/SettingsPage';
 import { AppProviders } from '../../../../../app/AppProviders';
 import { AppRouterProvider } from '../../../../../app/router';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
@@ -399,16 +402,6 @@ import {
   settingsSectionDefinitions,
   type SettingsSectionKey
 } from '../../../lib/settings-sections';
-
-// Warm the whole real lazy route chain before UI assertions start. Preloading
-// only the section leaves the shell and settings owner cold on the first render.
-beforeAll(async () => {
-  await Promise.all([
-    import('../../../../../app-shell/AppShellFrame'),
-    import('../../../pages/SettingsPage'),
-    import('../../../pages/settings-page/SettingsAuthCenterSection')
-  ]);
-});
 
 const useBreakpointSpy = vi.spyOn(Grid, 'useBreakpoint');
 

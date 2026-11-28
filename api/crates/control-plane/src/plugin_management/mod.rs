@@ -81,12 +81,12 @@ use crate::{
         FrontendBlockCatalogRepository, JsDependencyRegistryInput, JsDependencyRepository,
         ModelProviderRepository, NodeContributionRegistryInput, NodeContributionRepository,
         OfficialPluginArtifact, OfficialPluginSourceEntry, OfficialPluginSourcePort,
-        PluginRepository, ProviderRuntimePort, ReassignModelProviderInstancesInput,
-        RecordPluginArtifactCleanupFailureInput, ReplaceInstallationFrontendBlocksInput,
-        ReplaceInstallationJsDependenciesInput, ReplaceInstallationNodeContributionsInput,
-        RoleConsolePolicyReader, UpdatePluginDesiredStateInput, UpdatePluginTaskStatusInput,
-        UpsertModelProviderCatalogCacheInput, UpsertPluginArtifactInstanceInput,
-        UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
+        PluginRepository, ProviderRuntimePort, RecordPluginArtifactCleanupFailureInput,
+        ReplaceInstallationFrontendBlocksInput, ReplaceInstallationJsDependenciesInput,
+        ReplaceInstallationNodeContributionsInput, RoleConsolePolicyReader,
+        UpdatePluginDesiredStateInput, UpdatePluginTaskStatusInput,
+        UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+        UpsertPluginPackageCatalogProjectionInput,
     },
     state_transition::ensure_plugin_task_transition,
 };
@@ -722,3 +722,5 @@ pub(crate) use client_collector::_tests::collector_fixture_archive;
 #[path = "managed_execution/workspace_governance.rs"]
 mod managed_workspace_governance;
 pub use managed_workspace_governance::ManagedWorkspaceGovernanceService;
+
+pub(crate) use family::node_installation_runtime_lock;

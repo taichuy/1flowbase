@@ -1006,3 +1006,237 @@ async fn ac_1281_plugin_catalog_legacy_only_does_not_authorize() {
         .await
         .is_err());
 }
+
+#[tokio::test]
+async fn boot_retires_superseded_versions_resets_ghosts_and_skips_unchanged_history() {
+    use domain::{PluginAvailabilityStatus, PluginRuntimeStatus};
+
+    let repo = MemoryPluginManagementRepository::new(actor_with_permissions(Uuid::now_v7(), &[]));
+    let root = std::env::temp_dir().join(format!("plugin-boot-history-{}", Uuid::now_v7()));
+    let node = format!("local:{}", root.display());
+    let runtime = MemoryProviderRuntime::default();
+    let service = PluginManagementService::new(
+        repo.clone(),
+        runtime.clone(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &root,
+    );
+    let mut ids = Vec::new();
+    for (family, version, state) in [
+        (
+            "fixture_provider",
+            "0.1.0",
+            PluginDesiredState::ActiveRequested,
+        ),
+        (
+            "fixture_provider",
+            "0.2.0",
+            PluginDesiredState::ActiveRequested,
+        ),
+        ("fixture_provider", "0.0.9", PluginDesiredState::Disabled),
+        (
+            "fresh_provider",
+            "1.0.0",
+            PluginDesiredState::ActiveRequested,
+        ),
+        (
+            "builtin_provider",
+            "1.0.0",
+            PluginDesiredState::ActiveRequested,
+        ),
+        ("host_provider", "1.0.0", PluginDesiredState::Disabled),
+    ] {
+        let id = seed_test_installation(&repo, &root, family, version, state).await;
+        // Seed a pre-fence persisted runtime snapshot. In particular, Disabled + Active
+        // must remain representable in old data so startup reconciliation can repair it.
+        let artifact = repo
+            .get_artifact_instance(&node, id)
+            .await
+            .unwrap()
+            .unwrap();
+        repo.upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: artifact.node_id,
+            installation_id: id,
+            local_version: artifact.local_version,
+            local_checksum: artifact.local_checksum,
+            local_path: artifact.local_path,
+            package_path: artifact.package_path,
+            manifest_fingerprint: artifact.manifest_fingerprint,
+            artifact_status: artifact.artifact_status,
+            runtime_status: PluginRuntimeStatus::Active,
+            availability_status: crate::plugin_lifecycle::derive_availability_status(
+                state,
+                domain::PluginArtifactStatus::Ready,
+                PluginRuntimeStatus::Active,
+            ),
+            checked_at: artifact.checked_at,
+            last_error: artifact.last_error,
+            is_current: artifact.is_current,
+        })
+        .await
+        .unwrap();
+        ids.push(id);
+    }
+    repo.mark_installation_builtin(ids[4]).await;
+    repo.set_installation_category(ids[5], domain::ExtensionCategory::HostExtensions)
+        .await;
+    repo.set_installation_contract_version(
+        ids[5],
+        crate::host_extension::HOST_EXTENSION_CONTRACT_VERSION,
+    )
+    .await;
+    repo.create_assignment(&CreatePluginAssignmentInput {
+        installation_id: ids[1],
+        workspace_id: repo.actor.current_workspace_id,
+        provider_code: "fixture_provider".into(),
+        actor_user_id: repo.actor.user_id,
+    })
+    .await
+    .unwrap();
+    let original_projection = repo
+        .get_plugin_package_catalog_projection(ids[2])
+        .await
+        .unwrap()
+        .unwrap();
+    // Prove the healthy historical projection doesn't require a package load, even if provider
+    // payload is unreadable. The manifest/marker still support the normal artifact scan.
+    fs::remove_file(root.join("installed/fixture_provider/0.0.9/provider/fixture_provider.yaml"))
+        .unwrap();
+    service.reconcile_all_installations().await.unwrap();
+    assert_eq!(runtime.loaded_installations().await, vec![ids[1]]);
+    let mut artifacts = Vec::new();
+    for (index, (desired, status, availability)) in [
+        (
+            PluginDesiredState::Disabled,
+            PluginRuntimeStatus::Inactive,
+            PluginAvailabilityStatus::Disabled,
+        ),
+        (
+            PluginDesiredState::ActiveRequested,
+            PluginRuntimeStatus::Active,
+            PluginAvailabilityStatus::Available,
+        ),
+        (
+            PluginDesiredState::Disabled,
+            PluginRuntimeStatus::Inactive,
+            PluginAvailabilityStatus::Disabled,
+        ),
+        (
+            PluginDesiredState::ActiveRequested,
+            PluginRuntimeStatus::Inactive,
+            PluginAvailabilityStatus::InstallIncomplete,
+        ),
+        (
+            PluginDesiredState::ActiveRequested,
+            PluginRuntimeStatus::Active,
+            PluginAvailabilityStatus::Available,
+        ),
+        (
+            PluginDesiredState::Disabled,
+            PluginRuntimeStatus::Active,
+            PluginAvailabilityStatus::Disabled,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = ids[index];
+        assert_eq!(
+            repo.get_installation(id)
+                .await
+                .unwrap()
+                .unwrap()
+                .desired_state,
+            desired
+        );
+        let artifact = repo
+            .get_artifact_instance(&node, id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (artifact.runtime_status, artifact.availability_status),
+            (status, availability)
+        );
+        artifacts.push(artifact);
+    }
+    service.reconcile_all_installations().await.unwrap();
+    for index in [0, 2, 3, 4, 5] {
+        assert_eq!(
+            repo.get_artifact_instance(&node, ids[index])
+                .await
+                .unwrap()
+                .unwrap(),
+            artifacts[index]
+        );
+    }
+    assert_eq!(
+        repo.get_plugin_package_catalog_projection(ids[2])
+            .await
+            .unwrap()
+            .unwrap(),
+        original_projection
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
+async fn boot_preserves_first_install_when_only_disabled_sibling_is_assigned() {
+    let repo = MemoryPluginManagementRepository::new(actor_with_permissions(Uuid::now_v7(), &[]));
+    let root = std::env::temp_dir().join(format!("plugin-disabled-sibling-{}", Uuid::now_v7()));
+    let code = "fixture_provider";
+    let old = seed_test_installation(
+        &repo,
+        &root,
+        code,
+        "1.0.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    let fresh = seed_test_installation(
+        &repo,
+        &root,
+        code,
+        "2.0.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    repo.create_assignment(&CreatePluginAssignmentInput {
+        installation_id: old,
+        workspace_id: repo.actor.current_workspace_id,
+        provider_code: code.into(),
+        actor_user_id: repo.actor.user_id,
+    })
+    .await
+    .unwrap();
+    repo.update_desired_state(&crate::ports::UpdatePluginDesiredStateInput {
+        installation_id: old,
+        desired_state: PluginDesiredState::Disabled,
+        actor_user_id: repo.actor.user_id,
+    })
+    .await
+    .unwrap();
+    let service = PluginManagementService::new(
+        repo.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &root,
+    );
+    service.reconcile_all_installations().await.unwrap();
+    assert_eq!(
+        repo.get_installation(fresh)
+            .await
+            .unwrap()
+            .unwrap()
+            .desired_state,
+        PluginDesiredState::ActiveRequested
+    );
+    assert_eq!(
+        repo.list_assignments(repo.actor.current_workspace_id)
+            .await
+            .unwrap()[0]
+            .installation_id,
+        old
+    );
+    fs::remove_dir_all(root).unwrap();
+}

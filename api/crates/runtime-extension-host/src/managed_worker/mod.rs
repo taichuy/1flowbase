@@ -90,17 +90,13 @@ impl ManagedWorkers {
         &self,
         handles: &[ManagedExecutionHandle],
     ) -> FrameworkResult<Box<dyn runtime_core::runtime_backend::RuntimeManagedDrain>> {
-        let scopes = handles
-            .iter()
-            .map(|handle| {
-                self.exact_mount(handle)
-                    .map(|mounted| mounted.scope.clone())
-            })
-            .collect::<FrameworkResult<Vec<_>>>()?;
-        let drains = scopes
-            .iter()
-            .map(|scope| scope.begin_drain())
-            .collect::<FrameworkResult<Vec<_>>>()?;
+        // A previous retirement attempt may have already removed some of these generations.
+        let mut drains = Vec::new();
+        for handle in handles {
+            if self.has_identity(handle.identity()) {
+                drains.push(self.exact_mount(handle)?.scope.begin_drain()?);
+            }
+        }
         Ok(Box::new(ManagedDrain(drains)))
     }
     pub(crate) fn mount(
@@ -176,6 +172,10 @@ impl ManagedWorkers {
         handle: &ManagedExecutionHandle,
     ) -> FrameworkResult<Option<Arc<service_workers::ServiceWorkers>>> {
         Ok(self.exact_mount(handle)?.service_workers.clone())
+    }
+
+    pub(crate) fn has_identity(&self, identity: &ManagedExecutionIdentity) -> bool {
+        self.mounted.contains_key(identity)
     }
 
     pub(crate) fn finish_unmount(&mut self, handle: &ManagedExecutionHandle) {

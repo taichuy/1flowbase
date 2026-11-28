@@ -482,6 +482,17 @@ impl crate::ports::PluginRepository for InMemoryDataSourceRepository {
             .collect())
     }
 
+    async fn retire_unreferenced_installation(
+        &self,
+        _input: &control_plane_contracts::ports::UpdatePluginDesiredStateInput,
+    ) -> anyhow::Result<Option<domain::PluginInstallationRecord>> {
+        panic!("unexpected retire_unreferenced_installation")
+    }
+
+    async fn list_referenced_installation_ids(&self) -> anyhow::Result<Vec<Uuid>> {
+        panic!("unexpected list_referenced_installation_ids")
+    }
+
     async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
         let mut installation_ids = self
             .assignments

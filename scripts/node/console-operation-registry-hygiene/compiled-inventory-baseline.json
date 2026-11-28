@@ -1713,6 +1713,16 @@
         "authorization_operation_id": "mcp.instances.view"
       },
       {
+        "interface_id": "list_mcp_instances_page",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/mcp/instances/page"
+        },
+        "summary": "List MCP instances page",
+        "description": "List MCP instances page in the system backend.",
+        "authorization_operation_id": "list_mcp_instances_page"
+      },
+      {
         "interface_id": "mcp.client_credential.reveal",
         "route": {
           "method": "GET",
@@ -1753,6 +1763,26 @@
         "authorization_operation_id": "list_mcp_interface_capabilities"
       },
       {
+        "interface_id": "list_mcp_interface_capabilities_page",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/mcp/interface-capabilities/page"
+        },
+        "summary": "List MCP interface capabilities page",
+        "description": "List MCP interface capabilities page in the system backend.",
+        "authorization_operation_id": "list_mcp_interface_capabilities_page"
+      },
+      {
+        "interface_id": "get_mcp_interface_capability",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/mcp/interface-capabilities/:interface_id"
+        },
+        "summary": "Get MCP interface capability",
+        "description": "Get MCP interface capability in the system backend.",
+        "authorization_operation_id": "get_mcp_interface_capability"
+      },
+      {
         "interface_id": "list_mcp_items",
         "route": {
           "method": "GET",
@@ -1771,6 +1801,16 @@
         "summary": "List MCP tools",
         "description": "List MCP tools in the system backend.",
         "authorization_operation_id": "list_mcp_tools"
+      },
+      {
+        "interface_id": "list_mcp_tools_page",
+        "route": {
+          "method": "GET",
+          "path": "/api/console/mcp/tools/page"
+        },
+        "summary": "List MCP tools page",
+        "description": "List MCP tools page in the system backend.",
+        "authorization_operation_id": "list_mcp_tools_page"
       },
       {
         "interface_id": "get_mcp_tool",
@@ -5711,7 +5751,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5735,7 +5775,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5759,7 +5799,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5783,7 +5823,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5807,7 +5847,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5833,7 +5873,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5857,7 +5897,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5881,7 +5921,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5905,7 +5945,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5929,7 +5969,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5953,7 +5993,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -5977,7 +6017,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6001,7 +6041,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6025,7 +6065,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6049,7 +6089,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6073,7 +6113,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6097,7 +6137,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6121,7 +6161,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6145,7 +6185,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6169,7 +6209,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6193,7 +6233,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6217,7 +6257,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6241,7 +6281,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6265,7 +6305,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6289,7 +6329,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6313,7 +6353,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6337,7 +6377,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6361,7 +6401,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6385,7 +6425,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6409,7 +6449,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6433,7 +6473,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6457,7 +6497,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6481,7 +6521,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6505,7 +6545,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6529,7 +6569,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6553,7 +6593,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6577,7 +6617,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6601,7 +6641,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6625,7 +6665,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6649,7 +6689,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6673,7 +6713,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6697,7 +6737,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6721,7 +6761,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6745,7 +6785,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6769,7 +6809,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6793,7 +6833,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6817,7 +6857,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6841,7 +6881,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6865,7 +6905,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6889,7 +6929,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6913,7 +6953,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6937,7 +6977,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6961,7 +7001,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -6985,7 +7025,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7009,7 +7049,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7033,7 +7073,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7057,7 +7097,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7081,7 +7121,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7105,7 +7145,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7297,7 +7337,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7321,7 +7361,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7347,7 +7387,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7371,7 +7411,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7395,7 +7435,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7419,7 +7459,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7443,7 +7483,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7467,7 +7507,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7491,7 +7531,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7515,7 +7555,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7539,7 +7579,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7563,7 +7603,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7587,7 +7627,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7611,7 +7651,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7637,7 +7677,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7663,7 +7703,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7687,7 +7727,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7711,7 +7751,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7735,7 +7775,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7759,7 +7799,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7783,7 +7823,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7807,7 +7847,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7831,7 +7871,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7855,7 +7895,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7879,7 +7919,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7903,7 +7943,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7927,7 +7967,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7951,7 +7991,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7975,7 +8015,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -7999,7 +8039,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8023,7 +8063,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8047,7 +8087,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8071,7 +8111,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8095,7 +8135,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8119,7 +8159,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8143,7 +8183,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8167,7 +8207,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8191,7 +8231,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8215,7 +8255,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8239,7 +8279,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8263,7 +8303,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8287,7 +8327,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8311,7 +8351,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8335,7 +8375,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8359,7 +8399,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8383,7 +8423,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8407,7 +8447,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8431,7 +8471,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8455,7 +8495,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8479,7 +8519,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8503,7 +8543,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8527,7 +8567,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8551,7 +8591,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8575,7 +8615,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8599,7 +8639,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8623,7 +8663,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8647,7 +8687,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8671,7 +8711,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8695,7 +8735,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8719,7 +8759,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8743,7 +8783,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8767,7 +8807,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8791,7 +8831,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8815,7 +8855,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8839,7 +8879,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8863,7 +8903,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8887,7 +8927,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8911,7 +8951,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8935,7 +8975,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8959,7 +8999,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -8983,7 +9023,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9007,7 +9047,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9031,7 +9071,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9055,7 +9095,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9079,7 +9119,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9103,7 +9143,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9127,7 +9167,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9151,7 +9191,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9175,7 +9215,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9199,7 +9239,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9223,7 +9263,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9249,7 +9289,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9275,7 +9315,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9301,7 +9341,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9327,7 +9367,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9353,7 +9393,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9379,7 +9419,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9405,7 +9445,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9429,7 +9469,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9455,7 +9495,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9481,7 +9521,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9507,7 +9547,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9533,7 +9573,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9559,7 +9599,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9585,7 +9625,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9611,7 +9651,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9637,7 +9677,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9663,7 +9703,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9689,7 +9729,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9715,7 +9755,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9741,7 +9781,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9765,7 +9805,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9789,7 +9829,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9813,7 +9853,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9839,7 +9879,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9865,7 +9905,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9891,7 +9931,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9917,7 +9957,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9941,7 +9981,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9965,7 +10005,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -9989,7 +10029,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10013,7 +10053,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10037,7 +10077,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10061,7 +10101,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10085,7 +10125,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10109,7 +10149,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10133,7 +10173,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10157,7 +10197,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10181,7 +10221,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10205,7 +10245,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10231,7 +10271,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10255,7 +10295,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10274,18 +10314,42 @@
       },
       {
         "root_workspace_only": false,
-        "operation_id": "get_mcp_tool",
-        "authorization_profile_id": "mcp.tools.view",
+        "operation_id": "get_mcp_interface_capability",
+        "authorization_profile_id": "mcp.catalog.view",
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
-        "order": 207001,
+        "order": 181003,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/mcp/interface-capabilities/:interface_id"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "root_workspace_only": false,
+        "operation_id": "get_mcp_tool",
+        "authorization_profile_id": "mcp.tools.view",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.6.7"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 207002,
         "routes": [
           {
             "method": "GET",
@@ -10303,7 +10367,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10329,7 +10393,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10355,7 +10419,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10381,7 +10445,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10407,7 +10471,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10433,7 +10497,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10459,7 +10523,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10483,7 +10547,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10509,7 +10573,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10535,7 +10599,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10561,7 +10625,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10587,7 +10651,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10613,7 +10677,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10639,7 +10703,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10663,7 +10727,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10687,7 +10751,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10711,7 +10775,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10735,7 +10799,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10759,7 +10823,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10783,7 +10847,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10807,7 +10871,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10831,7 +10895,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10855,7 +10919,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10879,7 +10943,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10903,7 +10967,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10927,7 +10991,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10951,7 +11015,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10975,7 +11039,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -10999,7 +11063,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11023,7 +11087,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11047,7 +11111,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11071,7 +11135,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11097,7 +11161,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11123,7 +11187,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11149,7 +11213,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11175,7 +11239,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11201,7 +11265,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11227,7 +11291,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11253,7 +11317,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11279,7 +11343,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11303,7 +11367,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11327,7 +11391,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11351,7 +11415,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11375,7 +11439,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11399,7 +11463,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11423,7 +11487,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11447,7 +11511,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11471,7 +11535,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11495,7 +11559,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11514,12 +11578,36 @@
       },
       {
         "root_workspace_only": false,
+        "operation_id": "list_mcp_instances_page",
+        "authorization_profile_id": "mcp.instances.view",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.6.7"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 198001,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/mcp/instances/page"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "root_workspace_only": false,
         "operation_id": "list_mcp_interface_capabilities",
         "authorization_profile_id": "mcp.catalog.view",
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11538,18 +11626,42 @@
       },
       {
         "root_workspace_only": false,
-        "operation_id": "list_mcp_items",
+        "operation_id": "list_mcp_interface_capabilities_page",
         "authorization_profile_id": "mcp.catalog.view",
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
           "settings_feature": "system.mcp-management"
         },
         "order": 181002,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/mcp/interface-capabilities/page"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "root_workspace_only": false,
+        "operation_id": "list_mcp_items",
+        "authorization_profile_id": "mcp.catalog.view",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.6.7"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 181004,
         "routes": [
           {
             "method": "GET",
@@ -11567,7 +11679,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11586,12 +11698,36 @@
       },
       {
         "root_workspace_only": false,
+        "operation_id": "list_mcp_tools_page",
+        "authorization_profile_id": "mcp.tools.view",
+        "owner": {
+          "kind": "core",
+          "owner_id": "boot-core",
+          "version": "0.6.7"
+        },
+        "lifecycle": "active",
+        "policy_group": {
+          "settings_feature": "system.mcp-management"
+        },
+        "order": 207001,
+        "routes": [
+          {
+            "method": "GET",
+            "path": "/api/console/mcp/tools/page"
+          }
+        ],
+        "authorization": {
+          "kind": "simple"
+        }
+      },
+      {
+        "root_workspace_only": false,
         "operation_id": "list_provider_trajectory",
         "authorization_profile_id": "applications.view",
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11617,7 +11753,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11643,7 +11779,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11669,7 +11805,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11695,7 +11831,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11721,7 +11857,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11745,7 +11881,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11769,7 +11905,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11795,7 +11931,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11819,7 +11955,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11843,7 +11979,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11867,7 +12003,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11891,7 +12027,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11915,7 +12051,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11939,7 +12075,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11963,7 +12099,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -11987,7 +12123,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12011,7 +12147,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12035,7 +12171,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12059,7 +12195,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12083,7 +12219,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12107,7 +12243,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12131,7 +12267,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12155,7 +12291,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12179,7 +12315,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12203,7 +12339,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12227,7 +12363,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12251,7 +12387,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12275,7 +12411,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12299,7 +12435,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12323,7 +12459,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12347,7 +12483,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12371,7 +12507,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12395,7 +12531,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12419,7 +12555,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12443,7 +12579,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12467,7 +12603,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12491,7 +12627,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12515,7 +12651,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12539,7 +12675,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12563,7 +12699,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12587,7 +12723,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12611,7 +12747,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12635,7 +12771,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12659,7 +12795,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12683,7 +12819,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12707,7 +12843,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12731,7 +12867,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12755,7 +12891,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12779,7 +12915,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12803,7 +12939,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12827,7 +12963,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12851,7 +12987,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12875,7 +13011,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12899,7 +13035,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12923,7 +13059,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12947,7 +13083,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12971,7 +13107,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -12995,7 +13131,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13019,7 +13155,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13043,7 +13179,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13067,7 +13203,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13091,7 +13227,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13115,7 +13251,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13139,7 +13275,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13163,7 +13299,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13187,7 +13323,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13211,7 +13347,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13235,7 +13371,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13259,7 +13395,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13283,7 +13419,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13307,7 +13443,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13331,7 +13467,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13355,7 +13491,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13379,7 +13515,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13403,7 +13539,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13427,7 +13563,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13451,7 +13587,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13475,7 +13611,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13499,7 +13635,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13523,7 +13659,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13547,7 +13683,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13571,7 +13707,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13595,7 +13731,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13619,7 +13755,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13643,7 +13779,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13667,7 +13803,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13691,7 +13827,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13715,7 +13851,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13739,7 +13875,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13763,7 +13899,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13787,7 +13923,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13811,7 +13947,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13835,7 +13971,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13859,7 +13995,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13883,7 +14019,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13907,7 +14043,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13931,7 +14067,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13955,7 +14091,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -13979,7 +14115,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14003,7 +14139,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14027,7 +14163,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14051,7 +14187,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14075,7 +14211,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14099,7 +14235,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14123,7 +14259,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14147,7 +14283,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14171,7 +14307,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14195,7 +14331,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14219,7 +14355,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14243,7 +14379,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14267,7 +14403,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14291,7 +14427,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14315,7 +14451,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14339,7 +14475,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14363,7 +14499,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14387,7 +14523,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14411,7 +14547,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14435,7 +14571,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14459,7 +14595,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14483,7 +14619,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14507,7 +14643,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14531,7 +14667,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14555,7 +14691,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14579,7 +14715,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14603,7 +14739,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14627,7 +14763,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14651,7 +14787,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14675,7 +14811,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14699,7 +14835,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14723,7 +14859,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14747,7 +14883,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14771,7 +14907,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14795,7 +14931,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14819,7 +14955,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14843,7 +14979,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14867,7 +15003,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14891,7 +15027,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14915,7 +15051,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14939,7 +15075,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14963,7 +15099,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -14987,7 +15123,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15011,7 +15147,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15035,7 +15171,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15059,7 +15195,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15083,7 +15219,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15107,7 +15243,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15131,7 +15267,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15155,7 +15291,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15179,7 +15315,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15203,7 +15339,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15227,7 +15363,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15251,7 +15387,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15275,7 +15411,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15299,7 +15435,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15323,7 +15459,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15347,7 +15483,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15373,7 +15509,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15397,7 +15533,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15421,7 +15557,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15445,7 +15581,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15469,7 +15605,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15493,7 +15629,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15517,7 +15653,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15541,7 +15677,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15565,7 +15701,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15589,7 +15725,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15613,7 +15749,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15637,7 +15773,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15661,7 +15797,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15685,7 +15821,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15709,7 +15845,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15733,7 +15869,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15757,7 +15893,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15781,7 +15917,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15805,7 +15941,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15829,7 +15965,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15853,7 +15989,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15877,7 +16013,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15901,7 +16037,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15927,7 +16063,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15953,7 +16089,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -15979,7 +16115,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16005,7 +16141,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16031,7 +16167,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16057,7 +16193,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16083,7 +16219,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16107,7 +16243,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16133,7 +16269,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16159,7 +16295,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16185,7 +16321,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16209,7 +16345,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16235,7 +16371,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16259,7 +16395,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16283,7 +16419,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16307,7 +16443,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16331,7 +16467,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16355,7 +16491,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16379,7 +16515,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16403,7 +16539,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16427,7 +16563,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16451,7 +16587,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16475,7 +16611,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16499,7 +16635,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16523,7 +16659,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16547,7 +16683,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16571,7 +16707,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16595,7 +16731,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16619,7 +16755,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16643,7 +16779,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16667,7 +16803,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16691,7 +16827,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16715,7 +16851,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16741,7 +16877,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16765,7 +16901,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16789,7 +16925,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16813,7 +16949,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16837,7 +16973,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16861,7 +16997,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16885,7 +17021,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16909,7 +17045,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16933,7 +17069,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16959,7 +17095,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -16983,7 +17119,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17007,7 +17143,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17031,7 +17167,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17055,7 +17191,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17079,7 +17215,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17103,7 +17239,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17127,7 +17263,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17151,7 +17287,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17175,7 +17311,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17199,7 +17335,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17223,7 +17359,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17247,7 +17383,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17271,7 +17407,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17295,7 +17431,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17319,7 +17455,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17343,7 +17479,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17367,7 +17503,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17391,7 +17527,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17415,7 +17551,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17439,7 +17575,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17463,7 +17599,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17487,7 +17623,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17511,7 +17647,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17535,7 +17671,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17559,7 +17695,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17583,7 +17719,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17607,7 +17743,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17631,7 +17767,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17655,7 +17791,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17679,7 +17815,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17703,7 +17839,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17727,7 +17863,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17751,7 +17887,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17775,7 +17911,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17799,7 +17935,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17823,7 +17959,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17847,7 +17983,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17871,7 +18007,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17895,7 +18031,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17919,7 +18055,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17943,7 +18079,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17967,7 +18103,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -17991,7 +18127,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18015,7 +18151,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18039,7 +18175,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18063,7 +18199,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18087,7 +18223,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18111,7 +18247,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18135,7 +18271,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18159,7 +18295,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18183,7 +18319,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18207,7 +18343,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18231,7 +18367,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18255,7 +18391,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18279,7 +18415,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18303,7 +18439,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18327,7 +18463,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18351,7 +18487,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18375,7 +18511,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18399,7 +18535,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18423,7 +18559,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18447,7 +18583,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18471,7 +18607,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18495,7 +18631,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18519,7 +18655,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18543,7 +18679,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18567,7 +18703,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18591,7 +18727,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18617,7 +18753,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18641,7 +18777,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18667,7 +18803,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "policy_group": {
@@ -18691,7 +18827,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "scope_kind": "workspace",
@@ -18728,7 +18864,7 @@
         "owner": {
           "kind": "core",
           "owner_id": "boot-core",
-          "version": "0.6.6"
+          "version": "0.6.7"
         },
         "lifecycle": "active",
         "scope_kind": "workspace",
@@ -20887,6 +21023,26 @@
     {
       "route": {
         "method": "GET",
+        "path": "/api/console/mcp/interface-capabilities/page"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/interface-capabilities/:interface_id"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.catalog.view"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/api/console/mcp/list"
       },
       "ownership": {
@@ -20922,6 +21078,16 @@
       "ownership": {
         "kind": "console_operation",
         "operation_id": "mcp.instances.create"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/instances/page"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.instances.view"
       }
     },
     {
@@ -21082,6 +21248,16 @@
       "ownership": {
         "kind": "console_operation",
         "operation_id": "mcp.tools.create"
+      }
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/api/console/mcp/tools/page"
+      },
+      "ownership": {
+        "kind": "console_operation",
+        "operation_id": "mcp.tools.view"
       }
     },
     {

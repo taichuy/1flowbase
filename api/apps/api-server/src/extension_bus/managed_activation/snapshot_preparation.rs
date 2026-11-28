@@ -1,8 +1,60 @@
 use super::*;
 
+pub(super) type BootSnapshotPinHook =
+    Box<dyn FnOnce(&BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>) -> Result<()> + Send>;
+pub(super) type BootEventCatalogBuilder = Box<
+    dyn FnOnce(
+            BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<domain::event_center::EventCatalogSnapshot>>
+                    + Send,
+            >,
+        > + Send,
+>;
+
 impl ManagedExtensionComposition {
     pub(super) async fn rebuild_installation_owned(&self, installation_id: Uuid) -> Result<()> {
         let _assembly = self.assembly.lock().await;
+        let workspaces = self
+            .store
+            .contribution_authority_workspaces(installation_id)
+            .await?;
+        if workspaces.is_empty() {
+            bail!("managed installation requires a workspace assignment");
+        }
+        self.rebuild_scopes(workspaces, Some(installation_id), false, None, None)
+            .await
+            .map(|_| ())
+    }
+
+    pub(super) async fn rebuild_workspaces_owned_with_event_catalog_and_pin(
+        &self,
+        workspaces: std::collections::BTreeSet<Uuid>,
+        verify_all_active_scopes: bool,
+        build_event_catalog: Option<BootEventCatalogBuilder>,
+        pin_after_commit: Option<BootSnapshotPinHook>,
+    ) -> Result<BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>> {
+        let _assembly = self.assembly.lock().await;
+        self.rebuild_scopes(
+            workspaces,
+            None,
+            verify_all_active_scopes,
+            build_event_catalog,
+            pin_after_commit,
+        )
+        .await
+    }
+
+    // Called with the assembly lock held by the candidate operation owner.
+    async fn rebuild_scopes(
+        &self,
+        workspaces: impl IntoIterator<Item = Uuid>,
+        installation_id: Option<Uuid>,
+        verify_all_active_scopes: bool,
+        build_event_catalog: Option<BootEventCatalogBuilder>,
+        pin_after_commit: Option<BootSnapshotPinHook>,
+    ) -> Result<BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>>> {
         let previous_state = self.snapshots.lock().await.clone();
         let mut published = previous_state.current.clone();
         let owned_handles = previous_state
@@ -17,15 +69,44 @@ impl ManagedExtensionComposition {
             })
             .collect::<Vec<_>>();
         drop(previous_state);
-        let workspaces = self
-            .store
-            .contribution_authority_workspaces(installation_id)
-            .await?;
-        if workspaces.is_empty() {
-            bail!("managed installation requires a workspace assignment");
+        let workspaces: Vec<_> = workspaces.into_iter().collect();
+        // Capture the old graph's authority before filtering packages by desired state.
+        let mut expected = BTreeMap::new();
+        for &workspace in &workspaces {
+            if let Some(requested) = installation_id {
+                let lease = self
+                    .store
+                    .lock_installation_contribution_authority(requested, workspace)
+                    .await?;
+                let installation = lease
+                    .installation(requested)
+                    .context("missing locked installation")?;
+                expected.insert(
+                    (requested, workspace),
+                    (lease.snapshot().revision, installation.updated_at),
+                );
+                lease.release().await?;
+            }
+            if let Some(prior) = published.get(&workspace) {
+                let prior_ids: std::collections::BTreeSet<_> = prior
+                    .bindings
+                    .values()
+                    .map(|binding| binding.installation.id)
+                    .filter(|prior_id| Some(*prior_id) != installation_id)
+                    .collect();
+                for prior_id in prior_ids {
+                    if let Some(facts) = self
+                        .store
+                        .observe_prior_managed_scope(prior_id, workspace)
+                        .await?
+                    {
+                        expected.insert((prior_id, workspace), facts);
+                    }
+                }
+            }
         }
         let mut packages_by_scope = BTreeMap::new();
-        for workspace in workspaces {
+        for &workspace in &workspaces {
             packages_by_scope.insert(workspace, self.prepare_packages(workspace).await?);
         }
         let services = if self.publisher().is_some() {
@@ -51,7 +132,6 @@ impl ManagedExtensionComposition {
             Vec::new()
         };
         let mut candidates = BTreeMap::new();
-        let mut expected = BTreeMap::new();
         let mut new_handles = Vec::new();
         let result = async {
             for (workspace_id, packages) in &packages_by_scope {
@@ -66,60 +146,58 @@ impl ManagedExtensionComposition {
                         interface_module.as_ref(),
                     )
                     .await?;
-                candidates.insert(workspace_id, candidate);
-            }
-            // A disabled target may no longer appear in the new graph. Lock its assignment and
-            // installation too, so removal and a concurrent re-enable cannot cross publication.
-            for workspace_id in candidates.keys() {
-                if let std::collections::btree_map::Entry::Vacant(e) =
-                    expected.entry((installation_id, *workspace_id))
-                {
-                    let lease = self
-                        .store
-                        .lock_installation_contribution_authority(installation_id, *workspace_id)
-                        .await?;
-                    let installation = lease
-                        .installation(installation_id)
-                        .context("missing locked installation")?;
-                    e.insert((lease.snapshot().revision, installation.updated_at));
-                    lease.release().await?;
+                if !candidate.bindings.is_empty() {
+                    candidates.insert(workspace_id, candidate);
                 }
             }
-            let mut generation_snapshots = published.clone();
-            generation_snapshots.extend(candidates.clone());
+            // Refreshed scopes without a candidate are removed from the new generation.
+            // Their old bindings still fence the commit and drain from retained state.
+            let previous = workspaces
+                .iter()
+                .filter_map(|workspace| published.remove(workspace).map(|old| (*workspace, old)))
+                .collect::<BTreeMap<_, _>>();
+            published.extend(
+                candidates
+                    .iter()
+                    .map(|(workspace, candidate)| (*workspace, candidate.clone())),
+            );
             let prepared_host = self
-                .prepare_host_generation(services, generation_snapshots)
+                .prepare_host_generation(services, published.clone())
                 .await?;
-            let event_catalog = prepared_host
-                .as_ref()
-                .map(|(_, prepared)| prepared.event_catalog.clone());
+            let event_catalog = match prepared_host.as_ref() {
+                Some((_, prepared)) => Some(prepared.event_catalog.clone()),
+                None => match build_event_catalog {
+                    Some(builder) => Some(builder(published.clone()).await?),
+                    None => None,
+                },
+            };
             let permission_catalog = prepared_host
                 .as_ref()
                 .map(|(_, prepared)| prepared.permission_catalog.clone());
             let scopes = expected.keys().copied().collect::<Vec<_>>();
-            let lease = self
+            let mut lease = self
                 .store
-                .lock_contribution_authority_batch(&scopes)
+                .lock_contribution_authority_batch(
+                    &workspaces,
+                    &scopes,
+                    verify_all_active_scopes,
+                    Some(control_plane_contracts::ports::ManagedArtifactVerification {
+                        node_id: &self.node_id,
+                        validate_manifest: control_plane::plugin_management::validate_installed_managed_manifest,
+                    }),
+                )
                 .await?;
             Self::validate_candidate(&expected, lease.as_ref())?;
-            // The authority batch remains locked until the complete candidate set is visible.
-            // Readers continue using the prior immutable snapshot during preparation.
-            let previous = candidates
-                .keys()
-                .filter_map(|workspace| {
-                    published
-                        .get(workspace)
-                        .map(|value| (*workspace, value.clone()))
-                })
-                .collect::<BTreeMap<_, _>>();
-            for (workspace, candidate) in &candidates {
-                published.insert(*workspace, candidate.clone());
-            }
+            Self::validate_loaded_artifacts(packages_by_scope.values().flatten(), lease.as_ref())?;
+            Self::validate_package_files(packages_by_scope.values().flatten()).await?;
+            // The authority batch remains locked until the complete candidate set is written to
+            // visible state (and boot-pinned when applicable). Readers remain blocked on
+            // `self.snapshots` until `release` commits; any commit error restores prior state.
             let mut visible = self.snapshots.lock().await;
-
             lease
-                .commit_managed_settings_templates(template_ids, permission_catalog, event_catalog)
+                .stage_managed_settings_templates(template_ids, permission_catalog, event_catalog)
                 .await?;
+            let rollback_visible = visible.clone();
             for old in previous.values() {
                 if candidates
                     .values()
@@ -138,17 +216,33 @@ impl ManagedExtensionComposition {
                     retained.push(old.clone());
                 }
             }
+            visible.current = published.clone();
+            #[cfg(test)]
+            let hook = self.before_authority_release.lock().unwrap().take();
+            #[cfg(test)]
+            if let Some(hook) = hook {
+                if let Err(error) = hook.await {
+                    *visible = rollback_visible;
+                    return Err(error);
+                }
+            }
+            if let Err(error) = lease.release().await {
+                *visible = rollback_visible;
+                return Err(error);
+            }
+            if let Some(pin) = pin_after_commit {
+                pin(&published)?;
+            }
             for (workspace, snapshot) in &published {
                 self.register_candidate_lifecycle_sources(*workspace, snapshot);
             }
-            visible.current = published.clone();
             if let Some((publisher, prepared)) = prepared_host {
                 publisher.publish(prepared);
             }
             drop(visible);
-            self.refresh_lifecycle_source_observations().await;
+            self.reclaim_unreferenced_retained_locked().await;
             self.notify_reclamation();
-            Ok::<_, anyhow::Error>(previous)
+            Ok::<_, anyhow::Error>(published)
         }
         .await;
         match result {
@@ -162,7 +256,7 @@ impl ManagedExtensionComposition {
                 }
                 Err(error)
             }
-            Ok(_) => Ok(()),
+            Ok(published) => Ok(published),
         }
     }
 
@@ -220,10 +314,13 @@ impl ManagedExtensionComposition {
                     bail!("duplicate managed contribution identity");
                 }
             }
-            expected.insert(
-                (package.installation.id, workspace_id),
-                (package.authority.revision, package.installation.updated_at),
-            );
+            let fence = (package.authority.revision, package.installation.updated_at);
+            let observed = expected
+                .entry((package.installation.id, workspace_id))
+                .or_insert(fence);
+            if *observed != fence {
+                bail!("managed installation changed during preparation");
+            }
             modules.push(module);
         }
         let graph = Arc::new(compile_extension_graph_with_authority(modules, &authority)?);
@@ -238,6 +335,8 @@ impl ManagedExtensionComposition {
         }
         let mut bindings = BTreeMap::new();
         for package in packages {
+            // Share one immutable installation record across contributions in this snapshot.
+            let installation = Arc::new(package.installation.clone());
             for contribution in &package.manifest.module.contributions {
                 let interface_protocol = package
                     .manifest
@@ -274,7 +373,7 @@ impl ManagedExtensionComposition {
                         handle,
                         descriptor: contribution.clone(),
                         interface_protocol,
-                        installation: package.installation.clone(),
+                        installation: Arc::clone(&installation),
                     },
                 );
             }
@@ -339,6 +438,48 @@ impl ManagedExtensionComposition {
             if snapshot.revision != pinned.0 || installation.updated_at != pinned.1 {
                 bail!("managed candidate authority or installation revision changed");
             }
+        }
+        Ok(())
+    }
+
+    pub(super) fn validate_loaded_artifacts<'a>(
+        packages: impl IntoIterator<Item = &'a PreparedPackage>,
+        lease: &dyn ContributionAuthorityLease,
+    ) -> Result<()> {
+        for package in packages {
+            let loaded = &package.local_artifact;
+            if !lease
+                .node_artifact(package.installation.id)
+                .is_some_and(|live| {
+                    live.artifact_status.is_ready()
+                        && !domain::has_local_artifact_warning(live.last_error.as_deref())
+                        && !domain::has_local_artifact_warning(loaded.last_error.as_deref())
+                        && live.local_path.is_some()
+                        && live.local_version == loaded.local_version
+                        && live.local_checksum == loaded.local_checksum
+                        && live.local_path == loaded.local_path
+                        && live.package_path == loaded.package_path
+                        && live.manifest_fingerprint == loaded.manifest_fingerprint
+                        && live.manifest_fingerprint.as_deref()
+                            == Some(package.artifact_fingerprint.as_str())
+                })
+            {
+                bail!("managed candidate node artifact changed during preparation");
+            }
+        }
+        Ok(())
+    }
+
+    // Run under the same lease without borrowing the non-Sync transaction across file I/O.
+    pub(super) async fn validate_package_files<'a>(
+        packages: impl IntoIterator<Item = &'a PreparedPackage>,
+    ) -> Result<()> {
+        for package in packages {
+            control_plane::plugin_management::validate_installed_plugin_artifact(
+                &package.installation,
+                &package.local_artifact,
+            )
+            .await?;
         }
         Ok(())
     }
@@ -419,6 +560,11 @@ impl ManagedExtensionComposition {
             installation.id,
         )
         .await?;
+        control_plane::plugin_management::validate_installed_plugin_artifact(
+            &installation,
+            &local.artifact,
+        )
+        .await?;
         let raw = tokio::fs::read(
             local
                 .local_path()
@@ -439,6 +585,7 @@ impl ManagedExtensionComposition {
         }
         Ok(PreparedPackage {
             installation,
+            local_artifact: local.artifact,
             manifest: managed,
             artifact_fingerprint: ManagedArtifactFingerprint::from_bytes(&raw),
             authority,

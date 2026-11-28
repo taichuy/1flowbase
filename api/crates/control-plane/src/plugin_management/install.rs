@@ -4,6 +4,7 @@ use super::catalog_projection::{
     refresh_provider_package_catalog_projection,
 };
 use super::*;
+use control_plane_contracts::ports::ActivatePluginArtifactOutcome;
 use sha2::{Digest, Sha256};
 
 use crate::ports::RetainedFrontendModuleAssetInput;
@@ -603,20 +604,101 @@ where
 
     pub async fn reconcile_all_installations(&self) -> Result<()> {
         self.reconcile_pending_artifact_removals().await?;
-        let assigned_installation_ids = self
+        use domain::{PluginDesiredState, PluginPackageCatalogProjectionStatus};
+
+        let installations = self.repository.list_installations().await?;
+        let referenced_ids: HashSet<_> = self
+            .repository
+            .list_referenced_installation_ids()
+            .await?
+            .into_iter()
+            .collect();
+        let assigned_ids: HashSet<_> = self
             .repository
             .list_assigned_installation_ids()
             .await?
             .into_iter()
-            .collect::<HashSet<_>>();
-        for installation in self.repository.list_installations().await? {
-            let local_artifact = self
-                .refresh_current_node_artifact_snapshot(&installation)
-                .await?;
-            if !local_artifact.artifact_status.is_ready() {
+            .collect();
+        let family_key = |installation: &domain::PluginInstallationRecord| {
+            (
+                installation.category,
+                installation.organization.clone(),
+                installation.provider_code.clone(),
+            )
+        };
+        let selected_families: HashSet<_> = installations
+            .iter()
+            .filter(|installation| {
+                installation.desired_state == PluginDesiredState::ActiveRequested
+                    && (referenced_ids.contains(&installation.id)
+                        || is_system_managed_service(installation))
+            })
+            .map(family_key)
+            .collect();
+        let existing_projections: HashMap<_, _> = self
+            .repository
+            .list_plugin_package_catalog_projections()
+            .await?
+            .into_iter()
+            .map(|record| {
+                (
+                    record.installation_id,
+                    (record.projection_status, record.package_version),
+                )
+            })
+            .collect();
+
+        for mut installation in installations {
+            // Built-ins are already written by ensure_builtin_plugin. Host extensions have
+            // their own process-start reconciliation and must not be reset or activated here.
+            if installation.is_system_reserved
+                || installation.source_kind == "builtin"
+                || is_host_extension_installation(&installation)
+            {
                 continue;
             }
-            if local_artifact.local_path.is_none() {
+            let system_service = is_system_managed_service(&installation);
+            if installation.desired_state == PluginDesiredState::ActiveRequested
+                && !system_service
+                && !referenced_ids.contains(&installation.id)
+                && selected_families.contains(&family_key(&installation))
+            {
+                match self
+                    .repository
+                    .retire_unreferenced_installation(&UpdatePluginDesiredStateInput {
+                        installation_id: installation.id,
+                        desired_state: PluginDesiredState::Disabled,
+                        actor_user_id: installation.updated_by.unwrap_or(installation.created_by),
+                    })
+                    .await
+                {
+                    Ok(Some(disabled)) => installation = disabled,
+                    Ok(None) => {}
+                    Err(error)
+                        if matches!(
+                            error.downcast_ref::<ControlPlaneError>(),
+                            Some(ControlPlaneError::PluginDependency { .. })
+                        ) =>
+                    {
+                        tracing::warn!(installation_id = %installation.id, %error, "could not retire unreferenced plugin version during startup");
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            let model_provider = is_model_provider_installation(&installation);
+            // Provider instances still invoke their pinned installation after a workspace has
+            // selected another version. Rehydrate these live versions instead of depending
+            // on a stale Active row from the previous process. Managed graphs require assignment.
+            let needs_activation = installation.desired_state
+                == PluginDesiredState::ActiveRequested
+                && (system_service
+                    || assigned_ids.contains(&installation.id)
+                    || (model_provider && referenced_ids.contains(&installation.id)));
+            let local_artifact = self.reconcile_boot_artifact_snapshot(&installation).await?;
+            if !local_artifact.artifact_status.is_ready()
+                || local_artifact.local_path.is_none()
+                || domain::has_local_artifact_warning(local_artifact.last_error.as_deref())
+            {
                 continue;
             }
             let local_installation = domain::LocalPluginInstallationRecord {
@@ -624,7 +706,15 @@ where
                 artifact: local_artifact,
             };
 
-            if is_model_provider_installation(&installation) {
+            if model_provider
+                && (needs_activation
+                    || existing_projections.get(&installation.id).is_none_or(
+                        |(status, version)| {
+                            *status != PluginPackageCatalogProjectionStatus::Ok
+                                || version != &installation.plugin_version
+                        },
+                    ))
+            {
                 match crate::installed_provider_package::load_installed_provider_package(
                     &local_installation,
                 ) {
@@ -643,18 +733,25 @@ where
                     }
                 }
             }
-            if installation.desired_state == domain::PluginDesiredState::ActiveRequested
-                && (is_system_managed_service(&installation)
-                    || assigned_installation_ids.contains(&installation.id))
-            {
+            if needs_activation {
+                let runtime_lock =
+                    super::family::node_installation_runtime_lock(&self.node_id, installation.id);
+                let _lifecycle_guard = runtime_lock.lock().await;
                 match self.runtime.activate_plugin(&local_installation).await {
-                    Ok(()) => {
-                        self.mark_current_node_runtime_status(
-                            &installation,
-                            domain::PluginRuntimeStatus::Active,
-                            None,
-                        )
-                        .await?;
+                    Ok(loaded) => {
+                        match self
+                            .try_mark_current_node_runtime_active(
+                                &local_installation,
+                                loaded.as_ref(),
+                            )
+                            .await?
+                        {
+                            ActivatePluginArtifactOutcome::Activated(_) => {}
+                            ActivatePluginArtifactOutcome::Disabled
+                            | ActivatePluginArtifactOutcome::ArtifactInvalidated => {
+                                self.runtime.deactivate_plugin(&installation).await?;
+                            }
+                        }
                     }
                     Err(error) => {
                         self.mark_current_node_runtime_status(

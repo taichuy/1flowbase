@@ -263,6 +263,13 @@ impl DataSourceRepository for PgControlPlaneStore {
         &self,
         input: &CreateDataSourceInstanceInput,
     ) -> Result<domain::DataSourceInstanceRecord> {
+        let mut transaction = self.pool().begin().await?;
+        crate::plugin_repository::lock_assigned_active_plugin_reference_target(
+            &mut transaction,
+            input.workspace_id,
+            input.installation_id,
+        )
+        .await?;
         let row = sqlx::query(
             r#"
             insert into data_source_instances (
@@ -305,10 +312,11 @@ impl DataSourceRepository for PgControlPlaneStore {
         .bind(&input.metadata_json)
         .bind(input.defaults.data_model_status.as_str())
         .bind(input.created_by)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
-
-        map_instance(row)
+        let instance = map_instance(row)?;
+        transaction.commit().await?;
+        Ok(instance)
     }
 
     async fn update_instance_status(

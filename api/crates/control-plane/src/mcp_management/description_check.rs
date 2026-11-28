@@ -11,11 +11,11 @@ where
         des_id: Option<&str>,
     ) -> Result<domain::McpDescriptionCheckResult> {
         let actor = self.authorize_view(actor_user_id).await?;
-        let catalog = self.read_catalog_for_actor(&actor).await?;
-        let tool = catalog
-            .tools
-            .iter()
-            .find(|tool| tool.tool_id == tool_id)
+        let workspace_id = actor.current_workspace_id;
+        let tool = self
+            .repository
+            .get_mcp_tool(workspace_id, tool_id)
+            .await?
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
         let has_reference = tool
             .input_mapping
@@ -38,29 +38,47 @@ where
                 current_des_id: Some(tool.des_id.clone()),
             });
         }
-        let valid =
-            domain::mcp_management::validate_mcp_call_parameters(&tool.input_mapping).is_ok();
         let description =
-            match domain::mcp_management::mcp_description_tool_id(&tool.input_mapping) {
-                None => Some(tool),
-                Some(id) => catalog.tools.iter().find(|target| {
-                    target.tool_id == id
-                        && target.status == domain::McpToolStatus::Enabled
-                        && catalog.bindings.iter().any(|binding| {
+            if domain::mcp_management::validate_mcp_call_parameters(&tool.input_mapping).is_err() {
+                None
+            } else if let Some(id) =
+                domain::mcp_management::mcp_description_tool_id(&tool.input_mapping)
+            {
+                if let Some(target) = self
+                    .repository
+                    .get_mcp_tool(workspace_id, id)
+                    .await?
+                    .filter(|target| target.status == domain::McpToolStatus::Enabled)
+                {
+                    let enabled_instances = self
+                        .repository
+                        .list_mcp_instances(workspace_id)
+                        .await?
+                        .into_iter()
+                        .filter(|instance| instance.status == domain::McpInstanceStatus::Enabled)
+                        .map(|instance| instance.id)
+                        .collect::<Vec<_>>();
+                    self.repository
+                        .list_mcp_tool_bindings(&enabled_instances)
+                        .await?
+                        .iter()
+                        .any(|binding| {
                             binding.visible
                                 && binding.tool_id == target.tool_id
                                 && binding.tool_record_id == target.id
-                                && catalog.instances.iter().any(|instance| {
-                                    instance.id == binding.instance_record_id
-                                        && instance.status == domain::McpInstanceStatus::Enabled
-                                })
                         })
-                }),
-            }
-            .filter(|_| valid);
+                        .then_some(target)
+                } else {
+                    None
+                }
+            } else {
+                Some(tool)
+            };
         Ok(domain::McpDescriptionCheckResult {
-            accepted: description.is_some_and(|target| des_id == Some(target.des_id.as_str())),
-            current_des_id: description.map(|target| target.des_id.clone()),
+            accepted: description
+                .as_ref()
+                .is_some_and(|target| des_id == Some(target.des_id.as_str())),
+            current_des_id: description.map(|target| target.des_id),
         })
     }
 }

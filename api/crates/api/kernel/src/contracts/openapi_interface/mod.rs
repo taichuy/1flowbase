@@ -13,8 +13,10 @@ pub use capability_catalog::{
 };
 pub use capability_catalog::{
     build_openapi_capability_catalog_with, get_openapi_capability_by_route_with,
-    get_openapi_capability_with, query_openapi_capability_catalog_with,
+    get_openapi_capability_index_entry_with, get_openapi_capability_with,
+    list_openapi_capability_index_with, query_openapi_capability_catalog_with,
     root_workspace_only_capability_ids, OpenApiCapabilityCatalogDependencies,
+    OpenApiCapabilityIndexEntry,
 };
 pub use catalog::catalog_entry_from_view;
 pub use catalog::{

@@ -1,10 +1,34 @@
 name: 1flowbase
 
 services:
+  api-init:
+    image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ceu"]
+    command:
+      - |
+        owner="$$(stat -c '%u:%g' /home/flowbase)"
+        uid="$${owner%:*}"
+        gid="$${owner#*:}"
+        for directory in /app/api/storage /app/api/plugins/packages /app/api/plugins/installed /app/api/plugins/host-extension/dropins; do
+          mkdir -p "$$directory"
+          find "$$directory" \( ! -user "$$uid" -o ! -group "$$gid" \) -exec chown -h "$$owner" {} +
+        done
+    volumes:
+      - ./api/storage:/app/api/storage
+      - ./api/plugins/packages:/app/api/plugins/packages
+      - ./api/plugins/installed:/app/api/plugins/installed
+      - ./api/plugins/host-extension/dropins:/app/api/plugins/host-extension/dropins
+
   api:
     image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
     restart: unless-stopped
+    depends_on:
+      api-init:
+        condition: service_completed_successfully
     environment:
+      _RJEM_MALLOC_CONF: ${API_JEMALLOC_CONF:-thp:never,background_thread:true}
       RUST_LOG: ${API_RUST_LOG:-info}
       API_ENV: ${API_ENV:-production}
       API_LOCAL_TERMINAL_DISABLED: ${API_LOCAL_TERMINAL_DISABLED:-true}

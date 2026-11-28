@@ -4,9 +4,23 @@
     {
       "file": "web/app/src/features/settings/components/mcp-management/McpToolsTab/use-mcp-tools-catalog.ts",
       "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "dc08e1ebc7eb181ca0a2a5b33fb5e83f1278927d7eb779856eb5e3e3297bb7ef",
-      "reason": "web/app/src/features/settings/components/mcp-management/McpToolsTab/use-mcp-tools-catalog.ts:128（react-doctor/no-derived-state）：effect 将越界 routeState.page 修正为后端 total 计算后的 pageCount，并 replace URL history；这同时同步浏览器路由，不是仅在 local state 存一个可派生数字。guard page<=pageCount 防循环，服务端数据量变化没有单个用户事件可替代。",
-      "evidence": [{"file": "web/app/src/features/settings/components/mcp-management/McpToolsTab.tsx", "sha256": "19d0e737bd62630ec841fb1afb2258fdbae3b3cece1c5b9a2daa04cc37637a5a"}, {"file": "web/app/src/features/settings/components/mcp-management/McpToolsTab/_tests/return-defaults-ui.test.tsx", "sha256": "fed877945ce33bd42139bd8fa3dd9159c3c722c0942efd94a6859356df9febbf"}, {"file": "web/app/src/features/settings/components/mcp-management/McpToolsTab/use-mcp-tools-catalog.ts", "sha256": "dc08e1ebc7eb181ca0a2a5b33fb5e83f1278927d7eb779856eb5e3e3297bb7ef"}]
+      "sourceSha256": "72c4a674fb1fda07fa47a9ac09cea6f9907512a74f60d9f4338499a566227370",
+      "reason": "The correction replaces browser history when a server total makes the requested page impossible, preserving the rest of the route filters. The query is keyed by the corrected page; simply deriving a displayed page count would leave the URL and request on the missing page. The guard requires a returned page.",
+      "evidence": [{"file":"web/app/src/features/settings/components/mcp-management/McpToolsTab/route-state.ts","sha256":"200f0884b951f863219e40195881a181a032aff3474ad02d4143a4a9729338a5"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-progressive-loading.test.tsx","sha256":"5559320ab47ab75e56c5098370bd6fd8a0aaf7745613a8e9b2848071ac16d7fe"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/McpToolsTab/use-mcp-tools-catalog.ts",
+      "rule": "react-doctor/query-mutation-missing-invalidation",
+      "sourceSha256": "72c4a674fb1fda07fa47a9ac09cea6f9907512a74f60d9f4338499a566227370",
+      "reason": "Both Delete and Refresh Description explicitly await invalidateSettingsMcpInstancesAndTools on success. The helper invalidates the list prefixes (including paginated list keys) and the catalog. This source call chain, not an assertion about a success toast, is the counterexample.",
+      "evidence": [{"file":"web/app/src/features/settings/api/mcp-management.ts","sha256":"7ee0da945fa60e31b471b974e87ee8758086bcf879048fdd829dc048c034d7ab"}]
+    },
+    {
+      "file": "web/app/src/features/settings/components/mcp-management/McpToolsTab/use-mcp-tool-editor.ts",
+      "rule": "react-doctor/query-mutation-missing-invalidation",
+      "sourceSha256": "78df0b1456160fbdd6f272b960c85d0c2e58794e5cd9d941890ac27e3fc1ed93",
+      "reason": "Create and update share saveToolMutation.onSuccess: after closing the edit session it awaits invalidateSettingsMcpInstancesAndTools. That helper invalidates the instance, tool and catalog query prefixes, including page keys. A reopened detail is explicitly fetched with staleTime: 0, not restored as an editable cached value. The edit-session test asserts a second read and the outgoing updated draft; prefix invalidation is established by the helper source.",
+      "evidence": [{"file":"web/app/src/features/settings/api/mcp-management.ts","sha256":"7ee0da945fa60e31b471b974e87ee8758086bcf879048fdd829dc048c034d7ab"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/tool-edit-session.test.tsx","sha256":"ce3a855d23e3b69bf4b1576f9a73b1fa5ab5935529d7bd3715103ef548791f4d"}]
     }
   ]
 }

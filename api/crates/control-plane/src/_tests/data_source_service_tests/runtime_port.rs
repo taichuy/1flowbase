@@ -2,8 +2,11 @@ use super::*;
 
 #[async_trait]
 impl DataSourceRuntimePort for StubDataSourceRuntime {
-    async fn ensure_loaded(&self, _installation: &LocalPluginInstallationRecord) -> Result<()> {
-        Ok(())
+    async fn ensure_loaded(
+        &self,
+        _installation: &LocalPluginInstallationRecord,
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
+        Ok(None)
     }
 
     async fn compatible_data_model_templates(

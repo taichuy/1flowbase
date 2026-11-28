@@ -179,6 +179,7 @@ async fn d_003_ready_drain_stop_is_monotonic_and_cancel_is_idempotent() {
         .unwrap(),
     );
     host.activate_provider(RuntimePackageActivation {
+        expected_manifest_fingerprint: None,
         plugin_id: LIFECYCLE_PLUGIN_ID.to_string(),
         artifact: RuntimeArtifactReference::new("lifecycle-artifact").unwrap(),
         source_identity: Some("lifecycle-fixture".to_string()),
@@ -454,6 +455,12 @@ async fn root_2007_ac_002_contribution_execution_identity() {
         .await
         .is_err());
     host.deactivate_managed_contribution(&first).await.unwrap();
+    let drain = host
+        .drain_managed_contributions(std::slice::from_ref(&first))
+        .await
+        .unwrap();
+    drain.wait_drained().await.unwrap();
+    host.deactivate_managed_contribution(&first).await.unwrap();
     let replacement = host
         .activate_managed_contribution(first_activation)
         .await
@@ -520,6 +527,7 @@ async fn root_2007_ac_002_contribution_execution_identity() {
     // The old package entry must not activate v2 and bypass per-contribution admission.
     assert!(host
         .activate_capability(RuntimePackageActivation {
+            expected_manifest_fingerprint: None,
             plugin_id: "managed_fixture@0.1.0".into(),
             artifact: RuntimeArtifactReference::new("installation-a").unwrap(),
             source_identity: None,
@@ -552,6 +560,7 @@ async fn host_preserves_the_typed_recovery_receipt_from_a_worker_error() {
         .unwrap(),
     );
     host.activate_provider(RuntimePackageActivation {
+        expected_manifest_fingerprint: None,
         plugin_id: LIFECYCLE_PLUGIN_ID.to_string(),
         artifact: RuntimeArtifactReference::new("lifecycle-artifact").unwrap(),
         source_identity: Some("lifecycle-fixture".to_string()),

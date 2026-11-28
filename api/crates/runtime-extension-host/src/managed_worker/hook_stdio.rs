@@ -19,6 +19,7 @@ pub(super) async fn exchange(
     lease: std::sync::Arc<crate::plugin_scope::PluginScopeLease>,
 ) -> FrameworkResult<ManagedHookOutcome> {
     let mut command = Command::new(&binding.runtime_executable);
+    crate::sanitize_worker_command_env(&mut command);
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -83,6 +83,47 @@ async fn assert_catalog_contract(app: &Router, cookie: &str, interface_id: &str,
         json!([output_key])
     );
     assert_eq!(detail["data"]["host_injected_parameters"], json!([]));
+    let (status, mcp_detail) = request(
+        app,
+        "GET",
+        &format!("/api/console/mcp/interface-capabilities/{interface_id}"),
+        cookie,
+        "",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{mcp_detail}");
+    assert_eq!(&mcp_detail["data"], matches[0]);
+    let (status, page) = request(
+        app,
+        "GET",
+        "/api/console/mcp/interface-capabilities/page?q=callable-ticket&bindable_only=true",
+        cookie,
+        "",
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(page["data"]["total"], 1);
+    let summary = &page["data"]["items"][0];
+    for key in [
+        "interface_id",
+        "method",
+        "path",
+        "name",
+        "short_description",
+        "permission_code",
+        "risk_level",
+        "bindable",
+        "disabled_reason",
+    ] {
+        assert_eq!(
+            summary[key], matches[0][key],
+            "workflow summary drift at {key}"
+        );
+    }
+    assert!(summary.get("parameter_schema").is_none());
+    assert!(summary.get("result_schema").is_none());
     let (status, listed) = request(
         app,
         "GET",

@@ -6,6 +6,12 @@ const { buildNodePreferredEnv } = require("../testing/node-runtime.js");
 const { getRepoRoot } = require("../testing/warning-capture.js");
 const { loadVerifyRuntimeConfig } = require("../testing/verify-runtime.js");
 
+const { excludeArgs, pageFilters } = require("../run-frontend-vitest/layers.js");
+const suites = new Map([
+  ["stable", ["run", excludeArgs]],
+  ["stable-coverage", ["coverage", excludeArgs]],
+  ["page", ["run", pageFilters]],
+]);
 const VALID_MODES = new Set(["run", "coverage"]);
 
 function normalizePassThroughArgs(args) {
@@ -13,7 +19,8 @@ function normalizePassThroughArgs(args) {
 }
 
 function parseCliArgs(argv) {
-  const [mode = "run", ...passThroughArgs] = argv;
+  const [suite = "run", ...passThroughArgs] = argv;
+  const [mode, defaults] = suites.get(suite) ?? [suite, []];
 
   if (!VALID_MODES.has(mode)) {
     throw new Error(`Unknown frontend vitest mode: ${mode}`);
@@ -21,7 +28,7 @@ function parseCliArgs(argv) {
 
   return {
     mode,
-    passThroughArgs: normalizePassThroughArgs(passThroughArgs),
+    passThroughArgs: [...defaults, ...normalizePassThroughArgs(passThroughArgs)],
   };
 }
 

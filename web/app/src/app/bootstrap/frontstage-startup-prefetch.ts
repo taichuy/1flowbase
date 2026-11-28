@@ -48,10 +48,7 @@ import {
   seedStartupPrefetchedBlockNodeCodes,
   type StartupPrefetchedBlockCodeEntry
 } from '../../features/frontstage/api/startup-block-code-cache';
-import {
-  getFirstTopLevelPageId,
-  resolveSelectedPageId
-} from '../../features/frontstage/lib/page-tree';
+import { getFirstTopLevelPageId } from '../../features/frontstage/lib/page-tree';
 import { settingsConsoleNavigationQueryOptions } from '../../features/settings/api/console-navigation';
 import { systemMetadataQueryKey } from '../../shared/api/system-metadata';
 import {
@@ -225,13 +222,7 @@ function resolvePrefetchTargetPage(
   if (!parsed.pageId) {
     return getFirstTopLevelPageId(scopedTree);
   }
-  if (!containsPageNode(scopedTree, parsed.pageId)) {
-    return null;
-  }
-  return resolveSelectedPageId({
-    pageId: parsed.pageId,
-    pageTree: scopedTree
-  }).selectedPageId;
+  return containsPageNode(scopedTree, parsed.pageId) ? parsed.pageId : null;
 }
 
 function resolveCanonicalFrontstageLanding(

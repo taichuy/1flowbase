@@ -4,10 +4,11 @@ use control_plane_contracts::{
     ports::{
         AuthRepository, CreateMcpInstanceGraphInput, CreateMcpInstanceInput,
         CreateMcpToolBindingInput, CreateMcpToolInput, CreateMcpUpstreamConnectionInput,
-        McpManagementRepository, ReplaceMcpBundleGraphInput, UpdateMcpInstanceDiscoveryPolicyInput,
-        UpdateMcpInstanceInput, UpdateMcpToolBindingInput, UpdateMcpToolInput,
-        UpdateMcpUpstreamConnectionInput, UpsertMcpClientCredentialInput, UpsertMcpGroupInput,
-        UpsertMcpUpstreamSecretInput, UpsertMcpUpstreamToolSourceInput,
+        McpInstancePage, McpInstancePageQuery, McpInstanceSummaryRecord, McpManagementRepository,
+        McpToolPage, McpToolPageQuery, ReplaceMcpBundleGraphInput,
+        UpdateMcpInstanceDiscoveryPolicyInput, UpdateMcpInstanceInput, UpdateMcpToolBindingInput,
+        UpdateMcpToolInput, UpdateMcpUpstreamConnectionInput, UpsertMcpClientCredentialInput,
+        UpsertMcpGroupInput, UpsertMcpUpstreamSecretInput, UpsertMcpUpstreamToolSourceInput,
     },
     ControlPlaneContractError as ControlPlaneError,
 };
@@ -27,6 +28,9 @@ mod directory;
 mod managed_bundle_graph;
 #[path = "mcp_management_repository/mappers.rs"]
 mod mappers;
+
+#[path = "mcp_management_repository/progressive_queries.rs"]
+mod progressive_queries;
 
 use mappers::*;
 
@@ -119,6 +123,36 @@ impl McpManagementRepository for PgControlPlaneStore {
         .await?;
 
         rows.into_iter().map(map_instance).collect()
+    }
+
+    async fn list_mcp_instances_with_counts(
+        &self,
+        workspace_id: Uuid,
+        status: Option<domain::McpInstanceStatus>,
+    ) -> Result<Vec<McpInstanceSummaryRecord>> {
+        self.mcp_instance_summaries(workspace_id, status, None, None)
+            .await
+    }
+
+    async fn list_mcp_instances_page(
+        &self,
+        workspace_id: Uuid,
+        query: &McpInstancePageQuery,
+    ) -> Result<McpInstancePage> {
+        self.mcp_instance_page(workspace_id, query).await
+    }
+
+    async fn get_mcp_instance_directory_counts(
+        &self,
+        instance_record_id: Uuid,
+    ) -> Result<(i64, i64)> {
+        Ok(sqlx::query_as(
+            "select (select count(*) from mcp_groups where instance_record_id = $1),
+                    (select count(*) from mcp_tool_bindings where instance_record_id = $1)",
+        )
+        .bind(instance_record_id)
+        .fetch_one(self.pool())
+        .await?)
     }
 
     async fn get_mcp_instance(
@@ -714,6 +748,33 @@ impl McpManagementRepository for PgControlPlaneStore {
         .await?;
 
         rows.into_iter().map(map_tool).collect()
+    }
+
+    async fn list_mcp_tools_page(
+        &self,
+        workspace_id: Uuid,
+        query: &McpToolPageQuery,
+    ) -> Result<McpToolPage> {
+        self.mcp_tool_page(workspace_id, query).await
+    }
+
+    async fn list_mcp_upstream_proxy_source_statuses(
+        &self,
+        workspace_id: Uuid,
+        pairs: &[(Uuid, String)],
+    ) -> Result<Vec<(Uuid, String, domain::McpUpstreamSourceStatus)>> {
+        let (connection_ids, names): (Vec<_>, Vec<_>) =
+            pairs.iter().map(|(id, name)| (*id, name.as_str())).unzip();
+        let rows: Vec<(Uuid, String, String)> = sqlx::query_as(r#"
+            select s.upstream_connection_id, s.remote_tool_name, s.source_status
+            from unnest($2::uuid[], $3::text[]) as requested(connection_id, tool_name)
+            join mcp_upstream_tool_sources s
+              on s.upstream_connection_id = requested.connection_id and s.remote_tool_name = requested.tool_name
+            where s.workspace_id = $1
+        "#).bind(workspace_id).bind(connection_ids).bind(names).fetch_all(self.pool()).await?;
+        rows.into_iter()
+            .map(|(id, name, status)| Ok((id, name, parse_upstream_source_status(&status)?)))
+            .collect()
     }
 
     async fn get_mcp_tool(

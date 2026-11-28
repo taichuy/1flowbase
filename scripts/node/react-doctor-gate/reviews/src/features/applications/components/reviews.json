@@ -1,31 +1,9 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/agent-flow/api/orchestration.ts","sha256":"36b45fa136455feecde998477e15d635296066245530da771ab4864c06d41a91"},{"file":"web/app/src/features/agent-flow/lib/variables/start-node-variables.ts","sha256":"c3760bee15b79565ccb80d2b41a5413db51fc9b295a710edd92b15855353f1ba"},{"file":"web/app/src/features/applications/_tests/application-create-modal.test.tsx","sha256":"357ed020a2c3e433690f1349995483e8e12b82263444524743109dd75a53f55f"},{"file":"web/app/src/features/applications/api/applications.ts","sha256":"490a1622922dc004987716d3dc72801081fcaaf5e3e6ed777665ed499708e3d7"},{"file":"web/app/src/features/applications/api/public-api.ts","sha256":"15389c4416a2b3cc1b9996e2ceb11f4b3c9b7ac6d27a7e04df89502880459215"},{"file":"web/app/src/features/applications/components/ApplicationFormModal.tsx","sha256":"89370e136e2991f7d9b6b49b24232f330c0237e7a28c17808901b7fe4b166d5c"},{"file":"web/app/src/features/settings/_tests/application-management-page/application-archives.test.tsx","sha256":"90e61d210ffe7ea7d7bdfbf5bfdab80934d334d5a470295b736ff8ec056d5bd1"},{"file":"web/app/src/features/settings/_tests/application-management-page/application-management-page.test.tsx","sha256":"de7352dbc6b4bb7a5c66209dc46300f92b1ddf34424fbe7263c3dd460682f0a8"},{"file":"web/app/src/features/settings/_tests/application-management-page/fixture.tsx","sha256":"607f03c25c46753bda00a464fbd2da0c15c659f0d703e9e6b3cf17e7d127d4e9"},{"file":"web/app/src/features/settings/components/application-management/ApplicationManagementPanel.tsx","sha256":"918bc8cde91b249e55f4cf4035f82ba2797bdf42db55e53b257a21e1ec1f653e"},{"file":"web/app/src/shared/ui/fixed-height-modal/FixedHeightModal.tsx","sha256":"f7f474d5ce4ea8282217153929707336725ad7e589493efb8fd426a2fa45bb3f"}],
     [{"file":"web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx","sha256":"6405ff4949ffbc93a3d719d7e6fc9b56027256d991a6d989ec9c2a365a0144f8"},{"file":"web/app/src/features/applications/components/ApplicationTemplateImportModal.tsx","sha256":"3a5c7a7c3a843f47a4d4c75eda0ece762b925c90735464822b0b0d4125510ba9"},{"file":"web/app/src/features/applications/components/_tests/InstalledAgentFlowImportFlow.test.tsx","sha256":"1d28b5b45ee5f1b2c204a5a39ca9309367a1128f102f9a36fbad1e97fa925100"},{"file":"web/app/src/features/applications/api/applications.ts","sha256":"490a1622922dc004987716d3dc72801081fcaaf5e3e6ed777665ed499708e3d7"},{"file":"web/packages/api-client/src/console/application-orchestration.ts","sha256":"ef61a9c852a81ade258f21db6b263c4468a9c3b971c3c222c3fe7be44ea17d62"}]
   ],
   "reviews": [
-    {
-      "file": "web/app/src/features/applications/components/ApplicationFormModal.tsx",
-      "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "89370e136e2991f7d9b6b49b24232f330c0237e7a28c17808901b7fe4b166d5c",
-      "reason": "ApplicationFormModal 用异步 detail/catalog/orchestration 初始化 AntD Form，不能只响应最初打开事件；requestFields 先选可呈现类型再组装 Form.Item。 逐阶段线性选择/投影保持顺序与类型缩窄，后续过滤可能依赖前一步计算；没有由组合产生重复副作用或错误结果。",
-      "evidenceSet": 0
-    },
-    {
-      "file": "web/app/src/features/applications/components/ApplicationFormModal.tsx",
-      "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "89370e136e2991f7d9b6b49b24232f330c0237e7a28c17808901b7fe4b166d5c",
-      "reason": "ApplicationFormModal 用异步 detail/catalog/orchestration 初始化 AntD Form，不能只响应最初打开事件；requestFields 先选可呈现类型再组装 Form.Item。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。",
-      "evidenceSet": 0
-    },
-    {
-      "file": "web/app/src/features/applications/components/ApplicationFormModal.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "89370e136e2991f7d9b6b49b24232f330c0237e7a28c17808901b7fe4b166d5c",
-      "reason": "ApplicationFormModal 用异步 detail/catalog/orchestration 初始化 AntD Form，不能只响应最初打开事件；requestFields 先选可呈现类型再组装 Form.Item。 职责属于同一资源或组件生命周期，独立草稿/异步状态没有应合为单一字段的不变量；同步 setters 由 React19 batching，行数或 setter 数本身不能证明额外 render。",
-      "evidenceSet": 0
-    },
     {
       "file": "web/app/src/features/applications/components/ApplicationTemplateImportModal.tsx",
       "rule": "react-doctor/no-array-index-as-key",
@@ -38,28 +16,28 @@
       "rule": "react-doctor/no-adjust-state-on-prop-change",
       "sourceSha256": "6405ff4949ffbc93a3d719d7e6fc9b56027256d991a6d989ec9c2a365a0144f8",
       "reason": "installationId 是外部安装资源标识；effect 重新请求预览并清空旧 preview/warnings/ack，cleanup 忽略旧成功、失败及 finally，不能只搬到打开按钮。InstalledAgentFlowImportFlow.test.tsx 的 I-01/I-04 通过真实 Modal 验证空标识、ID 切换、卸载和当前失败；取消的是本地响应消费，不代表服务端取消。 P21b reassessed 2026-11-17: ApplicationFormModal was canonically renamed to ApplicationFormDrawer by e4cc907f1 and current management consumers import Drawer, but the three old source identities and their original witness set stay unchanged. Remaining reviewed owners are unchanged: dependency preview is stateless read-only repeated text, and installed-flow import fences external installationId promises and retains render-captured import acknowledgement. Their fixtures add backend analysis/type DTO only; no captured-response or pending/import assertion was weakened.",
-      "evidenceSet": 1
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx",
       "rule": "react-doctor/no-cascading-set-state",
       "sourceSha256": "6405ff4949ffbc93a3d719d7e6fc9b56027256d991a6d989ec9c2a365a0144f8",
       "reason": "这里同步外部 preview Promise 的结果，而非从 render 可纯推导的数据；name 为用户草稿，busy 同时覆盖 preview/import/awaited onImported。I-02 至 I-05 通过真实 Modal 锚定显示内容、精确 payload、过期响应和 busy 的回调边界；删除 effect 或把加载结果初始化限定在点击事件会漏掉外部 installationId 更新。 P21b reassessed 2026-11-17: ApplicationFormModal was canonically renamed to ApplicationFormDrawer by e4cc907f1 and current management consumers import Drawer, but the three old source identities and their original witness set stay unchanged. Remaining reviewed owners are unchanged: dependency preview is stateless read-only repeated text, and installed-flow import fences external installationId promises and retains render-captured import acknowledgement. Their fixtures add backend analysis/type DTO only; no captured-response or pending/import assertion was weakened.",
-      "evidenceSet": 1
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx",
       "rule": "react-doctor/prefer-useReducer",
       "sourceSha256": "6405ff4949ffbc93a3d719d7e6fc9b56027256d991a6d989ec9c2a365a0144f8",
       "reason": "preview/warnings/ack 的加载写入和 name/busy 的用户及异步生命周期不同。不能把 setter 数量直接认定为额外 render；I-06 还锁定 warning/challenge 投影抛错前已经排队的部分 preview/name 更新，原子合并会改变现有错误路径。保留现有五个局部状态，不在本轮为静态建议引入 reducer 或改变投影的提交语义。 P21b reassessed 2026-11-17: ApplicationFormModal was canonically renamed to ApplicationFormDrawer by e4cc907f1 and current management consumers import Drawer, but the three old source identities and their original witness set stay unchanged. Remaining reviewed owners are unchanged: dependency preview is stateless read-only repeated text, and installed-flow import fences external installationId promises and retains render-captured import acknowledgement. Their fixtures add backend analysis/type DTO only; no captured-response or pending/import assertion was weakened.",
-      "evidenceSet": 1
+      "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/applications/components/InstalledAgentFlowImportFlow.tsx",
       "rule": "react-doctor/rerender-state-only-in-handlers",
       "sourceSha256": "6405ff4949ffbc93a3d719d7e6fc9b56027256d991a6d989ec9c2a365a0144f8",
       "reason": "integrityOverride 不直接显示在 JSX；它属于传给 Modal 的每次 render 确认回调快照，而不是独立可变锁。I-06 通过只观察并原样转发真实 Modal props 的 wrapper，显式捕获 A 的 onImport，在 B 完整 commit 后调用，验证 id/description/ack 仍均为 A；handler 直接读 mutable ref 会混入 B ack。保留 state 维持现有回调值语义；捕获者是测试，不声称实际 Modal 保留旧回调、物理用户竞态或所有 ref 变体均失败。 P21b reassessed 2026-11-17: ApplicationFormModal was canonically renamed to ApplicationFormDrawer by e4cc907f1 and current management consumers import Drawer, but the three old source identities and their original witness set stay unchanged. Remaining reviewed owners are unchanged: dependency preview is stateless read-only repeated text, and installed-flow import fences external installationId promises and retains render-captured import acknowledgement. Their fixtures add backend analysis/type DTO only; no captured-response or pending/import assertion was weakened.",
-      "evidenceSet": 1
+      "evidenceSet": 0
     }
   ]
 }

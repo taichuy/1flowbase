@@ -600,6 +600,17 @@ mod service_activation_tests {
         ) -> anyhow::Result<Vec<domain::PluginAssignmentRecord>> {
             panic!("unexpected list_assignments")
         }
+        async fn retire_unreferenced_installation(
+            &self,
+            _input: &control_plane_contracts::ports::UpdatePluginDesiredStateInput,
+        ) -> anyhow::Result<Option<domain::PluginInstallationRecord>> {
+            panic!("unexpected retire_unreferenced_installation")
+        }
+
+        async fn list_referenced_installation_ids(&self) -> anyhow::Result<Vec<Uuid>> {
+            panic!("unexpected list_referenced_installation_ids")
+        }
+
         async fn list_assigned_installation_ids(&self) -> anyhow::Result<Vec<Uuid>> {
             panic!("unexpected list_assigned_installation_ids")
         }
@@ -635,7 +646,10 @@ mod service_activation_tests {
         }
         async fn lock_contribution_authority_batch(
             &self,
+            _workspaces: &[Uuid],
             _scopes: &[(Uuid, Uuid)],
+            _verify_all_active_scopes: bool,
+            _node: Option<control_plane_contracts::ports::ManagedArtifactVerification<'_>>,
         ) -> Result<Box<dyn ContributionAuthorityLease>> {
             panic!("unexpected lock_contribution_authority_batch")
         }

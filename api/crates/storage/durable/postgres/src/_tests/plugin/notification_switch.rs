@@ -46,6 +46,7 @@ async fn fixture() -> (PgControlPlaneStore, Uuid, ManagedInstallationSwitch, Uui
         store,
         actor,
         ManagedInstallationSwitch {
+            validate_manifest: control_plane_test_support::validate_installed_managed_manifest,
             workspace_id: workspace,
             current_installation_id: current.id,
             target_installation_id: target.id,

@@ -75,7 +75,7 @@ pub trait ProviderRuntimePort: Send + Sync {
     async fn activate_plugin(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         self.ensure_loaded(installation).await
     }
 
@@ -103,7 +103,7 @@ pub trait ProviderRuntimePort: Send + Sync {
     async fn ensure_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>>;
     async fn validate_provider(
         &self,
         installation: &domain::LocalPluginInstallationRecord,

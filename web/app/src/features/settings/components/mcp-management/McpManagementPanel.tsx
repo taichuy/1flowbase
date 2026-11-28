@@ -1,10 +1,6 @@
 import { Tabs } from 'antd';
 import { useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect } from 'react';
-import type {
-  ConsoleMcpCatalog,
-  ConsoleMcpInterfaceCapability
-} from '@1flowbase/api-client';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import {
@@ -12,20 +8,16 @@ import {
   resolveMcpManagementTabKey,
   updateMcpManagementTabQuery
 } from './mcp-management-route-state';
+import { useMcpTablePagination } from './mcp-management-state';
 import { McpInstancesTab } from './McpInstancesTab';
 import { McpToolsTab } from './McpToolsTab';
 import { McpBundleActions } from './bundle/McpBundleActions';
 import { ThirdPartyMcpTab } from './upstream/ThirdPartyMcpTab';
 import './mcp-management-panel.css';
 
-export function McpManagementPanel({
-  catalog,
-  interfaceCapabilities
-}: {
-  canManage?: boolean;
-  catalog: ConsoleMcpCatalog;
-  interfaceCapabilities: ConsoleMcpInterfaceCapability[];
-}) {
+export function McpManagementPanel(_props: { canManage?: boolean } = {}) {
+  const instancesPagination = useMcpTablePagination();
+  const upstreamPagination = useMcpTablePagination();
   const locationSearch = useRouterState({
     select: (state) => state.location.search as Record<string, unknown>
   });
@@ -57,26 +49,23 @@ export function McpManagementPanel({
         {
           key: 'instances',
           label: i18nText('settings', 'auto.mcp_instances'),
-          children: <McpInstancesTab catalog={catalog} />
+          children: activeTab === 'instances' ? <McpInstancesTab {...instancesPagination} /> : null
         },
         {
           key: 'tools',
           label: i18nText('settings', 'auto.mcp_tool_config'),
-          children: (
-            <McpToolsTab
-              catalog={catalog}
-              interfaceCapabilities={interfaceCapabilities}
-            />
-          )
+          children: activeTab === 'tools' ? <McpToolsTab /> : null
         },
         {
           key: 'third-party',
           label: i18nText('settings', 'auto.mcp_third_party'),
-          children: (
-            <ThirdPartyMcpTab
-              onImported={() => updateMcpManagementTabQuery('tools')}
-            />
-          )
+          children:
+            activeTab === 'third-party' ? (
+              <ThirdPartyMcpTab
+                {...upstreamPagination}
+                onImported={() => updateMcpManagementTabQuery('tools')}
+              />
+            ) : null
         }
       ]}
       onChange={handleTabChange}

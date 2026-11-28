@@ -1,8 +1,8 @@
 import type {
   ConsoleMcpGroup,
   ConsoleMcpInstance,
-  ConsoleMcpTool,
-  ConsoleMcpToolBinding
+  ConsoleMcpToolBinding,
+  ConsoleMcpToolSummary
 } from '@1flowbase/api-client';
 import type { TreeProps } from 'antd';
 
@@ -287,7 +287,7 @@ export function buildMcpDirectoryEditorTreeData({
   selectedInstance: ConsoleMcpInstance | undefined;
   selectedInstanceGroups: ConsoleMcpGroup[];
   selectedInstanceBindings: ConsoleMcpToolBinding[];
-  tools: ConsoleMcpTool[];
+  tools: Array<Pick<ConsoleMcpToolSummary, 'id' | 'tool_id' | 'short_description'>>;
   groupByPath: Map<string, ConsoleMcpGroup>;
   directoryEditorMode: 'group' | 'binding';
   watchedPath?: string;

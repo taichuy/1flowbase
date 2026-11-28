@@ -253,7 +253,7 @@ async fn model_provider_repository_persists_failover_queue_templates_items_and_s
 #[tokio::test]
 async fn model_provider_repository_reassigns_all_instances_for_a_provider() {
     let (store, workspace, actor, installation_v1) = seed_store().await;
-    let installation_v2 = control_plane_contracts::ports::PluginRepository::upsert_installation(
+    let installation = control_plane_contracts::ports::PluginRepository::upsert_installation(
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),
@@ -279,8 +279,8 @@ async fn model_provider_repository_reassigns_all_instances_for_a_provider() {
         },
     )
     .await
-    .unwrap()
-    .id;
+    .unwrap();
+    let installation_v2 = installation.id;
     let instance = ModelProviderRepository::create_instance(
         &store,
         &CreateModelProviderInstanceInput {
@@ -301,20 +301,100 @@ async fn model_provider_repository_reassigns_all_instances_for_a_provider() {
     .await
     .unwrap();
 
-    let moved = ModelProviderRepository::reassign_instances_to_installation(
+    let root = std::env::temp_dir().join(format!("provider-switch-{installation_v2}"));
+    let raw = r#"manifest_version: 1
+plugin_id: fixture_provider@0.2.0
+version: 0.2.0
+publisher_namespace: test
+vendor: Fixture
+display_name: Fixture Provider
+description: Fixture Provider
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: runtime_extension
+execution_mode: process_per_call
+slot_codes: [model_provider]
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.provider/v2
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: outbound_only
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: bin/provider
+"#;
+    let validate_manifest = control_plane_test_support::validate_installed_artifact_manifest;
+    let fingerprint = validate_manifest(&installation, raw).expect("valid provider manifest");
+    tokio::fs::create_dir_all(&root).await.unwrap();
+    tokio::fs::write(root.join("manifest.yaml"), raw)
+        .await
+        .unwrap();
+    tokio::fs::write(
+        root.join(".1flowbase-artifact.json"),
+        serde_json::to_vec(&json!({
+            "plugin_id": installation.plugin_id,
+            "version": installation.plugin_version,
+            "checksum": installation.expected_checksum,
+            "manifest_fingerprint": fingerprint,
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    let target = control_plane_contracts::ports::PluginRepository::upsert_artifact_instance(
         &store,
-        &ReassignModelProviderInstancesInput {
+        &control_plane_contracts::ports::UpsertPluginArtifactInstanceInput {
+            node_id: "test-node".into(),
+            installation_id: installation_v2,
+            local_version: Some(installation.plugin_version.clone()),
+            local_checksum: None,
+            local_path: Some(root.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: Some(fingerprint),
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: domain::PluginRuntimeStatus::Active,
+            availability_status: domain::PluginAvailabilityStatus::Available,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: true,
+        },
+    )
+    .await
+    .unwrap();
+    let outcome = control_plane_contracts::ports::PluginRepository::commit_provider_version_switch(
+        &store,
+        &control_plane_contracts::ports::CommitProviderVersionSwitchInput {
+            validate_manifest,
+            node_id: "test-node".into(),
             workspace_id: workspace.id,
             provider_code: "fixture_provider".into(),
+            current_installation_id: installation_v1,
             target_installation_id: installation_v2,
+            target_local_version: target.local_version,
+            target_local_checksum: target.local_checksum,
+            target_local_path: target.local_path.unwrap(),
+            target_manifest_fingerprint: target.manifest_fingerprint,
             target_protocol: "openai_compatible".into(),
-            updated_by: actor.id,
+            model_discovery_mode: domain::ModelProviderDiscoveryMode::Hybrid,
+            catalog_source: domain::ModelProviderCatalogSource::Hybrid,
+            actor_user_id: actor.id,
         },
     )
     .await
     .unwrap();
 
-    assert_eq!(moved.len(), 1);
-    assert_eq!(moved[0].id, instance.id);
-    assert_eq!(moved[0].installation_id, installation_v2);
+    assert_eq!(outcome.migrated_instance_count, 1);
+    assert!(outcome.retired_previous.is_some());
+    let moved = ModelProviderRepository::get_instance(&store, workspace.id, instance.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(moved.installation_id, installation_v2);
+    tokio::fs::remove_dir_all(root).await.unwrap();
 }

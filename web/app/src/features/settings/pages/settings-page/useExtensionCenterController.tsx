@@ -35,7 +35,9 @@ import {
 } from '../../api/i18n-catalog';
 import {
   settingsMcpCatalogQueryKey,
-  settingsMcpInterfaceCapabilitiesQueryKey
+  settingsMcpInstancesQueryKey,
+  settingsMcpInterfaceCapabilitiesQueryKey,
+  settingsMcpToolsQueryKey
 } from '../../api/mcp-management';
 import {
   pluginSettingsPagesQueryKey,
@@ -224,6 +226,8 @@ export function useExtensionCenterController({
         queryKey: ['settings', 'extension-center']
       }),
       queryClient.invalidateQueries({ queryKey: settingsMcpCatalogQueryKey }),
+      queryClient.invalidateQueries({ queryKey: settingsMcpInstancesQueryKey }),
+      queryClient.invalidateQueries({ queryKey: settingsMcpToolsQueryKey }),
       queryClient.invalidateQueries({
         queryKey: settingsMcpInterfaceCapabilitiesQueryKey
       }),

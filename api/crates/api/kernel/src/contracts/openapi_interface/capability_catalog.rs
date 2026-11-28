@@ -4,7 +4,14 @@ use std::{
 };
 
 use control_plane::{
-    application_public_api::published_workflow_operation::build_published_workflow_operations,
+    application_public_api::{
+        mapping::WorkflowExtensionHttpMethod,
+        publications::ApplicationPublicationVersionRecord,
+        published_workflow_operation::{
+            build_published_workflow_operations, validate_published_workflow_contract,
+            workflow_route_shapes_conflict, PublishedWorkflowOperation,
+        },
+    },
     ports::{ApplicationPublicationRepository, ModelDefinitionRepository},
 };
 use serde_json::{json, Value};
@@ -62,6 +69,19 @@ pub struct OpenApiCapabilityCatalogEntry {
     pub activated_operation: Option<ActivatedInterfaceOperationProjection>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenApiCapabilityIndexEntry {
+    pub interface_id: String,
+    pub method: String,
+    pub path: String,
+    pub name: String,
+    pub short_description: String,
+    pub source: OpenApiCapabilitySource,
+    pub risk_level: &'static str,
+    pub bindable: bool,
+    pub disabled_reason: Option<&'static str>,
+}
+
 #[derive(Debug, Clone)]
 pub struct OpenApiCapabilityCatalogSummary {
     pub interface_id: String,
@@ -100,7 +120,7 @@ pub async fn query_openapi_capability_catalog(
     query_openapi_capability_catalog_with(
         &OpenApiCapabilityCatalogDependencies {
             store: state.store.clone(),
-            console_operations: state.console_operation_registry.inventory().clone(),
+            console_operations: state.console_operation_registry.shared_inventory(),
             interface_registry: state
                 .extension_boot_snapshot
                 .as_ref()
@@ -196,7 +216,7 @@ pub async fn get_openapi_capability(
     get_openapi_capability_with(
         &OpenApiCapabilityCatalogDependencies {
             store: state.store.clone(),
-            console_operations: state.console_operation_registry.inventory().clone(),
+            console_operations: state.console_operation_registry.shared_inventory(),
             interface_registry: state
                 .extension_boot_snapshot
                 .as_ref()
@@ -216,12 +236,29 @@ pub async fn get_openapi_capability_with(
     workspace_id: uuid::Uuid,
     interface_id: &str,
 ) -> Result<Option<OpenApiCapabilityCatalogEntry>, ApiError> {
-    Ok(
-        build_openapi_capability_catalog_with(dependencies, workspace_id)
-            .await?
-            .into_iter()
-            .find(|entry| entry.interface.operation_id == interface_id),
-    )
+    if let Some((operation, spec)) = static_operation(dependencies, interface_id) {
+        return Ok(static_entry(&operation, &spec));
+    }
+    if let Some((model, operation_code, operation)) =
+        model_operation(dependencies, workspace_id, interface_id).await?
+    {
+        let entry = runtime_data_model_docs::build_operation_openapi(
+            &model,
+            &operation_code,
+            &dependencies.template_catalog,
+        )
+        .and_then(|spec| catalog_entry_from_operation(&operation, &spec))
+        .map(|interface| capability_entry(interface, model_source(&model), None));
+        return Ok(entry);
+    }
+    if let Some(publication) =
+        workflow_publication(dependencies, workspace_id, interface_id).await?
+    {
+        let operation = PublishedWorkflowOperation::from_publication(publication)
+            .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
+        return workflow_entry(operation).map(Some);
+    }
+    Ok(missing_interface(dependencies, interface_id).map(missing_openapi_entry))
 }
 
 pub async fn get_openapi_capability_by_route(
@@ -233,7 +270,7 @@ pub async fn get_openapi_capability_by_route(
     get_openapi_capability_by_route_with(
         &OpenApiCapabilityCatalogDependencies {
             store: state.store.clone(),
-            console_operations: state.console_operation_registry.inventory().clone(),
+            console_operations: state.console_operation_registry.shared_inventory(),
             interface_registry: state
                 .extension_boot_snapshot
                 .as_ref()
@@ -274,7 +311,7 @@ async fn openapi_capability_catalog_summaries_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     workspace_id: uuid::Uuid,
 ) -> Result<Vec<OpenApiCapabilityCatalogSummary>, ApiError> {
-    let mut summaries = build_openapi_capability_catalog_with(dependencies, workspace_id)
+    let mut summaries = list_openapi_capability_index_with(dependencies, workspace_id)
         .await?
         .into_iter()
         .filter(|entry| {
@@ -283,12 +320,12 @@ async fn openapi_capability_catalog_summaries_with(
                 OpenApiCapabilitySource::BuiltinDataModelCrud
                     | OpenApiCapabilitySource::WorkspaceDataModelCrud
                     | OpenApiCapabilitySource::PublishedWorkflow
-            ) || static_operation_is_bindable(&entry.interface.path)
+            ) || static_operation_is_bindable(&entry.path)
         })
         .map(|entry| OpenApiCapabilityCatalogSummary {
-            interface_id: entry.interface.operation_id,
-            method: entry.interface.method,
-            path: entry.interface.path,
+            interface_id: entry.interface_id,
+            method: entry.method,
+            path: entry.path,
             source: entry.source,
         })
         .collect::<Vec<_>>();
@@ -308,7 +345,7 @@ pub async fn build_openapi_capability_catalog(
     build_openapi_capability_catalog_with(
         &OpenApiCapabilityCatalogDependencies {
             store: state.store.clone(),
-            console_operations: state.console_operation_registry.inventory().clone(),
+            console_operations: state.console_operation_registry.shared_inventory(),
             interface_registry: state
                 .extension_boot_snapshot
                 .as_ref()
@@ -325,7 +362,7 @@ pub async fn build_openapi_capability_catalog(
 #[derive(Clone)]
 pub struct OpenApiCapabilityCatalogDependencies {
     pub store: storage_durable_postgres::MainDurableStore,
-    pub console_operations: access_control::ConsoleOperationCompiledInventory,
+    pub console_operations: Arc<access_control::ConsoleOperationCompiledInventory>,
     pub interface_registry: Option<Arc<interface_runtime::CompiledInterfaceRegistry>>,
     pub api_docs: Arc<crate::openapi_docs::ApiDocsRegistry>,
     pub template_catalog: runtime_core::data_model_template_registry::DataModelTemplateCatalog,
@@ -367,93 +404,33 @@ pub async fn build_openapi_capability_catalog_with(
     workspace_id: uuid::Uuid,
 ) -> Result<Vec<OpenApiCapabilityCatalogEntry>, ApiError> {
     let mut entries = Vec::new();
-    let compiled_interfaces = dependencies
-        .console_operations
-        .interfaces
-        .iter()
-        .map(|interface| {
-            (
-                route_identity(&interface.route.method, &interface.route.path),
-                interface,
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    let mut documented_console_routes = BTreeSet::new();
-
-    for category in &dependencies.api_docs.catalog().categories {
-        let Some(operations) = dependencies.api_docs.category_operations(&category.id) else {
+    let mut documented_routes = BTreeSet::new();
+    for operation in static_operations(dependencies) {
+        let Some(spec) = dependencies.api_docs.operation_spec_view(&operation.id) else {
             continue;
         };
-        for operation in &operations.operations {
-            let Some(spec) = dependencies.api_docs.operation_spec_view(&operation.id) else {
-                continue;
-            };
-            let Some(interface) = super::catalog_entry_from_view(operation, &spec) else {
-                continue;
-            };
-            let route = route_identity(&operation.method, &operation.path);
-            if compiled_interfaces.contains_key(&route) {
-                documented_console_routes.insert(route);
-            }
-            let disabled_reason = static_disabled_reason(operation, spec.source(), &interface);
-            entries.push(OpenApiCapabilityCatalogEntry {
-                risk_level: operation_risk_level(&interface.method),
-                interface,
-                source: OpenApiCapabilitySource::StaticApiDocs,
-                bindable: disabled_reason.is_none(),
-                disabled_reason,
-                activated_operation: None,
-            });
+        if let Some(entry) = static_entry(operation, &spec) {
+            documented_routes.insert(route_identity(&operation.method, &operation.path));
+            entries.push(entry);
         }
     }
+    entries.extend(missing_interfaces(dependencies, &documented_routes).map(missing_openapi_entry));
 
-    entries.extend(
-        compiled_interfaces
-            .into_iter()
-            .filter(|(route, _)| !documented_console_routes.contains(route))
-            .map(|(_, interface)| missing_openapi_entry(interface)),
-    );
-
-    let mut models = dependencies
-        .store
-        .list_model_definitions(workspace_id)
-        .await?;
-    models.retain(|model| model.status == domain::DataModelStatus::Published);
-    models.sort_by(|left, right| left.code.cmp(&right.code));
-    let operations =
-        runtime_data_model_docs::build_category_operations(&models, &dependencies.template_catalog);
-    for operation in operations.operations {
-        let Ok(Some((model_id, operation_code))) =
-            runtime_data_model_docs::parse_operation_id(&operation.id)
+    for model in published_models(dependencies, workspace_id).await? {
+        let Some(spec) =
+            runtime_data_model_docs::build_model_openapi(&model, &dependencies.template_catalog)
         else {
             continue;
         };
-        let Some(model) = models.iter().find(|model| model.id == model_id) else {
-            continue;
-        };
-        let Some(spec) = runtime_data_model_docs::build_operation_openapi(
-            model,
-            &operation_code,
+        let source = model_source(&model);
+        let operations = runtime_data_model_docs::build_category_operations(
+            std::slice::from_ref(&model),
             &dependencies.template_catalog,
-        ) else {
-            continue;
-        };
-        let Some(interface) = catalog_entry_from_operation(&operation, &spec) else {
-            continue;
-        };
-        let source = if domain::builtin_contract_for_model(model).is_some() {
-            OpenApiCapabilitySource::BuiltinDataModelCrud
-        } else {
-            OpenApiCapabilitySource::WorkspaceDataModelCrud
-        };
-        entries.push(OpenApiCapabilityCatalogEntry {
-            risk_level: operation_risk_level(&interface.method),
-            interface,
-            source,
-            bindable: true,
-            disabled_reason: None,
-            activated_operation: None,
-        });
+        );
+        entries.extend(operations.operations.iter().filter_map(|operation| {
+            catalog_entry_from_operation(operation, &spec)
+                .map(|interface| capability_entry(interface, source, None))
+        }));
     }
 
     let publications = dependencies
@@ -466,40 +443,7 @@ pub async fn build_openapi_capability_catalog_with(
         .into_iter()
         .filter(|operation| operation.workspace_id == workspace_id)
     {
-        let path = operation.public_path();
-        let method = operation.method.as_str().to_string();
-        let docs_operation = DocsCatalogOperation {
-            id: operation.interface_id.clone(),
-            method: method.clone(),
-            path: path.clone(),
-            summary: Some(format!(
-                "Invoke published workflow {}",
-                operation.application_id
-            )),
-            description: Some("Invoke the active publication of a Workflow application".into()),
-            tags: vec!["Workflow Extensions".into()],
-            group: "workflow_extensions".into(),
-            deprecated: false,
-        };
-        let spec = serde_json::json!({
-            "openapi": "3.1.0",
-            "paths": {
-                (path): {
-                    (method.to_ascii_lowercase()): crate::openapi::workflow_extension_operation(&operation)
-                }
-            }
-        });
-        let interface = catalog_entry_from_operation(&docs_operation, &spec).ok_or(
-            control_plane::errors::ControlPlaneError::Conflict("workflow_interface_contract"),
-        )?;
-        entries.push(OpenApiCapabilityCatalogEntry {
-            risk_level: operation_risk_level(&interface.method),
-            interface,
-            source: OpenApiCapabilitySource::PublishedWorkflow,
-            bindable: true,
-            disabled_reason: None,
-            activated_operation: None,
-        });
+        entries.push(workflow_entry(operation)?);
     }
 
     entries.sort_by(|left, right| {
@@ -508,6 +452,380 @@ pub async fn build_openapi_capability_catalog_with(
             .cmp(&right.interface.operation_id)
     });
     Ok(entries)
+}
+
+pub async fn list_openapi_capability_index_with(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+) -> Result<Vec<OpenApiCapabilityIndexEntry>, ApiError> {
+    let mut entries = Vec::new();
+    let mut documented_routes = BTreeSet::new();
+    for operation in static_operations(dependencies) {
+        let Some(spec) = dependencies.api_docs.operation_spec_view(&operation.id) else {
+            continue;
+        };
+        if let Some(entry) = static_index_entry(operation, &spec) {
+            documented_routes.insert(route_identity(&operation.method, &operation.path));
+            entries.push(entry);
+        }
+    }
+    entries.extend(missing_interfaces(dependencies, &documented_routes).map(missing_index_entry));
+
+    for model in published_models(dependencies, workspace_id).await? {
+        let source = model_source(&model);
+        let operations = runtime_data_model_docs::build_category_operations(
+            std::slice::from_ref(&model),
+            &dependencies.template_catalog,
+        );
+        entries.extend(
+            operations
+                .operations
+                .into_iter()
+                .map(|operation| index_entry(operation, source, None)),
+        );
+    }
+
+    let publications = dependencies
+        .store
+        .list_enabled_extension_publications()
+        .await?;
+    // Preserve the legacy catalog's validation of the globally mounted workflow routes.
+    let mut workflows = Vec::new();
+    for publication in &publications {
+        let operation = workflow_metadata(publication)?;
+        if workflows
+            .iter()
+            .any(|(_, candidate): &(uuid::Uuid, DocsCatalogOperation)| {
+                candidate.id != operation.id
+                    && candidate.method == operation.method
+                    && workflow_route_shapes_conflict(&candidate.path, &operation.path)
+            })
+        {
+            return Err(
+                control_plane::errors::ControlPlaneError::Conflict("workflow_route").into(),
+            );
+        }
+        workflows.push((publication.workspace_id, operation));
+    }
+    entries.extend(
+        workflows
+            .into_iter()
+            .filter(|(id, _)| *id == workspace_id)
+            .map(|(_, operation)| {
+                index_entry(operation, OpenApiCapabilitySource::PublishedWorkflow, None)
+            }),
+    );
+    entries.sort_by(|left, right| left.interface_id.cmp(&right.interface_id));
+    Ok(entries)
+}
+
+pub async fn get_openapi_capability_index_entry_with(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+    interface_id: &str,
+) -> Result<Option<OpenApiCapabilityIndexEntry>, ApiError> {
+    if let Some((operation, spec)) = static_operation(dependencies, interface_id) {
+        return Ok(static_index_entry(&operation, &spec));
+    }
+    if let Some((model, _, operation)) =
+        model_operation(dependencies, workspace_id, interface_id).await?
+    {
+        return Ok(Some(index_entry(operation, model_source(&model), None)));
+    }
+    if let Some(publication) =
+        workflow_publication(dependencies, workspace_id, interface_id).await?
+    {
+        return Ok(Some(index_entry(
+            workflow_metadata(&publication)?,
+            OpenApiCapabilitySource::PublishedWorkflow,
+            None,
+        )));
+    }
+    Ok(missing_interface(dependencies, interface_id).map(missing_index_entry))
+}
+
+fn static_operations(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+) -> impl Iterator<Item = &DocsCatalogOperation> {
+    dependencies
+        .api_docs
+        .catalog()
+        .categories
+        .iter()
+        .filter_map(|category| dependencies.api_docs.category_operations(&category.id))
+        .flat_map(|category| &category.operations)
+}
+
+fn static_operation<'a>(
+    dependencies: &'a OpenApiCapabilityCatalogDependencies,
+    interface_id: &str,
+) -> Option<(
+    DocsCatalogOperation,
+    crate::openapi_docs::OperationSpecView<'a>,
+)> {
+    Some((
+        dependencies.api_docs.operation(interface_id)?,
+        dependencies.api_docs.operation_spec_view(interface_id)?,
+    ))
+}
+
+fn static_entry(
+    operation: &DocsCatalogOperation,
+    spec: &crate::openapi_docs::OperationSpecView<'_>,
+) -> Option<OpenApiCapabilityCatalogEntry> {
+    let interface = super::catalog_entry_from_view(operation, spec)?;
+    let disabled_reason = static_disabled_reason(
+        operation,
+        spec.source(),
+        interface.response_media_type.as_deref(),
+    );
+    Some(capability_entry(
+        interface,
+        OpenApiCapabilitySource::StaticApiDocs,
+        disabled_reason,
+    ))
+}
+
+fn static_index_entry(
+    operation: &DocsCatalogOperation,
+    spec: &crate::openapi_docs::OperationSpecView<'_>,
+) -> Option<OpenApiCapabilityIndexEntry> {
+    spec.source()
+        .get("paths")?
+        .get(&operation.path)?
+        .get(operation.method.to_ascii_lowercase())?;
+    let media_type = if static_operation_is_bindable(&operation.path) {
+        super::catalog::response_media_type_from_view(operation, spec)
+    } else {
+        None
+    };
+    let disabled_reason = static_disabled_reason(operation, spec.source(), media_type.as_deref());
+    Some(index_entry(
+        operation.clone(),
+        OpenApiCapabilitySource::StaticApiDocs,
+        disabled_reason,
+    ))
+}
+
+fn capability_entry(
+    interface: OpenApiInterfaceCatalogEntry,
+    source: OpenApiCapabilitySource,
+    disabled_reason: Option<&'static str>,
+) -> OpenApiCapabilityCatalogEntry {
+    OpenApiCapabilityCatalogEntry {
+        risk_level: operation_risk_level(&interface.method),
+        interface,
+        source,
+        bindable: disabled_reason.is_none(),
+        disabled_reason,
+        activated_operation: None,
+    }
+}
+
+fn index_entry(
+    operation: DocsCatalogOperation,
+    source: OpenApiCapabilitySource,
+    disabled_reason: Option<&'static str>,
+) -> OpenApiCapabilityIndexEntry {
+    OpenApiCapabilityIndexEntry {
+        name: operation.summary.unwrap_or_else(|| operation.id.clone()),
+        short_description: operation
+            .description
+            .unwrap_or_else(|| format!("{} {}", operation.method, operation.path)),
+        risk_level: operation_risk_level(&operation.method),
+        interface_id: operation.id,
+        method: operation.method,
+        path: operation.path,
+        source,
+        bindable: disabled_reason.is_none(),
+        disabled_reason,
+    }
+}
+
+async fn published_models(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+) -> Result<Vec<domain::ModelDefinitionRecord>, ApiError> {
+    let mut models = dependencies
+        .store
+        .list_model_definitions(workspace_id)
+        .await?;
+    models.retain(|model| model.status == domain::DataModelStatus::Published);
+    models.sort_by(|left, right| left.code.cmp(&right.code));
+    Ok(models)
+}
+
+async fn model_operation(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+    interface_id: &str,
+) -> Result<Option<(domain::ModelDefinitionRecord, String, DocsCatalogOperation)>, ApiError> {
+    let Ok(Some((model_id, operation_code))) =
+        runtime_data_model_docs::parse_operation_id(interface_id)
+    else {
+        return Ok(None);
+    };
+    let Some(model) = dependencies
+        .store
+        .get_model_definition(workspace_id, model_id)
+        .await?
+        .filter(|model| model.status == domain::DataModelStatus::Published)
+    else {
+        return Ok(None);
+    };
+    Ok(runtime_data_model_docs::operation_metadata(
+        &model,
+        &operation_code,
+        &dependencies.template_catalog,
+    )
+    .filter(|operation| operation.id == interface_id)
+    .map(|operation| (model, operation_code, operation)))
+}
+
+fn model_source(model: &domain::ModelDefinitionRecord) -> OpenApiCapabilitySource {
+    if domain::builtin_contract_for_model(model).is_some() {
+        OpenApiCapabilitySource::BuiltinDataModelCrud
+    } else {
+        OpenApiCapabilitySource::WorkspaceDataModelCrud
+    }
+}
+
+async fn workflow_publication(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+    interface_id: &str,
+) -> Result<Option<ApplicationPublicationVersionRecord>, ApiError> {
+    let Some(application_id) = interface_id.strip_prefix("published_workflow_operation:") else {
+        return Ok(None);
+    };
+    Ok(dependencies
+        .store
+        .list_enabled_extension_publications()
+        .await?
+        .into_iter()
+        .find(|publication| {
+            publication.workspace_id == workspace_id
+                && publication.application_id.to_string() == application_id
+        }))
+}
+
+fn workflow_metadata(
+    publication: &ApplicationPublicationVersionRecord,
+) -> Result<DocsCatalogOperation, ApiError> {
+    let conflict = || control_plane::errors::ControlPlaneError::Conflict("workflow_route");
+    let extension = publication
+        .mapping_snapshot
+        .extension
+        .as_ref()
+        .ok_or_else(conflict)?;
+    validate_published_workflow_contract(extension, &publication.document_snapshot)
+        .map_err(|_| conflict())?;
+    Ok(workflow_docs(
+        format!(
+            "published_workflow_operation:{}",
+            publication.application_id
+        ),
+        publication.application_id,
+        extension.method,
+        format!("/api/ex/{}", extension.slug),
+    ))
+}
+
+fn workflow_docs(
+    id: String,
+    application_id: uuid::Uuid,
+    method: WorkflowExtensionHttpMethod,
+    path: String,
+) -> DocsCatalogOperation {
+    DocsCatalogOperation {
+        id,
+        method: method.as_str().to_string(),
+        path,
+        summary: Some(format!("Invoke published workflow {application_id}")),
+        description: Some("Invoke the active publication of a Workflow application".into()),
+        tags: vec!["Workflow Extensions".into()],
+        group: "workflow_extensions".into(),
+        deprecated: false,
+    }
+}
+
+fn workflow_entry(
+    operation: PublishedWorkflowOperation,
+) -> Result<OpenApiCapabilityCatalogEntry, ApiError> {
+    let docs = workflow_docs(
+        operation.interface_id.clone(),
+        operation.application_id,
+        operation.method,
+        operation.public_path(),
+    );
+    let spec = json!({"openapi": "3.1.0", "paths": {
+        (&docs.path): { (docs.method.to_ascii_lowercase()): crate::openapi::workflow_extension_operation(&operation) }
+    }});
+    let interface = catalog_entry_from_operation(&docs, &spec).ok_or(
+        control_plane::errors::ControlPlaneError::Conflict("workflow_interface_contract"),
+    )?;
+    Ok(capability_entry(
+        interface,
+        OpenApiCapabilitySource::PublishedWorkflow,
+        None,
+    ))
+}
+
+fn missing_interfaces<'a>(
+    dependencies: &'a OpenApiCapabilityCatalogDependencies,
+    documented_routes: &'a BTreeSet<(String, String)>,
+) -> impl Iterator<Item = &'a access_control::ConsoleInterfaceInventoryEntry> {
+    dependencies
+        .console_operations
+        .interfaces
+        .iter()
+        .map(|interface| {
+            (
+                route_identity(&interface.route.method, &interface.route.path),
+                interface,
+            )
+        })
+        .collect::<BTreeMap<_, _>>()
+        .into_iter()
+        .filter(|(route, _)| !documented_routes.contains(route))
+        .map(|(_, interface)| interface)
+}
+
+fn missing_interface<'a>(
+    dependencies: &'a OpenApiCapabilityCatalogDependencies,
+    interface_id: &str,
+) -> Option<&'a access_control::ConsoleInterfaceInventoryEntry> {
+    let interface = dependencies
+        .console_operations
+        .interfaces
+        .iter()
+        .find(|interface| interface.interface_id == interface_id)?;
+    let route = route_identity(&interface.route.method, &interface.route.path);
+    (!static_operations(dependencies).any(|operation| {
+        route_identity(&operation.method, &operation.path) == route
+            && dependencies
+                .api_docs
+                .operation_spec_view(&operation.id)
+                .is_some()
+    }))
+    .then_some(interface)
+}
+
+fn missing_index_entry(
+    compiled: &access_control::ConsoleInterfaceInventoryEntry,
+) -> OpenApiCapabilityIndexEntry {
+    let method = compiled.route.method.to_ascii_uppercase();
+    OpenApiCapabilityIndexEntry {
+        risk_level: operation_risk_level(&method),
+        interface_id: compiled.interface_id.clone(),
+        method,
+        path: canonical_openapi_path(&compiled.route.path),
+        name: compiled.summary.clone(),
+        short_description: compiled.description.clone(),
+        source: OpenApiCapabilitySource::StaticApiDocs,
+        bindable: false,
+        disabled_reason: Some("missing_openapi_contract"),
+    }
 }
 
 pub fn operation_risk_level(method: &str) -> &'static str {
@@ -528,12 +846,12 @@ fn static_operation_is_bindable(path: &str) -> bool {
 fn static_disabled_reason(
     operation: &DocsCatalogOperation,
     spec: &Value,
-    interface: &OpenApiInterfaceCatalogEntry,
+    response_media_type: Option<&str>,
 ) -> Option<&'static str> {
     if !static_operation_is_bindable(&operation.path) {
         return Some("unsupported_interface_scope");
     }
-    match interface.response_media_type.as_deref() {
+    match response_media_type {
         Some(media_type) if is_json_media_type(media_type) => None,
         Some(_) => Some("unsupported_response_media_type"),
         None if has_no_content_success(operation, spec) => None,
@@ -619,3 +937,7 @@ fn canonical_openapi_path(path: &str) -> String {
 fn escape_pointer(token: &str) -> String {
     token.replace('~', "~0").replace('/', "~1")
 }
+
+#[cfg(test)]
+#[path = "_tests/capability_catalog.rs"]
+mod tests;

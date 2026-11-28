@@ -4,8 +4,8 @@
     {
       "file": "web/app/src/shared/i18n/application-resource-loader.ts",
       "rule": "react-doctor/async-await-in-loop",
-      "sourceSha256": "a6441f309b63abbc800e95f74c1e13354cedd04cdaeb6db38d105003732955fa",
-      "reason": "Subsequent iteration inputs are not known up front: new route namespace requests can arrive during the current activation await. Rechecking the live demand set and activation token prevents partial or superseded locale publication.",
+      "sourceSha256": "a2d7c39396945cca56807a80fb5c653916273ee5203423a9b5e5e835c62e8287",
+      "reason": "activate and activatePrimary already fan out independent bundle imports within a pass. Each pass must await those imports before checking the activation token and the now-live demanded namespaces. The loader tests exercise demand arriving mid-switch, supersession, primary-only loading and retained demand; precomputing future passes would miss new demand.",
       "evidenceSet": 0
     }
   ],
@@ -13,7 +13,7 @@
     [
       {
         "file": "web/app/src/shared/i18n/_tests/application-resource-loader.test.ts",
-        "sha256": "dd984ae1d16bbcd171e3e381d34ecf7d541545fd478d9ec1cabfd8770fd5d21a"
+        "sha256": "08092bebbeed69f6b633316f7552265d006c95829706f4b4728be0ae929a220d"
       }
     ]
   ]

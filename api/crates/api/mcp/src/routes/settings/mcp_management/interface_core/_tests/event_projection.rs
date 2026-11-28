@@ -53,7 +53,7 @@ fn no_body_operation_has_only_its_documented_location() {
         json!({"path":{"instance_id":"instance-a"}})
     );
     assert_eq!(
-        McpCoreInput::ListInstances
+        McpCoreInput::ListInstances(McpInstancesQuery::default())
             .project_document_input(&op)
             .unwrap(),
         json!({})
@@ -63,5 +63,37 @@ fn no_body_operation_has_only_its_documented_location() {
             .project_document_output(&op)
             .unwrap(),
         Value::Null
+    );
+}
+
+#[test]
+fn instance_page_keeps_full_document_and_bounded_managed_summary() {
+    let op = operation("mcp.instances.view");
+    let input = McpCoreInput::InstancesPage(McpInstancePageHttpQuery {
+        page: Some(2),
+        keyword: Some("search term".into()),
+        ..Default::default()
+    });
+    assert_eq!(
+        input.project_document_input(&op).unwrap(),
+        json!({"query":{"page":2,"keyword":"search term"}})
+    );
+    assert_eq!(
+        input.project_for_managed_hook().unwrap(),
+        json!({"variant":"InstancesPage","0":{"page":2,"page_size":null,"search_byte_count":11}})
+    );
+    let output = McpCoreOutput::InstancesPage(McpInstancePageResponse {
+        items: vec![],
+        total: 8,
+        page: 2,
+        page_size: 20,
+    });
+    assert_eq!(
+        output.project_document_output(&op).unwrap(),
+        json!({"items":[],"total":8,"page":2,"page_size":20})
+    );
+    assert_eq!(
+        output.project_for_managed_hook().unwrap()["0"]["item_count"],
+        0
     );
 }

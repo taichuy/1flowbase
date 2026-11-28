@@ -130,7 +130,7 @@ impl ModelProviderSlotBinding {
                 .clone()
                 .or_else(|| installation.expected_checksum.clone()),
             manifest_fingerprint: installation.artifact.manifest_fingerprint.clone(),
-            source_identity: provider_source_identity(installation),
+            source_identity: super::runtime_artifact_source_identity(installation),
             source_kind: installation.source_kind.clone(),
             provenance,
             graph_fingerprint,
@@ -200,6 +200,7 @@ fn validate_dynamic_installation(
     if installation.verification_status != domain::PluginVerificationStatus::Valid
         || installation.desired_state != domain::PluginDesiredState::ActiveRequested
         || installation.artifact.artifact_status != domain::PluginArtifactInstanceStatus::Ready
+        || domain::has_local_artifact_warning(installation.artifact.last_error.as_deref())
         || !matches!(
             installation.runtime_status(),
             domain::PluginRuntimeStatus::Inactive | domain::PluginRuntimeStatus::Active
@@ -243,18 +244,4 @@ fn legacy_manifest_eligibility(
         expected_versioned_plugin_id: installation.plugin_id.clone(),
         expected_raw_manifest_fingerprint: fingerprint,
     }))
-}
-
-fn provider_source_identity(installation: &domain::LocalPluginInstallationRecord) -> String {
-    format!(
-        "installation_id={};checksum={};manifest_fingerprint={};updated_at={}",
-        installation.id,
-        installation.expected_checksum.as_deref().unwrap_or(""),
-        installation
-            .artifact
-            .manifest_fingerprint
-            .as_deref()
-            .unwrap_or(""),
-        installation.updated_at.unix_timestamp_nanos()
-    )
 }

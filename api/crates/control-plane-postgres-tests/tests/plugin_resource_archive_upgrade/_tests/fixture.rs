@@ -23,7 +23,10 @@ impl ProviderRuntimePort for RuntimeUnavailable {
     ) -> Result<()> {
         bail!("fixture_runtime_unavailable")
     }
-    async fn ensure_loaded(&self, _: &domain::LocalPluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(
+        &self,
+        _: &domain::LocalPluginInstallationRecord,
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         bail!("fixture_runtime_unavailable")
     }
     async fn deactivate_plugin(&self, _: &domain::PluginInstallationRecord) -> Result<()> {

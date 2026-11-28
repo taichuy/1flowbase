@@ -58,8 +58,11 @@ impl ProviderRuntimePort for PausedProvider {
         Ok(())
     }
 
-    async fn ensure_loaded(&self, _: &domain::LocalPluginInstallationRecord) -> anyhow::Result<()> {
-        Ok(())
+    async fn ensure_loaded(
+        &self,
+        _: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
+        Ok(None)
     }
     async fn validate_provider(
         &self,

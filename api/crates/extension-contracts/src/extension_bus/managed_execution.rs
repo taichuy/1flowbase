@@ -74,6 +74,32 @@ macro_rules! managed_fingerprint {
 
 // Digest of the immutable installed manifest bytes. The artifact resolver owns materialization.
 managed_fingerprint!(ManagedArtifactFingerprint);
+
+impl ManagedArtifactFingerprint {
+    pub fn from_reader(mut reader: impl std::io::Read) -> std::io::Result<(Self, u64)> {
+        let mut buffer = [0; 64 * 1024];
+        let mut hasher = Sha256::new();
+        let mut total_bytes = 0;
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(bytes) => {
+                    hasher.update(&buffer[..bytes]);
+                    total_bytes += bytes as u64;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error),
+            }
+        }
+        Ok((
+            Self(format!(
+                "sha256:{:x}",
+                base16ct::HexDisplay(&hasher.finalize())
+            )),
+            total_bytes,
+        ))
+    }
+}
 // Digest of the canonical contribution descriptor and its exact execution binding.
 managed_fingerprint!(ManagedBindingFingerprint);
 

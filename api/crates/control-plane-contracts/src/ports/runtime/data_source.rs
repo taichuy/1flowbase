@@ -5,7 +5,13 @@ pub trait DataSourceRuntimePort: Send + Sync {
     async fn ensure_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>>;
+    async fn deactivate_plugin(
+        &self,
+        _installation: &domain::PluginInstallationRecord,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     async fn compatible_data_model_templates(
         &self,
         installation: &domain::LocalPluginInstallationRecord,

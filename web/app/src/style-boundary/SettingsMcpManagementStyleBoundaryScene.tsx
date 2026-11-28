@@ -9,10 +9,6 @@ import {
 
 import { McpManagementPanel } from '../features/settings/components/mcp-management/McpManagementPanel';
 import { McpTemplateLibrary } from '../features/settings/components/mcp-management/bundle/McpTemplateLibrary';
-import {
-  styleBoundaryMcpCatalog,
-  styleBoundaryMcpInterfaceCapabilities
-} from './scene-fixtures';
 
 export function SettingsMcpManagementStyleBoundaryScene() {
   const router = useMemo(() => {
@@ -25,11 +21,7 @@ export function SettingsMcpManagementStyleBoundaryScene() {
       path: '/',
       component: () => (
         <>
-          <McpManagementPanel
-            canManage
-            catalog={styleBoundaryMcpCatalog}
-            interfaceCapabilities={styleBoundaryMcpInterfaceCapabilities}
-          />
+          <McpManagementPanel canManage />
           <McpTemplateLibrary variant="compact" />
         </>
       )

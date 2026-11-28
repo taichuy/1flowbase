@@ -150,9 +150,6 @@ impl ManagedCompositionPort for ManagedExtensionComposition {
     async fn current_snapshots(&self) -> BTreeMap<Uuid, Arc<ManagedWorkspaceSnapshot>> {
         Self::current_snapshots(self).await
     }
-    async fn refresh_boot_snapshots(self: Arc<Self>) -> Result<()> {
-        Self::refresh_boot_snapshots(&self).await
-    }
     fn start_reclamation(self: Arc<Self>) {
         Self::start_reclamation(&self)
     }

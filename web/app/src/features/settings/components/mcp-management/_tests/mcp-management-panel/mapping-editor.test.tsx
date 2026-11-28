@@ -41,7 +41,7 @@ describe('McpManagementPanel', () => {
     );
 
     expect(
-      within(dialog).getByLabelText('field_group mapping')
+      await within(dialog).findByLabelText('field_group mapping')
     ).toBeInTheDocument();
     expect(
       within(dialog).getByLabelText('field_group mapping.input')
@@ -270,7 +270,7 @@ describe('McpManagementPanel', () => {
       within(dialog).getByRole('button', { name: '获取接口参数' })
     );
     for (const name of ['des_id', 'max_inline_chars', 'response_fields']) {
-      const row = within(dialog).getByLabelText(`call_parameter ${name}`);
+      const row = await within(dialog).findByLabelText(`call_parameter ${name}`);
       expect(row).toHaveClass('mcp-input-mapping-editor__row');
       expect(within(row).getByLabelText(`required ${name}`)).not.toBeChecked();
     }

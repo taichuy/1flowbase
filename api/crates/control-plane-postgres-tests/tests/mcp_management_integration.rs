@@ -770,3 +770,6 @@ mod plugin_template;
 
 #[path = "mcp_management_integration/directory.rs"]
 mod directory;
+
+#[path = "mcp_management_integration/progressive_queries.rs"]
+mod progressive_queries;

@@ -1,3 +1,5 @@
+pub use domain::{LoadedRuntimeArtifactIdentity, RuntimeArtifactMarkerIdentity};
+
 use std::{collections::BTreeSet, fmt, sync::Arc};
 
 use async_trait::async_trait;
@@ -202,7 +204,7 @@ pub trait RuntimeExecutionPort: Send + Sync {
     async fn activate_provider_distribution_rule(
         &self,
         request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError>;
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError>;
 
     async fn deactivate_provider_distribution_rule(
         &self,
@@ -367,6 +369,7 @@ pub struct RuntimeManagedDuplexEvent {
 
 #[derive(Debug, Clone)]
 pub struct RuntimePackageActivation {
+    pub expected_manifest_fingerprint: Option<String>,
     pub plugin_id: String,
     pub artifact: RuntimeArtifactReference,
     pub source_identity: Option<String>,
@@ -375,11 +378,18 @@ pub struct RuntimePackageActivation {
 
 #[derive(Debug, Clone)]
 pub struct RuntimeNetworkEgressActivation {
+    pub expected_manifest_fingerprint: Option<String>,
     pub runtime_id: String,
     pub plugin_id: String,
     pub artifact: RuntimeArtifactReference,
     pub source_identity: String,
     pub secret_json: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoadedDataSourceActivation {
+    pub identity: LoadedRuntimeArtifactIdentity,
+    pub templates: Vec<DataModelTemplateDescriptor>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -400,7 +410,7 @@ pub trait ProviderRuntimePort: Send + Sync {
     async fn activate_provider(
         &self,
         request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError>;
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError>;
     async fn deactivate_provider(&self, plugin_id: &str) -> Result<(), RuntimeBackendError>;
 
     async fn reconcile_provider_worker_demand(
@@ -488,7 +498,7 @@ pub trait DataSourceRuntimePort: Send + Sync {
     async fn activate_data_source(
         &self,
         request: RuntimePackageActivation,
-    ) -> Result<Vec<DataModelTemplateDescriptor>, RuntimeBackendError>;
+    ) -> Result<LoadedDataSourceActivation, RuntimeBackendError>;
     async fn deactivate_data_source(&self, plugin_id: &str) -> Result<(), RuntimeBackendError>;
     async fn data_source_validate(
         &self,
@@ -634,7 +644,7 @@ pub trait CapabilityRuntimePort: Send + Sync {
     async fn activate_capability(
         &self,
         request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError>;
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError>;
     async fn deactivate_capability(&self, plugin_id: &str) -> Result<(), RuntimeBackendError>;
     async fn capability_validate(
         &self,
@@ -683,7 +693,7 @@ pub trait NetworkEgressRuntimePort: Send + Sync {
     async fn network_egress_activate(
         &self,
         request: RuntimeNetworkEgressActivation,
-    ) -> Result<(), RuntimeBackendError>;
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError>;
 
     async fn network_egress_sync(
         &self,

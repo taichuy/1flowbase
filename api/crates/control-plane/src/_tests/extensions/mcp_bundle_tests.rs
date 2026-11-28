@@ -240,6 +240,29 @@ impl McpManagementRepository for McpBundleFixtureRepository {
             .collect())
     }
 
+    async fn list_mcp_instances_with_counts(
+        &self,
+        _workspace_id: Uuid,
+        _status: Option<domain::McpInstanceStatus>,
+    ) -> anyhow::Result<Vec<McpInstanceSummaryRecord>> {
+        unreachable!("bundle fixture does not read instance summaries")
+    }
+
+    async fn list_mcp_instances_page(
+        &self,
+        _workspace_id: Uuid,
+        _query: &McpInstancePageQuery,
+    ) -> anyhow::Result<McpInstancePage> {
+        unreachable!("bundle fixture does not page instances")
+    }
+
+    async fn get_mcp_instance_directory_counts(
+        &self,
+        _instance_record_id: Uuid,
+    ) -> anyhow::Result<(i64, i64)> {
+        unreachable!("bundle fixture does not read directory counts")
+    }
+
     async fn get_mcp_instance(
         &self,
         workspace_id: Uuid,
@@ -528,12 +551,33 @@ impl McpManagementRepository for McpBundleFixtureRepository {
             .collect())
     }
 
-    async fn get_mcp_tool(
+    async fn list_mcp_tools_page(
         &self,
         _workspace_id: Uuid,
-        _tool_id: &str,
+        _query: &McpToolPageQuery,
+    ) -> anyhow::Result<McpToolPage> {
+        unreachable!("bundle fixture does not page tools")
+    }
+
+    async fn list_mcp_upstream_proxy_source_statuses(
+        &self,
+        _workspace_id: Uuid,
+        _pairs: &[(Uuid, String)],
+    ) -> anyhow::Result<Vec<(Uuid, String, domain::McpUpstreamSourceStatus)>> {
+        unreachable!("bundle fixture does not read proxy source statuses")
+    }
+
+    async fn get_mcp_tool(
+        &self,
+        workspace_id: Uuid,
+        tool_id: &str,
     ) -> anyhow::Result<Option<domain::McpToolRecord>> {
-        unreachable!("seed-only fixture does not read tools")
+        Ok(self
+            .export_snapshot()
+            .tools
+            .iter()
+            .find(|tool| tool.workspace_id == workspace_id && tool.tool_id == tool_id)
+            .cloned())
     }
 
     async fn create_mcp_tool(

@@ -106,23 +106,6 @@
       ]
     },
     {
-      "id": "managed-executable-blocking-pool",
-      "rule": "blocking-in-async-context",
-      "file": "api/crates/runtime-extension-host/src/managed_worker/binding.rs",
-      "snippet": "let bytes = match std::fs::read(&self.runtime_executable) {",
-      "reason": "LoadedManagedBinding::verify_executable performs a blocking immutable-artifact read and fingerprint check. RuntimeExtensionHost::verify_managed_executable moves the owned binding into spawn_blocking under the existing hash-budget permit before managed admission.",
-      "source_anchor": "    pub(crate) fn verify_executable(&self) -> extension_package_runtime::FrameworkResult<()> {\n        let started = std::time::Instant::now();\n        tracing::debug!(\n            contribution_id = self.contribution.contribution_id.as_str(),\n            status = \"started\",\n            \"managed executable verification\"\n        );\n        let bytes = match std::fs::read(&self.runtime_executable) {\n            Ok(bytes) => bytes,\n            Err(_) => {\n                tracing::debug!(\n                    contribution_id = self.contribution.contribution_id.as_str(),\n                    elapsed_us = started.elapsed().as_micros() as u64,\n                    status = \"read_failed\",\n                    \"managed executable verification\"\n                );\n                return Err(super::invalid(\"frozen managed executable is unavailable\"));\n            }",
-      "source_sha256": "f0533b383dfd2971669e13e58341b4fd27f0db5dc0bd734f4ca8aff136c5b9c2",
-      "evidence": [
-        {
-          "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "anchor": "    async fn verify_managed_executable(\n        &self,\n        handle: &extension_contracts::ManagedExecutionHandle,\n    ) -> Result<(), RuntimeBackendError> {\n        let hash_permit = self.admit_managed_hash()?;\n        let binding = self\n            .managed_workers\n            .read()\n            .await\n            .executable_for_handle(handle)\n            .map_err(RuntimeBackendError::from)?;\n        tokio::task::spawn_blocking(move || {\n            let _permit = hash_permit;\n            binding.verify_executable()\n        })\n        .await\n        .map_err(|_| {\n            RuntimeBackendError::from(\n                extension_package_runtime::PluginFrameworkError::invalid_provider_package(\n                    \"managed executable validation unavailable\",\n                ),\n            )\n        })?\n        .map_err(RuntimeBackendError::from)",
-          "sha256": "2e058d31907ed829a9835cbe29392e14d23af727790354e70656955877be8288",
-          "reason": "verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
-        }
-      ]
-    },
-    {
       "id": "native-settings-preparation-blocking-pool",
       "rule": "blocking-in-async-context",
       "file": "api/crates/control-plane/src/plugin_management/install/plugin_settings_templates.rs",

@@ -120,6 +120,7 @@ pub struct ProviderI18nCatalog {
 pub struct ProviderPackage {
     pub root: PathBuf,
     pub manifest: PluginManifestV1,
+    pub manifest_fingerprint: String,
     pub provider: ProviderDefinition,
     pub predefined_models: Vec<ProviderModelDescriptor>,
     pub i18n: ProviderI18nCatalog,
@@ -211,6 +212,7 @@ impl ProviderPackage {
         Ok(Self {
             root,
             manifest,
+            manifest_fingerprint: crate::canonical_manifest_fingerprint(manifest_raw.as_bytes()),
             provider,
             predefined_models,
             i18n,

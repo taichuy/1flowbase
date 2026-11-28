@@ -3,7 +3,11 @@ import { initReactI18next } from 'react-i18next';
 
 import authEnUS from '../../features/auth/i18n/en_US.json';
 import authZhHans from '../../features/auth/i18n/zh_Hans.json';
-import { FALLBACK_APP_LOCALE, SUPPORTED_APP_LOCALES } from './locales';
+import {
+  FALLBACK_APP_LOCALE,
+  resolveAppLocale,
+  SUPPORTED_APP_LOCALES
+} from './locales';
 import { getInitialAppLocale } from './initial-locale';
 import {
   applicationTranslationLoaders,
@@ -76,6 +80,17 @@ export function prepareApplicationI18n(locale: AppLocale, pathname: string) {
   return import.meta.env.VITEST
     ? applicationI18nLoader.activate(locale, namespaces)
     : applicationI18nLoader.activatePrimary(locale, namespaces);
+}
+
+export function ensureApplicationNamespaces(
+  namespaces: readonly ApplicationNamespace[]
+): Promise<void> {
+  const locale = resolveAppLocale(
+    appI18n.resolvedLanguage ?? appI18n.language
+  );
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.load(locale, namespaces)
+    : applicationI18nLoader.demandPrimary(locale, namespaces);
 }
 
 // Explicit full registration for tests/catalog tooling only. Production entry and

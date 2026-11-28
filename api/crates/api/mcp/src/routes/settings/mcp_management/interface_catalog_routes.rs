@@ -16,15 +16,28 @@ pub(crate) enum McpCatalogInput {
     Catalog,
     #[serde(serialize_with = "json_contract::query_with_nulls")]
     Interfaces(McpInterfaceCatalogQuery),
+    #[serde(serialize_with = "json_contract::query")]
+    InterfacesPage(McpInterfaceCapabilitiesPageQuery),
+    #[serde(serialize_with = "serialize_interface_path")]
+    Interface(String),
     #[serde(serialize_with = "json_contract::query_with_nulls")]
     List(McpListQuery),
     Export,
+}
+
+fn serialize_interface_path<S: serde::Serializer>(
+    id: &str,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    json_contract::path(&serde_json::json!({"interface_id": id}), serializer)
 }
 
 impl InterfaceContract for McpCatalogInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            managed_page::query_schema("InterfacesPage", "offset", "limit"),
+            managed_page::variant_schema("Interface", [("interface_id", mp::text_schema())]),
             mp::object_schema([("variant", mp::tag_schema("Catalog"))]),
             mp::object_schema([
                 ("variant", mp::tag_schema("Interfaces")),
@@ -74,6 +87,16 @@ impl InterfaceContract for McpCatalogInput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::InterfacesPage(query) => managed_page::query(
+                "InterfacesPage",
+                ("offset", query.offset),
+                ("limit", query.limit),
+                query.q.as_deref(),
+            ),
+            Self::Interface(id) => {
+                managed_page::project("Interface", [("interface_id", mp::text(id)?)])
+            }
+
             Self::Catalog => {
                 mp::object_value([("variant", serde_json::Value::String("Catalog".to_owned()))])
             }
@@ -167,6 +190,8 @@ impl InterfaceContract for McpCatalogInput {
 pub(crate) enum McpCatalogOutput {
     Catalog(McpCatalogResponse),
     Interfaces(Vec<McpInterfaceCatalogEntryResponse>),
+    InterfacesPage(McpInterfaceCapabilityPageResponse),
+    Interface(Box<McpInterfaceCatalogEntryResponse>),
     List(Vec<McpListItemSummaryResponse>),
     Export(McpExportPackageResponse),
 }
@@ -175,6 +200,11 @@ impl InterfaceContract for McpCatalogOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
+            managed_page::count_schema(
+                "InterfacesPage",
+                ["item_count", "total", "offset", "limit"],
+            ),
+            managed_page::variant_schema("Interface", [("interface_id", mp::text_schema())]),
             mp::object_schema([
                 ("variant", mp::tag_schema("Catalog")),
                 (
@@ -250,6 +280,20 @@ impl InterfaceContract for McpCatalogOutput {
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
+            Self::InterfacesPage(page) => managed_page::project(
+                "InterfacesPage",
+                [
+                    ("item_count", serde_json::json!(page.items.len())),
+                    ("total", serde_json::json!(page.total)),
+                    ("offset", serde_json::json!(page.offset)),
+                    ("limit", serde_json::json!(page.limit)),
+                ],
+            ),
+            Self::Interface(entry) => managed_page::project(
+                "Interface",
+                [("interface_id", mp::text(&entry.interface_id)?)],
+            ),
+
             Self::Catalog(_field_0) => mp::object_value([
                 ("variant", serde_json::Value::String("Catalog".to_owned())),
                 (
@@ -1013,6 +1057,26 @@ impl McpCatalogAdapter {
                     entries.into_iter().map(to_interface_response).collect(),
                 ))
             }
+            McpCatalogInput::InterfacesPage(query) => {
+                service
+                    .authorize_interface_catalog_view(actor.user_id)
+                    .await?;
+                let entries = interface_catalog::mcp_interface_index_with(&self.0, actor).await?;
+                Ok(McpCatalogOutput::InterfacesPage(interface_page(
+                    entries, query,
+                )))
+            }
+            McpCatalogInput::Interface(interface_id) => {
+                service
+                    .authorize_interface_catalog_view(actor.user_id)
+                    .await?;
+                let entry =
+                    interface_catalog::mcp_interface_detail_with(&self.0, actor, &interface_id)
+                        .await?;
+                Ok(McpCatalogOutput::Interface(Box::new(
+                    to_interface_response(entry),
+                )))
+            }
             McpCatalogInput::List(query) => {
                 let items = service
                     .list_items_for_actor(
@@ -1054,6 +1118,73 @@ impl McpCatalogAdapter {
     }
 }
 
+fn interface_page(
+    entries: Vec<crate::openapi_interface::OpenApiCapabilityIndexEntry>,
+    query: McpInterfaceCapabilitiesPageQuery,
+) -> McpInterfaceCapabilityPageResponse {
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(20).clamp(1, 100);
+    let needle = query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_lowercase);
+    let filtered = entries
+        .into_iter()
+        .filter(|entry| {
+            (!query.bindable_only.unwrap_or(false) || entry.bindable)
+                && query
+                    .method
+                    .as_deref()
+                    .is_none_or(|method| entry.method.eq_ignore_ascii_case(method.trim()))
+                && needle.as_ref().is_none_or(|needle| {
+                    [
+                        &entry.interface_id,
+                        &entry.method,
+                        &entry.path,
+                        &entry.name,
+                        &entry.short_description,
+                    ]
+                    .into_iter()
+                    .any(|field| field.to_lowercase().contains(needle))
+                        || format!("{} {}", entry.method, entry.path)
+                            .to_lowercase()
+                            .contains(needle)
+                })
+        })
+        .collect::<Vec<_>>();
+    let total = filtered.len();
+    let items: Vec<_> = filtered
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .map(|entry| McpInterfaceCapabilitySummaryResponse {
+            permission_code: interface_catalog::operation_permission_code(
+                &entry.method,
+                &entry.path,
+            ),
+            interface_id: entry.interface_id,
+            method: entry.method,
+            path: entry.path,
+            name: entry.name,
+            short_description: entry.short_description,
+            risk_level: entry.risk_level.to_owned(),
+            bindable: entry.bindable,
+            disabled_reason: entry.disabled_reason.map(str::to_owned),
+        })
+        .collect();
+    let end = offset + items.len();
+    McpInterfaceCapabilityPageResponse {
+        items,
+        total,
+        offset,
+        limit,
+        has_more: end < total,
+        next_offset: (end < total).then_some(end),
+    }
+}
+
 impl ConsoleInterfacePort<McpCatalogInput, McpCatalogOutput> for McpCatalogAdapter {
     fn execute<'a>(
         &'a self,
@@ -1081,6 +1212,20 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.mcp.interfaces.get.v1",
         method: "GET",
         path: "/api/console/mcp/interface-capabilities",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.catalog.view",
+        binding_id: "http.console.mcp.interfaces.page.get.v1",
+        method: "GET",
+        path: "/api/console/mcp/interface-capabilities/page",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "mcp.catalog.view",
+        binding_id: "http.console.mcp.interfaces.detail.get.v1",
+        method: "GET",
+        path: "/api/console/mcp/interface-capabilities/:interface_id",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

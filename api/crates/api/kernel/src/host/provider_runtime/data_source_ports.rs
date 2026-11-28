@@ -5,8 +5,15 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
     async fn ensure_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
+        self.ensure_data_source_loaded(installation).await.map(Some)
+    }
+
+    async fn deactivate_plugin(
+        &self,
+        installation: &domain::PluginInstallationRecord,
     ) -> anyhow::Result<()> {
-        self.ensure_data_source_loaded(installation).await
+        ProviderRuntimePort::deactivate_plugin(self, installation).await
     }
 
     async fn compatible_data_model_templates(

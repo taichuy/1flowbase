@@ -753,6 +753,17 @@ async fn root_2014_r3_probe_reference_worker_roundtrip() {
             loaded.interface_protocol,
             Some(ManagedInterfaceProtocol::ReferenceV2)
         );
+        // The verified digest identifies the bytes: reuse its parse, re-parse any other digest.
+        let last = std::sync::Mutex::new(None);
+        let digest = bound.artifact_fingerprint();
+        let other = ManagedArtifactFingerprint::from_bytes(b"other");
+        let parse = crate::package_loader::parse_managed_manifest_with;
+        let first = parse(&last, digest, std::str::from_utf8(&raw).unwrap()).unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            &first,
+            &parse(&last, digest, "unparsable: [").unwrap()
+        ));
+        assert!(parse(&last, &other, "unparsable: [").is_err());
         let mut wrong = activation.clone();
         wrong.identity = ManagedExecutionIdentity::new(
             bound.installation_id().clone(),
@@ -842,4 +853,25 @@ async fn root_2014_r3_probe_reference_worker_roundtrip() {
         }
         workers.unmount(&handle).unwrap().dispose().await.unwrap();
     }
+}
+
+#[test]
+fn frozen_executable_rejects_one_changed_byte_and_missing_file() {
+    let fixture = WorkerFixture::new();
+    let binding = fixture.binding(&before("identify"), "identify");
+    binding.verify_executable().unwrap();
+    let mut bytes = std::fs::read(&fixture.executable).unwrap();
+    bytes[64 * 1024] ^= 1;
+    std::fs::write(&fixture.executable, bytes).unwrap();
+    assert!(binding
+        .verify_executable()
+        .unwrap_err()
+        .to_string()
+        .contains("frozen managed executable bytes changed"));
+    std::fs::remove_file(&fixture.executable).unwrap();
+    assert!(binding
+        .verify_executable()
+        .unwrap_err()
+        .to_string()
+        .contains("frozen managed executable is unavailable"));
 }

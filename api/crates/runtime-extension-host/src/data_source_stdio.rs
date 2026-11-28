@@ -15,6 +15,7 @@ pub async fn call_executable(
     limits: &PluginRuntimeLimits,
 ) -> FrameworkResult<Value> {
     let mut command = Command::new(executable_path);
+    crate::sanitize_worker_command_env(&mut command);
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -12,11 +12,11 @@ use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     provider_contract::{ProviderStdioMethod, ProviderStdioRequest},
 };
-use runtime_core::runtime_backend::RuntimeExecutionPrincipal;
+use runtime_core::runtime_backend::{LoadedRuntimeArtifactIdentity, RuntimeExecutionPrincipal};
 use tokio::sync::Mutex;
 
 use crate::{
-    package_loader::{LoadedProviderDistributionPackage, PackageLoader},
+    package_loader::{verify_package_activation, LoadedProviderDistributionPackage, PackageLoader},
     stdio_runtime::{ProviderHostCallContext, ProviderWorker},
 };
 
@@ -35,14 +35,17 @@ impl ProviderDistributionHost {
         &mut self,
         package_root: &str,
         expected_plugin_id: &str,
-    ) -> FrameworkResult<()> {
+        expected_fingerprint: Option<&str>,
+    ) -> FrameworkResult<LoadedRuntimeArtifactIdentity> {
         let package = PackageLoader::load_provider_distribution(package_root)?;
         let plugin_id = package.manifest.versioned_plugin_id()?;
-        if plugin_id != expected_plugin_id {
-            return Err(PluginFrameworkError::invalid_provider_package(format!(
-                "loaded distribution package id {plugin_id} does not match requested {expected_plugin_id}"
-            )));
-        }
+        verify_package_activation(
+            &plugin_id,
+            expected_plugin_id,
+            &package.identity,
+            expected_fingerprint,
+        )?;
+        let identity = package.identity.clone();
         let worker = ProviderWorker::new(
             package.runtime_executable.clone(),
             package.manifest.runtime.limits.clone(),
@@ -54,7 +57,7 @@ impl ProviderDistributionHost {
                 worker: Mutex::new(worker),
             }),
         );
-        Ok(())
+        Ok(identity)
     }
 
     pub(crate) async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {

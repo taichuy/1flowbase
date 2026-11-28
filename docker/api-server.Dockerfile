@@ -48,7 +48,7 @@ FROM node:24.22.1-alpine AS application-template-bootstrap
 
 ARG APPLICATION_TEMPLATE_REPOSITORY=taichuy/1flowbase-official-plugins
 # Immutable application template snapshot; changing a package also bumps its release_version.
-ARG APPLICATION_TEMPLATE_REF=0fb52793c105797faf3565bd00a7002f4be543d6
+ARG APPLICATION_TEMPLATE_REF=04527285e819ffb393b88b27dd373974dcff76be
 
 RUN apk add --no-cache 'ca-certificates>=20261020-r0' git curl
 COPY scripts/shell/package-application-templates.sh /usr/local/bin/package-application-templates
@@ -82,8 +82,10 @@ RUN apt-get update \
   && usermod --uid "${APP_UID}" --gid "${APP_GID}" --login flowbase \
     --home /home/flowbase --move-home --shell /usr/sbin/nologin node
 
-# Bound glibc arena retention; deployments can override the memory/contention tradeoff.
+# MALLOC_ARENA_MAX only affects the C/glibc allocator; _RJEM_MALLOC_CONF targets
+# the Linux GNU host's prefixed global jemalloc.
 ENV MALLOC_ARENA_MAX=8
+ENV _RJEM_MALLOC_CONF="thp:never,background_thread:true"
 
 ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
     API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore \

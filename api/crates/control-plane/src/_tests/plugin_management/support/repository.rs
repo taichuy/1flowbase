@@ -14,6 +14,7 @@ pub(crate) struct MemoryPluginManagementRepository {
     fail_worker_demand_query: Arc<RwLock<bool>>,
     tasks: Arc<RwLock<HashMap<Uuid, PluginTaskRecord>>>,
     instances: Arc<RwLock<HashMap<Uuid, ModelProviderInstanceRecord>>>,
+    preview_sessions: Arc<RwLock<HashMap<Uuid, domain::ModelProviderPreviewSessionRecord>>>,
     caches: Arc<RwLock<HashMap<Uuid, ModelProviderCatalogCacheRecord>>>,
     main_instances: Arc<RwLock<HashMap<(Uuid, String), domain::ModelProviderMainInstanceRecord>>>,
     node_contributions: Arc<RwLock<Vec<domain::NodeContributionRegistryEntry>>>,
@@ -47,6 +48,7 @@ impl MemoryPluginManagementRepository {
             fail_worker_demand_query: Arc::new(RwLock::new(false)),
             tasks: Arc::new(RwLock::new(HashMap::new())),
             instances: Arc::new(RwLock::new(HashMap::new())),
+            preview_sessions: Arc::new(RwLock::new(HashMap::new())),
             caches: Arc::new(RwLock::new(HashMap::new())),
             main_instances: Arc::new(RwLock::new(HashMap::new())),
             node_contributions: Arc::new(RwLock::new(Vec::new())),
@@ -417,12 +419,24 @@ impl ExtensionInstallationRepository for MemoryPluginManagementRepository {
 }
 
 struct MemoryInstallationLease {
+    existing_installation_id: Option<Uuid>,
     repository: MemoryPluginManagementRepository,
     _guard: tokio::sync::OwnedMutexGuard<()>,
 }
 
 #[async_trait]
 impl crate::ports::PluginInstallationLease for MemoryInstallationLease {
+    async fn node_runtime_is_active(&mut self, node_id: &str) -> Result<bool> {
+        let Some(id) = self.existing_installation_id else {
+            return Ok(false);
+        };
+        Ok(self
+            .repository
+            .get_artifact_instance(node_id, id)
+            .await?
+            .is_some_and(|artifact| artifact.runtime_status == domain::PluginRuntimeStatus::Active))
+    }
+
     async fn commit(
         &mut self,
         input: &CommitPluginInstallationInput,
@@ -434,6 +448,54 @@ impl crate::ports::PluginInstallationLease for MemoryInstallationLease {
     }
 }
 
+impl MemoryPluginManagementRepository {
+    async fn retire_unreferenced_installation_with_policy(
+        &self,
+        input: &UpdatePluginDesiredStateInput,
+        require_serving_sibling: bool,
+    ) -> Result<Option<PluginInstallationRecord>> {
+        let referenced = self.list_referenced_installation_ids().await?;
+        let mut installations = self.installations.write().await;
+        let Some(candidate) = installations.get(&input.installation_id).cloned() else {
+            return Ok(None);
+        };
+        let has_serving_sibling = || {
+            installations.values().any(|sibling| {
+                sibling.id != candidate.id
+                    && sibling.category == candidate.category
+                    && sibling.organization == candidate.organization
+                    && sibling.provider_code == candidate.provider_code
+                    && sibling.desired_state == PluginDesiredState::ActiveRequested
+                    && (domain::managed_installation_scope(sibling, domain::DEFAULT_SCOPE_ID)
+                        == domain::SYSTEM_SCOPE_ID
+                        || referenced.contains(&sibling.id))
+            })
+        };
+        if candidate.desired_state != PluginDesiredState::ActiveRequested
+            || candidate.is_system_reserved
+            || candidate.source_kind == "builtin"
+            || candidate.category == ExtensionCategory::HostExtensions
+            || referenced.contains(&candidate.id)
+            || (require_serving_sibling && !has_serving_sibling())
+        {
+            return Ok(None);
+        }
+        let record = installations
+            .get_mut(&input.installation_id)
+            .expect("checked installation exists");
+        record.desired_state = PluginDesiredState::Disabled;
+        record.updated_by = Some(input.actor_user_id);
+        record.updated_at = OffsetDateTime::now_utc();
+        for artifact in self.artifact_instances.write().await.values_mut() {
+            if artifact.installation_id == input.installation_id {
+                artifact.runtime_status = domain::PluginRuntimeStatus::Inactive;
+                artifact.availability_status = domain::PluginAvailabilityStatus::Disabled;
+            }
+        }
+        Ok(Some(record.clone()))
+    }
+}
+
 #[async_trait]
 impl PluginRepository for MemoryPluginManagementRepository {
     async fn begin_plugin_installation(
@@ -441,13 +503,11 @@ impl PluginRepository for MemoryPluginManagementRepository {
         admission: &crate::ports::PluginInstallationAdmission,
     ) -> Result<Box<dyn crate::ports::PluginInstallationLease>> {
         let guard = self.installation_lease.clone().lock_owned().await;
-        if let Some(existing) = self
-            .installations
-            .read()
-            .await
+        let installations = self.installations.read().await;
+        let existing = installations
             .values()
-            .find(|record| record.plugin_id == admission.plugin_id)
-        {
+            .find(|record| record.plugin_id == admission.plugin_id);
+        if let Some(existing) = existing {
             let managed = existing
                 .metadata_json
                 .get("managed")
@@ -460,6 +520,7 @@ impl PluginRepository for MemoryPluginManagementRepository {
             }
         }
         Ok(Box::new(MemoryInstallationLease {
+            existing_installation_id: existing.map(|record| record.id),
             repository: self.clone(),
             _guard: guard,
         }))
@@ -934,6 +995,158 @@ impl PluginRepository for MemoryPluginManagementRepository {
             .filter(|assignment| assignment.workspace_id == workspace_id)
             .cloned()
             .collect())
+    }
+
+    async fn retire_unreferenced_installation(
+        &self,
+        input: &UpdatePluginDesiredStateInput,
+    ) -> Result<Option<PluginInstallationRecord>> {
+        self.retire_unreferenced_installation_with_policy(input, true)
+            .await
+    }
+
+    async fn rollback_unreferenced_installation(
+        &self,
+        input: &UpdatePluginDesiredStateInput,
+    ) -> Result<Option<PluginInstallationRecord>> {
+        self.retire_unreferenced_installation_with_policy(input, false)
+            .await
+    }
+
+    async fn commit_provider_version_switch(
+        &self,
+        input: &control_plane_contracts::ports::CommitProviderVersionSwitchInput,
+    ) -> Result<control_plane_contracts::ports::ProviderVersionSwitchOutcome> {
+        use crate::ports::{ModelProviderRepository, UpsertModelProviderCatalogCacheInput};
+        let currently_assigned = self
+            .list_assignments(input.workspace_id)
+            .await?
+            .iter()
+            .any(|a| {
+                a.provider_code == input.provider_code
+                    && a.installation_id == input.current_installation_id
+            });
+        if !currently_assigned {
+            return Err(
+                crate::errors::ControlPlaneError::Conflict("plugin_assignment_changed").into(),
+            );
+        }
+        let target = self
+            .get_installation(input.target_installation_id)
+            .await?
+            .ok_or(crate::errors::ControlPlaneError::NotFound(
+                "plugin_installation",
+            ))?;
+        if target.desired_state == PluginDesiredState::Disabled {
+            return Err(
+                crate::errors::ControlPlaneError::Conflict("plugin_installation_disabled").into(),
+            );
+        }
+        if !self
+            .get_artifact_instance(&input.node_id, input.target_installation_id)
+            .await?
+            .is_some_and(|artifact| input.matches_active_artifact(&artifact))
+        {
+            return Err(crate::errors::ControlPlaneError::PluginUnavailable.into());
+        }
+        let migrated = {
+            let mut instances = self.instances.write().await;
+            let mut moved = Vec::new();
+            for instance in instances.values_mut() {
+                if instance.workspace_id == input.workspace_id
+                    && instance.provider_code == input.provider_code
+                {
+                    instance.installation_id = input.target_installation_id;
+                    instance.protocol = input.target_protocol.clone();
+                    instance.updated_by = input.actor_user_id;
+                    instance.updated_at = OffsetDateTime::now_utc();
+                    moved.push(instance.clone());
+                }
+            }
+            moved
+        };
+        for instance in &migrated {
+            self.upsert_catalog_cache(&UpsertModelProviderCatalogCacheInput {
+                provider_instance_id: instance.id,
+                model_discovery_mode: input.model_discovery_mode,
+                refresh_status: domain::ModelProviderCatalogRefreshStatus::Idle,
+                source: input.catalog_source,
+                models_json: serde_json::json!([]),
+                last_error_message: None,
+                refreshed_at: None,
+            })
+            .await?;
+        }
+        self.create_assignment(&CreatePluginAssignmentInput {
+            installation_id: input.target_installation_id,
+            workspace_id: input.workspace_id,
+            provider_code: input.provider_code.clone(),
+            actor_user_id: input.actor_user_id,
+        })
+        .await?;
+        let retired_previous = self
+            .retire_unreferenced_installation(&UpdatePluginDesiredStateInput {
+                installation_id: input.current_installation_id,
+                desired_state: PluginDesiredState::Disabled,
+                actor_user_id: input.actor_user_id,
+            })
+            .await?;
+        {
+            let mut artifacts = self.artifact_instances.write().await;
+            for (key, artifact) in artifacts.iter_mut() {
+                if key.0 == input.node_id
+                    && (key.1 == input.current_installation_id
+                        || key.1 == input.target_installation_id)
+                {
+                    artifact.is_current = key.1 == input.target_installation_id;
+                    if key.1 == input.current_installation_id && retired_previous.is_some() {
+                        artifact.runtime_status = domain::PluginRuntimeStatus::Inactive;
+                        artifact.availability_status = domain::PluginAvailabilityStatus::Disabled;
+                    }
+                }
+            }
+        }
+        Ok(
+            control_plane_contracts::ports::ProviderVersionSwitchOutcome {
+                migrated_instance_count: migrated.len(),
+                retired_previous,
+            },
+        )
+    }
+
+    async fn list_referenced_installation_ids(&self) -> Result<Vec<Uuid>> {
+        let mut ids = std::collections::BTreeSet::new();
+        ids.extend(
+            self.assignments
+                .read()
+                .await
+                .iter()
+                .map(|record| record.installation_id),
+        );
+        ids.extend(
+            self.instances
+                .read()
+                .await
+                .values()
+                .map(|record| record.installation_id),
+        );
+        ids.extend(
+            self.native_targets
+                .read()
+                .await
+                .iter()
+                .map(|record| record.installation_id),
+        );
+        let now = OffsetDateTime::now_utc();
+        ids.extend(
+            self.preview_sessions
+                .read()
+                .await
+                .values()
+                .filter(|record| record.expires_at > now)
+                .filter_map(|record| record.installation_id),
+        );
+        Ok(ids.into_iter().collect())
     }
 
     async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {

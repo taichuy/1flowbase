@@ -101,7 +101,7 @@ async fn ac_001_ac_005_ac_010_interface_catalog_covers_compiled_routes_and_media
         .expect("the current owner documents credential deletion");
     let dependencies = crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
         store: state.store.clone(),
-        console_operations: state.console_operation_registry.inventory().clone(),
+        console_operations: state.console_operation_registry.shared_inventory(),
         interface_registry: state
             .extension_boot_snapshot
             .as_ref()
@@ -112,14 +112,37 @@ async fn ac_001_ac_005_ac_010_interface_catalog_covers_compiled_routes_and_media
         ),
         template_catalog: state.runtime_engine.template_catalog().clone(),
     };
-    let undocumented = crate::openapi_interface::build_openapi_capability_catalog_with(
+    let full = crate::openapi_interface::build_openapi_capability_catalog_with(
         &dependencies,
         state.bootstrap_workspace_id,
     )
     .await
+    .unwrap();
+    let index = crate::openapi_interface::list_openapi_capability_index_with(
+        &dependencies,
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap();
+    assert_eq!(full.len(), index.len());
+    for (detail, summary) in full.into_iter().zip(index) {
+        assert_eq!(detail.interface.operation_id, summary.interface_id);
+        assert_eq!(detail.interface.method, summary.method);
+        assert_eq!(detail.interface.path, summary.path);
+        assert_eq!(detail.interface.name, summary.name);
+        assert_eq!(detail.interface.description, summary.short_description);
+        assert_eq!(detail.source, summary.source);
+        assert_eq!(detail.risk_level, summary.risk_level);
+        assert_eq!(detail.bindable, summary.bindable);
+        assert_eq!(detail.disabled_reason, summary.disabled_reason);
+    }
+    let undocumented = crate::openapi_interface::get_openapi_capability_with(
+        &dependencies,
+        state.bootstrap_workspace_id,
+        "mcp.client_credential.delete",
+    )
+    .await
     .unwrap()
-    .into_iter()
-    .find(|entry| entry.interface.operation_id == "mcp.client_credential.delete")
     .expect("compiled route without OpenAPI must remain visible");
     let missing_openapi =
         crate::routes::mcp_management::mcp_interface_entry_from_capability(undocumented);

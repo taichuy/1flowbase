@@ -37,7 +37,9 @@ describe('McpManagementPanel', () => {
     expect(
       within(toolsPanel).getByRole('columnheader', { name: 'tool_id' })
     ).toBeInTheDocument();
-    expect(within(toolsPanel).getByText('Search customer')).toBeInTheDocument();
+    expect(
+      await within(toolsPanel).findByText('Search customer')
+    ).toBeInTheDocument();
     expect(within(toolsPanel).getByText('search_customer')).toBeInTheDocument();
     expect(
       within(toolsPanel).getByRole('columnheader', { name: 'operation' })
@@ -66,9 +68,12 @@ describe('McpManagementPanel', () => {
       within(instancesPanel).queryByText('/ops/customer')
     ).not.toBeInTheDocument();
 
-    const directoryEditorButton = within(instancesPanel).getByRole('button', {
-      name: '目录编辑'
-    });
+    const directoryEditorButton = await within(instancesPanel).findByRole(
+      'button',
+      {
+        name: '目录编辑'
+      }
+    );
     expect(directoryEditorButton).toBeEnabled();
     await act(async () => {
       fireEvent.click(directoryEditorButton);
@@ -126,9 +131,12 @@ describe('McpManagementPanel', () => {
         .map((header) => header.textContent)
     ).toEqual(['instance_id', '实例名称']);
 
-    const directoryEditorButton = within(instancesPanel).getByRole('button', {
-      name: '目录编辑'
-    });
+    const directoryEditorButton = await within(instancesPanel).findByRole(
+      'button',
+      {
+        name: '目录编辑'
+      }
+    );
     const editButton = within(instancesPanel).getByRole('button', {
       name: '编辑'
     });
@@ -151,7 +159,7 @@ describe('McpManagementPanel', () => {
 
     const instancesPanel = screen.getByRole('tabpanel');
     fireEvent.click(
-      within(instancesPanel).getByRole('button', {
+      await within(instancesPanel).findByRole('button', {
         name: /^(?:编辑|auto\.edit)$/
       })
     );
@@ -201,7 +209,7 @@ describe('McpManagementPanel', () => {
       name: 'MCP 实例'
     });
     expect(
-      within(instancesPanel).getByRole('button', { name: '编辑' })
+      await within(instancesPanel).findByRole('button', { name: '编辑' })
     ).toBeInTheDocument();
     expect(
       within(instancesPanel).getByRole('button', { name: '目录编辑' })
@@ -264,7 +272,7 @@ describe('McpManagementPanel', () => {
       name: 'MCP 实例'
     });
     fireEvent.click(
-      within(instancesPanel).getByRole('button', { name: '更多操作' })
+      await within(instancesPanel).findByRole('button', { name: '更多操作' })
     );
     const menu = await screen.findByRole('menu');
     fireEvent.click(within(menu).getByRole('menuitem', { name: /复制实例$/ }));
@@ -295,10 +303,11 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
 
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
@@ -317,10 +326,11 @@ describe('McpManagementPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
 
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
@@ -357,10 +367,11 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
@@ -380,10 +391,11 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const tree = within(
@@ -401,10 +413,11 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
@@ -443,10 +456,11 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
@@ -487,10 +501,11 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
@@ -560,10 +575,11 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
@@ -596,10 +612,11 @@ describe('McpManagementPanel', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
+    const directoryButton = await within(instancesPanel).findByRole('button', {
+      name: '目录编辑'
+    });
     await act(async () => {
-      fireEvent.click(
-        within(instancesPanel).getByRole('button', { name: '目录编辑' })
-      );
+      fireEvent.click(directoryButton);
     });
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });

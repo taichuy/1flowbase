@@ -15,6 +15,8 @@ pub struct McpInstanceResponse {
     pub updated_by: String,
     pub created_at: String,
     pub updated_at: String,
+    pub group_count: i64,
+    pub tool_count: i64,
     pub llm_tool_registration: McpLlmToolRegistrationResponse,
 }
 
@@ -365,4 +367,125 @@ pub struct McpListQuery {
     pub path_regex: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Default, Deserialize, IntoParams, Serialize)]
+#[serde(default)]
+pub struct McpInstancesQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, IntoParams, Serialize)]
+#[serde(default)]
+pub struct McpInstancePageHttpQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keyword: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpInstancePageResponse {
+    pub items: Vec<McpInstanceResponse>,
+    pub total: i64,
+    pub page: usize,
+    pub page_size: usize,
+}
+
+#[derive(Debug, Default, Deserialize, IntoParams, Serialize)]
+#[serde(default)]
+pub struct McpToolPageHttpQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keyword: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_target_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interface_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub risk_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub des_id_required: Option<bool>,
+    /// Legacy comma-separated IDs; blank entries are ignored. Do not combine with tool_ids_json.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_ids: Option<String>,
+    /// JSON-encoded array of exact tool IDs; [] matches none. Do not combine with tool_ids.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_ids_json: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpToolSummaryResponse {
+    pub id: String,
+    pub workspace_id: String,
+    pub tool_id: String,
+    pub name: String,
+    pub short_description: String,
+    pub execution_target: McpToolExecutionTargetDto,
+    pub operation: String,
+    pub permission_code: Option<String>,
+    pub risk_level: String,
+    pub des_id: String,
+    pub des_id_required: bool,
+    pub status: String,
+    pub availability_status: McpToolAvailabilityStatusDto,
+    pub availability_reason: Option<String>,
+    pub revision: i32,
+    pub managed_by: Option<McpManagedBundleSourceResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpToolSummaryPageResponse {
+    pub items: Vec<McpToolSummaryResponse>,
+    pub total: i64,
+    pub page: usize,
+    pub page_size: usize,
+}
+
+#[derive(Debug, Default, Deserialize, IntoParams, Serialize)]
+#[serde(default)]
+pub struct McpInterfaceCapabilitiesPageQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bindable_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub q: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpInterfaceCapabilitySummaryResponse {
+    pub interface_id: String,
+    pub method: String,
+    pub path: String,
+    pub name: String,
+    pub short_description: String,
+    pub permission_code: Option<String>,
+    pub risk_level: String,
+    pub bindable: bool,
+    pub disabled_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpInterfaceCapabilityPageResponse {
+    pub items: Vec<McpInterfaceCapabilitySummaryResponse>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
 }

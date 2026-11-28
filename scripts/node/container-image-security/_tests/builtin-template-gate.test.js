@@ -62,6 +62,8 @@ test('both image lanes require the same bootstrap gate, CD before promoting the 
   assert.ok(gate > 0 && gate < promote);
   assert.match(cd.slice(gate - 600, gate), /scan_image_ref \}\}@\$\{\{ steps\.api_server_candidate\.outputs\.digest/);
   assert.match(cd.slice(promote, promote + 850), /scan_image_ref \}\}@\$\{\{ steps\.api_server_candidate\.outputs\.digest/);
+  const promotion = cd.slice(promote).split('\n\n', 1)[0];
+  assert.match(promotion, /docker buildx imagetools create[^\n]*(?:\n[^\n]*--tag[^\n]*)+\n\s*"\$CANDIDATE_IMAGE"\s*$/u);
   const quality = workflow('quality-gate.yml');
   const imageJob = quality.slice(quality.indexOf('  container-images-gate:'), quality.indexOf('  ai-gateway-protocol-conformance:'));
   assert.match(imageJob, /bash \.github\/scripts\/verify-builtin-application-templates\.sh "1flowbase-api-server:\$QUALITY_GATE_TARGET_SHA"/);

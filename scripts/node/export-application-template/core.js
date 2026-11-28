@@ -6,6 +6,62 @@ const { loadRootCredentials, openTemporaryOwnerSession } = require('../page-debu
 
 const CONFIG_FILE = 'export.config.json';
 const SELECTION_KEYS = ['page_ids', 'application_ids', 'data_model_ids', 'mcp_instance_ids', 'i18n_keys'];
+const REQUIRED_LOCALES = ['zh_Hans', 'en_US'];
+
+function unescapeJsLiteral(raw) {
+  return raw.replace(/\\(['"\\nrt])/gu, (_, ch) => ({ n: '\n', r: '\r', t: '\t' }[ch] ?? ch));
+}
+
+function collectSourceCodes(node, out = []) {
+  if (!node || typeof node !== 'object') return out;
+  if (Array.isArray(node)) {
+    for (const item of node) collectSourceCodes(item, out);
+    return out;
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'source_code' && typeof value === 'string') out.push(value);
+    else collectSourceCodes(value, out);
+  }
+  return out;
+}
+
+function validateLocalizedPageTemplate(pkg, selection) {
+  if (!selection.page_ids.length || !selection.i18n_keys.length) return;
+  const localesByKey = new Map();
+  for (const entry of pkg.i18n_entries ?? []) {
+    if (entry && typeof entry.key === 'string' && typeof entry.locale === 'string' && typeof entry.translation === 'string' && entry.translation.trim()) {
+      let set = localesByKey.get(entry.key);
+      if (!set) { set = new Set(); localesByKey.set(entry.key, set); }
+      set.add(entry.locale);
+    }
+  }
+  const required = new Set();
+  const addKey = (value) => { if (typeof value === 'string' && value.trim()) required.add(value.trim()); };
+  for (const page of pkg.pages ?? []) {
+    const isSlugTopbarGroup = page.kind === 'group' && page.placement === 'topbar' && page.slug && page.slug === page.title;
+    if (!isSlugTopbarGroup) addKey(page.title);
+    addKey(page.tooltip);
+    for (const tab of page.tabs ?? []) {
+      addKey(tab.title);
+      for (const block of tab.blocks ?? []) {
+        addKey(block.title);
+        for (const source of collectSourceCodes(block)) {
+          const uncommented = source.replace(/\/\*[\s\S]*?\*\//gu, ' ').replace(/(^|[^:\\])\/\/[^\r\n]*/gu, '$1 ');
+          for (const match of uncommented.matchAll(/(?:\bt|i18n\.t)\(\s*(['"])((?:\\.|(?!\1).)+)\1/gu)) {
+            addKey(unescapeJsLiteral(match[2]));
+          }
+        }
+      }
+    }
+  }
+  const missing = [];
+  for (const key of required) {
+    const covered = localesByKey.get(key);
+    const absent = REQUIRED_LOCALES.filter((locale) => !covered?.has(locale));
+    if (absent.length) missing.push(`${JSON.stringify(key)} (${absent.join('/')})`);
+  }
+  if (missing.length) throw new Error(`missing template i18n translations: ${missing.join(', ')}`);
+}
 function selectionOf(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('selection must be an object');
   if (Object.keys(value).some((key) => !SELECTION_KEYS.includes(key))) throw new Error('unknown selection field');
@@ -88,6 +144,7 @@ async function exportApplicationTemplate(options, dependencies = {}) {
     const body = await response.json();
     const pkg = body.data;
     if (!['1flowbase.portable-template/v1', '1flowbase.portable-template/v2'].includes(pkg?.schema_version)) throw new Error('unexpected template export response');
+    validateLocalizedPageTemplate(pkg, config.selection);
     const oldContent = previous && contentWithoutExportTime(previous);
     const content = contentWithoutExportTime(pkg);
     const changed = !previous || !isDeepStrictEqual(oldContent, content) || previous.release.name !== config.name || previous.release.description !== config.description;

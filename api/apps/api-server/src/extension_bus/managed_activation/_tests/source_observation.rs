@@ -341,13 +341,13 @@ async fn system_event_center_managed_source_candidate_refresh_retained_graph_and
                 .is_empty(),
             "candidate registration is not publication or consumption"
         );
-        let previous = fixture
-            .runtime
-            .composition
+        let composition = &fixture.runtime.composition;
+        let previous = composition
             .snapshot(fixture.actor.current_workspace_id)
             .await
             .unwrap();
         let reference = previous.freeze_reference().unwrap();
+        composition.start_reclamation();
         fixture
             .management()
             .disable_plugin(DisablePluginCommand {
@@ -356,21 +356,13 @@ async fn system_event_center_managed_source_candidate_refresh_retained_graph_and
             })
             .await
             .unwrap();
-        assert!(!fixture
-            .runtime
-            .composition
-            .snapshot(fixture.actor.current_workspace_id)
-            .await
-            .unwrap()
-            .graph
-            .points()
-            .iter()
-            .any(|point| point.descriptor().point_id.as_str() == MANAGED_PROCESSED_EVENT_ID));
-        fixture
-            .runtime
-            .composition
-            .refresh_lifecycle_source_observations()
-            .await;
+        assert!(
+            composition
+                .snapshot(fixture.actor.current_workspace_id)
+                .await
+                .is_none(),
+            "disabling the last binding removes this workspace from current"
+        );
         let retained = fixture.source(MANAGED_PROCESSED_EVENT_ID);
         assert_eq!(retained.descriptor.origin, EventDefinitionOrigin::Plugin);
         assert_eq!(retained.descriptor.scope, fixture.scope());
@@ -383,9 +375,7 @@ async fn system_event_center_managed_source_candidate_refresh_retained_graph_and
             vec![EventTriggerPhase::Consumed],
             "retained original consumers cannot accept new publications"
         );
-        assert!(fixture
-            .runtime
-            .composition
+        assert!(composition
             .snapshots
             .lock()
             .await
@@ -399,17 +389,27 @@ async fn system_event_center_managed_source_candidate_refresh_retained_graph_and
             .activity
             .is_empty());
         drop(reference);
-        fixture
-            .runtime
-            .composition
-            .reclaim_retained_snapshots()
-            .await;
-        assert!(fixture
-            .center
-            .snapshot_sources(fixture.scope())
-            .sources
-            .iter()
-            .all(|source| source.descriptor.contract_id != MANAGED_PROCESSED_EVENT_ID));
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while fixture
+                .center
+                .snapshot_sources(fixture.scope())
+                .sources
+                .iter()
+                .any(|source| source.descriptor.contract_id == MANAGED_PROCESSED_EVENT_ID)
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("dropping the final frozen reference must unregister the retained source");
+        assert!(!composition
+            .snapshots
+            .lock()
+            .await
+            .retained
+            .values()
+            .flatten()
+            .any(|snapshot| Arc::ptr_eq(snapshot, &previous)));
         assert!(fixture
             .center
             .snapshot_sources(EventSourceScope::System)

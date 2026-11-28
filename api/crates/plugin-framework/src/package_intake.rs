@@ -1,6 +1,6 @@
 use std::{
     fs,
-    io::Cursor,
+    io::{Cursor, Read},
     path::{Component, Path, PathBuf},
 };
 
@@ -90,13 +90,16 @@ pub fn ensure_package_runtime_target_compatible(
     manifest: &PluginManifestV1,
 ) -> Result<(), PluginFrameworkError> {
     let runtime_entry = package_root.join(&manifest.runtime.entry);
-    let runtime_bytes = fs::read(&runtime_entry).map_err(|error| {
-        PluginFrameworkError::io(
-            Some(&runtime_entry),
-            format!("failed to read package runtime entry: {error}"),
-        )
-    })?;
-    let Some(package_target) = RuntimeTarget::from_executable_bytes(&runtime_bytes)? else {
+    let mut header = Vec::with_capacity(64);
+    fs::File::open(&runtime_entry)
+        .and_then(|file| file.take(64).read_to_end(&mut header))
+        .map_err(|error| {
+            PluginFrameworkError::io(
+                Some(&runtime_entry),
+                format!("failed to read package runtime entry: {error}"),
+            )
+        })?;
+    let Some(package_target) = RuntimeTarget::from_executable_bytes(&header)? else {
         return Ok(());
     };
     let host_target = RuntimeTarget::current_host()?;
@@ -529,10 +532,21 @@ fn payload_sha256(root: &Path) -> Result<String, PluginFrameworkError> {
     files.sort_by(|left, right| left.0.cmp(&right.0));
 
     let mut hasher = Sha256::new();
-    for (relative_path, content) in files {
+    let mut buffer = [0; 64 * 1024];
+    for (relative_path, path) in files {
         hasher.update(relative_path.as_bytes());
         hasher.update([0]);
-        hasher.update(content);
+        let io_error =
+            |error: std::io::Error| PluginFrameworkError::io(Some(&path), error.to_string());
+        let mut file = fs::File::open(&path).map_err(io_error)?;
+        loop {
+            match file.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(bytes) => hasher.update(&buffer[..bytes]),
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(io_error(error)),
+            }
+        }
         hasher.update([0]);
     }
     Ok(format!("{:x}", base16ct::HexDisplay(&hasher.finalize())))
@@ -541,7 +555,7 @@ fn payload_sha256(root: &Path) -> Result<String, PluginFrameworkError> {
 fn collect_payload_files(
     root: &Path,
     current: &Path,
-    files: &mut Vec<(String, Vec<u8>)>,
+    files: &mut Vec<(String, PathBuf)>,
 ) -> Result<(), PluginFrameworkError> {
     let mut children = fs::read_dir(current)
         .map_err(|error| PluginFrameworkError::io(Some(current), error.to_string()))?
@@ -563,9 +577,7 @@ fn collect_payload_files(
             collect_payload_files(root, &path, files)?;
             continue;
         }
-        let content = fs::read(&path)
-            .map_err(|error| PluginFrameworkError::io(Some(&path), error.to_string()))?;
-        files.push((relative, content));
+        files.push((relative, path));
     }
 
     Ok(())
@@ -624,3 +636,7 @@ fn derive_trust_level(
         _ => "checksum_only".to_string(),
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/payload_digest.rs"]
+mod payload_digest_tests;

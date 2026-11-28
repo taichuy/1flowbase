@@ -904,11 +904,10 @@ pub(crate) async fn available_targets(
             });
         }
     }
-    let catalog = McpManagementService::new(store.clone())
-        .read_catalog_for_actor(actor)
+    let instances = McpManagementService::new(store.clone())
+        .list_instances_for_actor(actor)
         .await?;
-    let enabled_mcp_instances = catalog
-        .instances
+    let enabled_mcp_instances = instances
         .into_iter()
         .filter(|instance| instance.status == McpInstanceStatus::Enabled)
         .map(|instance| AssistantMcpInstanceOption {
@@ -1022,11 +1021,11 @@ pub(crate) async fn validate_preference(
         )
         .into());
     }
-    let catalog = McpManagementService::new(store.clone())
-        .read_catalog_for_actor(actor)
+    let instances = McpManagementService::new(store.clone())
+        .list_instances_for_actor(actor)
         .await?;
     for instance_id in &preference.mcp_instance_ids {
-        if !catalog.instances.iter().any(|instance| {
+        if !instances.iter().any(|instance| {
             instance.instance_id == *instance_id && instance.status == McpInstanceStatus::Enabled
         }) {
             return Err(

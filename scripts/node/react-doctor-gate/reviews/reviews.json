@@ -4,8 +4,8 @@
     {
       "file": "web/app/package.json",
       "rule": "deslop/unused-dependency",
-      "sourceSha256": "2026edb9794e9a9f7bf5994d4e0246e27e743447d1482c9bdcc37be6896b3daf",
-      "reason": "web/app/package.json 的 is-mobile 是 Vite 开发态 interop cache 的直接依赖，由 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 字符串列表和 verifyCriticalInteropCache 消费，不要求业务 TSX 直接 import。scripts/node/dev-up/_tests/vite-config-text.test.js 的 DRS-001 critical CommonJS dependencies share the optimized ESM boundary 断言 is-mobile/react-is、optimize include/needsInterop 引用及 appPackage.dependencies 实际存在。删除会破坏该真实开发配置合同；此证据是现存静态 contract test，不冒充浏览器验证。 The package version bump and added pre-React auth alias assertions leave is-mobile and the DRS-001 optimization witness in place. Reassessed: The test runner and compiler dependency revisions leave the development-only interop specifier in place. The Vite text contract still checks its declared dependency and optimized lookup.",
+      "sourceSha256": "ed1e0234141bd57e1bc1f64a54c740618790022cf2048e9b409c1405b5c24a82",
+      "reason": "is-mobile is a direct input to the Vite development interop cache, not an application TSX import. DRS-001 checks its declaration and the optimized ESM boundary used by verifyCriticalInteropCache. Moving Vitest script selectors does not remove that consumer.",
       "evidence": [
         {
           "file": "web/app/vite/dev-runtime.ts",

@@ -9,7 +9,8 @@ use control_plane::{
     host_extension::{is_host_extension_installation, is_host_extension_manifest},
     ports::PluginRepository,
 };
-use domain::{PluginDesiredState, PluginRuntimeStatus};
+use control_plane_contracts::ports::{NativePluginStartupOutcome, VerifiedNativePluginArtifact};
+use domain::PluginDesiredState;
 use plugin_framework::{
     parse_host_extension_contribution_manifest, scan_host_extension_dropins_with_policy,
     HostExtensionContributionManifest, HostExtensionDropinPolicy, HostExtensionDropinScan,
@@ -36,10 +37,7 @@ pub struct HostExtensionStartupSummary {
 pub(crate) struct PreparedHostExtensionsAtStartup {
     pub(crate) contributions: Vec<ResolvedHostExtensionConsoleContribution>,
     graph_extensions: Vec<(PluginManifestV1, HostExtensionContributionManifest)>,
-    activation_candidates: Vec<(
-        domain::LocalPluginInstallationRecord,
-        domain::NativePluginTarget,
-    )>,
+    activation_candidates: Vec<(VerifiedNativePluginArtifact, domain::NativePluginTarget)>,
     pub(crate) summary: HostExtensionStartupSummary,
     failed_candidates: Vec<(domain::NativePluginTarget, String)>,
 }
@@ -62,8 +60,7 @@ impl PreparedHostExtensionsAtStartup {
                     .complete_native_plugin_startup(
                         target,
                         node_id,
-                        PluginRuntimeStatus::LoadFailed,
-                        Some(&format!("{error:#}")),
+                        NativePluginStartupOutcome::LoadFailed(&format!("{error:#}")),
                     )
                     .await?;
                 return Err(error);
@@ -82,8 +79,7 @@ impl PreparedHostExtensionsAtStartup {
                 .complete_native_plugin_startup(
                     target,
                     node_id,
-                    PluginRuntimeStatus::LoadFailed,
-                    Some(&format!("{error:#}")),
+                    NativePluginStartupOutcome::LoadFailed(&format!("{error:#}")),
                 )
                 .await
             {
@@ -146,13 +142,22 @@ pub(crate) async fn prepare_host_extensions_at_startup(
         tracing::warn!(conflict = %conflict, "native plugin activation requires an explicit installation selection");
     }
     prepared.summary.warnings.extend(conflicts);
+    // Close stale node runtime before template application can abort this startup.
+    let boot_targets = prepared
+        .activation_candidates
+        .iter()
+        .map(|(_, target)| target)
+        .chain(prepared.failed_candidates.iter().map(|(target, _)| target))
+        .collect::<Vec<_>>();
+    store
+        .reset_unloaded_native_startup_artifacts(api_node_id, &boot_targets)
+        .await?;
     for (target, error) in &prepared.failed_candidates {
         store
             .complete_native_plugin_startup(
                 target,
                 api_node_id,
-                PluginRuntimeStatus::LoadFailed,
-                Some(error),
+                NativePluginStartupOutcome::LoadFailed(error),
             )
             .await?;
     }
@@ -217,7 +222,7 @@ pub(crate) async fn inspect_selected_host_extensions(
         // A previous native load failure is retryable at restart. Revalidate the selected
         // immutable artifact below; never call this retry path for an unselected installation.
 
-        let (manifest, contribution) =
+        let (manifest, contribution, verified) =
             match validate_host_extension_installation(&local_installation) {
                 Ok(package) => package,
                 Err(error) => {
@@ -239,7 +244,7 @@ pub(crate) async fn inspect_selected_host_extensions(
         };
         contributions.push(resolved);
         graph_extensions.push((manifest, contribution));
-        activation_candidates.push((local_installation, target));
+        activation_candidates.push((verified, target));
     }
 
     Ok(PreparedHostExtensionsAtStartup {
@@ -287,9 +292,13 @@ pub(crate) async fn activate_prepared_host_extensions(
             return Err(error);
         }
     }
-    for (_, target) in &prepared.activation_candidates {
+    for (verified, target) in &prepared.activation_candidates {
         if let Err(error) = store
-            .complete_native_plugin_startup(target, api_node_id, PluginRuntimeStatus::Active, None)
+            .complete_native_plugin_startup(
+                target,
+                api_node_id,
+                NativePluginStartupOutcome::Active(verified),
+            )
             .await
         {
             prepared
@@ -350,12 +359,25 @@ fn scan_host_extensions_from_dropins(
 
 fn validate_host_extension_installation(
     installation: &domain::LocalPluginInstallationRecord,
-) -> Result<(PluginManifestV1, HostExtensionContributionManifest)> {
-    let install_root = Path::new(
-        installation
-            .local_path()
-            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
-    );
+) -> Result<(
+    PluginManifestV1,
+    HostExtensionContributionManifest,
+    VerifiedNativePluginArtifact,
+)> {
+    if domain::has_local_artifact_warning(installation.artifact.last_error.as_deref()) {
+        bail!(
+            "native selected artifact has a local integrity warning: {}",
+            installation
+                .artifact
+                .last_error
+                .as_deref()
+                .unwrap_or_default()
+        );
+    }
+    let local_path = installation
+        .local_path()
+        .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?;
+    let install_root = Path::new(local_path);
     let manifest_path = install_root.join("manifest.yaml");
     let manifest_raw = fs::read_to_string(&manifest_path)
         .with_context(|| format!("failed to read {}", manifest_path.display()))?;
@@ -369,6 +391,46 @@ fn validate_host_extension_installation(
     {
         bail!("native selected installation/artifact identity mismatch");
     }
+    let actual_fingerprint =
+        plugin_framework::canonical_manifest_fingerprint(manifest_raw.as_bytes());
+    if installation
+        .artifact
+        .manifest_fingerprint
+        .as_ref()
+        .is_some_and(|fp| fp != &actual_fingerprint)
+    {
+        bail!("native selected artifact manifest_fingerprint_mismatch");
+    }
+    let marker_path = install_root.join(".1flowbase-artifact.json");
+    let marker_required = installation.source_kind != "filesystem_dropin";
+    let local_checksum = match fs::read(&marker_path) {
+        Ok(bytes) => {
+            let marker: domain::RuntimeArtifactMarkerIdentity = serde_json::from_slice(&bytes)
+                .with_context(|| format!("failed to parse {}", marker_path.display()))?;
+            if marker.plugin_id != installation.plugin_id
+                || marker.version != installation.plugin_version
+            {
+                bail!("native selected artifact marker identity mismatch");
+            }
+            if marker.checksum != installation.expected_checksum {
+                bail!("native selected artifact marker checksum mismatch");
+            }
+            if !marker
+                .manifest_fingerprint
+                .as_ref()
+                .map_or(!marker_required, |fp| fp == &actual_fingerprint)
+            {
+                bail!("native selected artifact marker manifest_fingerprint_mismatch");
+            }
+            marker.checksum
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !marker_required => {
+            installation.expected_checksum.clone()
+        }
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to read {}", marker_path.display()))
+        }
+    };
     if !is_host_extension_manifest(&manifest) {
         bail!(
             "installation {} is not a host extension manifest",
@@ -409,7 +471,19 @@ fn validate_host_extension_installation(
     }
     validate_native_library(install_root, &contribution)?;
 
-    Ok((manifest, contribution))
+    Ok((
+        manifest,
+        contribution,
+        VerifiedNativePluginArtifact {
+            verify_manifest: control_plane::host_extension::verify_native_startup_manifest,
+            contribution_is_valid:
+                control_plane::host_extension::native_startup_contribution_is_valid,
+            local_path: local_path.to_string(),
+            local_version: installation.plugin_version.clone(),
+            local_checksum,
+            manifest_fingerprint: actual_fingerprint,
+        },
+    ))
 }
 
 fn validate_native_library(

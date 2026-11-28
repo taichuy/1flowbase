@@ -160,7 +160,11 @@ async fn root_2014_ac_014_template_commit_failure_keeps_target_pending() {
 #[tokio::test]
 async fn root_2014_ac_014_post_apply_boot_failure_retry_preserves_user_edit() {
     let f = NativeSettingsFixture::new().await;
-    let target = f.select("1.0.0").await;
+    let old = f.select("1.0.0").await;
+    crate::host_extension_loader::load_host_extensions_at_startup(&f.state)
+        .await
+        .unwrap();
+    let target = f.select("2.0.0").await;
     let prepared = f.prepare().await;
     prepared
         .apply_templates(&f.state.store, &f.state.api_node_id)
@@ -191,6 +195,16 @@ async fn root_2014_ac_014_post_apply_boot_failure_retry_preserves_user_edit() {
             .unwrap()
             .runtime_status,
         PluginRuntimeStatus::LoadFailed
+    );
+    assert_eq!(
+        f.state
+            .store
+            .get_artifact_instance(&f.state.api_node_id, old.installation_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .runtime_status,
+        PluginRuntimeStatus::Inactive,
     );
     let id = f
         .edit("export default () => <p>after committed application</p>")

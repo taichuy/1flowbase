@@ -28,7 +28,7 @@ impl ProviderRuntimePort for ReceiptProvider {
     async fn ensure_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         self.fallback.ensure_loaded(installation).await
     }
     async fn validate_provider(

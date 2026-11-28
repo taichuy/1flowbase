@@ -396,7 +396,52 @@ fn response_contract(spec: &CatalogSpec<'_>, operation: &Value) -> Option<(Strin
     None
 }
 
+// Inspect the existing response envelopes without cloning them or resolving schemas.
+pub(super) fn response_media_type_from_view(
+    operation: &DocsCatalogOperation,
+    view: &OperationSpecView<'_>,
+) -> Option<String> {
+    let spec = CatalogSpec::Scoped(view);
+    let responses = operation_node(&spec, operation)?
+        .get("responses")?
+        .as_object()?;
+    let mut successful = responses
+        .iter()
+        .filter(|(status, _)| status.starts_with('2'))
+        .collect::<Vec<_>>();
+    successful.sort_by_key(|(status, _)| *status);
+    successful.into_iter().find_map(|(_, response)| {
+        let mut response = response;
+        let mut content = response.get("content");
+        let mut visited = BTreeSet::new();
+        while let Some(pointer) = response
+            .get("$ref")
+            .and_then(Value::as_str)
+            .and_then(|r| r.strip_prefix('#'))
+        {
+            if !visited.insert(pointer) || !pointer.starts_with("/components/") {
+                break;
+            }
+            let Some(target) = view.source().pointer(pointer) else {
+                break;
+            };
+            response = target;
+            content = target
+                .is_object()
+                .then(|| content.or_else(|| target.get("content")))
+                .flatten();
+        }
+        let (media_type, _) = media_schema_ref(content?)?;
+        Some(media_type.clone())
+    })
+}
+
 fn media_schema(content: &Value) -> Option<(String, Value)> {
+    let (kind, schema) = media_schema_ref(content)?;
+    Some((kind.clone(), schema.clone()))
+}
+
+fn media_schema_ref(content: &Value) -> Option<(&String, &Value)> {
     let content = content.as_object()?;
     let selected = content
         .get_key_value("application/json")
@@ -407,7 +452,7 @@ fn media_schema(content: &Value) -> Option<(String, Value)> {
         .or_else(|| content.get_key_value("application/zip"))
         .or_else(|| content.get_key_value("text/event-stream"))
         .or_else(|| content.iter().next())?;
-    Some((selected.0.clone(), selected.1.get("schema")?.clone()))
+    Some((selected.0, selected.1.get("schema")?))
 }
 
 fn object_schema(properties: Map<String, Value>, required: Vec<Value>) -> Value {

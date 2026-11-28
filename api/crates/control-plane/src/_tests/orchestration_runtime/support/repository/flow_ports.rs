@@ -895,6 +895,17 @@ impl PluginRepository for InMemoryOrchestrationRuntimeRepository {
             .unwrap_or_default())
     }
 
+    async fn retire_unreferenced_installation(
+        &self,
+        _input: &control_plane_contracts::ports::UpdatePluginDesiredStateInput,
+    ) -> anyhow::Result<Option<domain::PluginInstallationRecord>> {
+        panic!("unexpected retire_unreferenced_installation")
+    }
+
+    async fn list_referenced_installation_ids(&self) -> anyhow::Result<Vec<Uuid>> {
+        panic!("unexpected list_referenced_installation_ids")
+    }
+
     async fn list_assigned_installation_ids(&self) -> Result<Vec<Uuid>> {
         let inner = self.inner.lock().expect("runtime repo mutex poisoned");
         let mut installation_ids = inner
@@ -1036,13 +1047,6 @@ impl ModelProviderRepository for InMemoryOrchestrationRuntimeRepository {
             .filter(|record| record.provider_code == provider_code)
             .cloned()
             .collect())
-    }
-
-    async fn reassign_instances_to_installation(
-        &self,
-        _input: &crate::ports::ReassignModelProviderInstancesInput,
-    ) -> Result<Vec<domain::ModelProviderInstanceRecord>> {
-        unimplemented!("not needed in orchestration runtime tests")
     }
 
     async fn upsert_catalog_cache(

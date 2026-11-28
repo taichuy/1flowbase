@@ -674,6 +674,7 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         }
     };
     let new_target = a_target(&new_graph);
+    let retire_body = serde_json::to_value(&new_target).unwrap();
     let new_a_authority = new_graph
         .authority
         .contributions
@@ -693,8 +694,7 @@ async fn root_2007_ac_009_pause_revoke_retire() {
     );
     assert_ne!(new_target.graph_fingerprint, pending.graph_fingerprint);
     assert_ne!(
-        serde_json::to_value(&new_target).unwrap(),
-        target_g2,
+        retire_body, target_g2,
         "enabling B under the new revision is a different frozen graph, not resurrected G2"
     );
     assert!(runtime
@@ -721,6 +721,23 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         })
         .await
         .unwrap();
+    // Holding new_graph's Arc is not an execution lease. Publication already reclaimed it,
+    // without marking its exact target, so it can be rebuilt below.
+    let (status, swept) = request(
+        &app,
+        &cookie,
+        &csrf,
+        "POST",
+        &retire_path,
+        retire_body.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(swept["code"], "managed_retained_target_missing");
+    assert!(
+        new_graph.freeze_reference().is_err(),
+        "the swept lifetime stays closed"
+    );
     management
         .enable_plugin(EnablePluginCommand {
             actor_user_id: actor_id,
@@ -750,6 +767,9 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         authority.query(&actor, b).await.unwrap().revision,
         b_revision
     );
+    // Keep this execution retained through the publication sweep. This fixture has no
+    // background reclaimer; after release the explicit HTTP operation owns retirement.
+    let frozen = rebuilt.freeze_reference().unwrap();
     management
         .disable_plugin(DisablePluginCommand {
             actor_user_id: actor_id,
@@ -757,17 +777,22 @@ async fn root_2007_ac_009_pause_revoke_retire() {
         })
         .await
         .unwrap();
+    let (status, protected) = request(
+        &app,
+        &cookie,
+        &csrf,
+        "POST",
+        &retire_path,
+        retire_body.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(protected["code"], "managed_snapshot_has_frozen_references");
+    drop(frozen);
     assert_eq!(
-        request(
-            &app,
-            &cookie,
-            &csrf,
-            "POST",
-            &retire_path,
-            serde_json::to_value(&new_target).unwrap()
-        )
-        .await
-        .0,
+        request(&app, &cookie, &csrf, "POST", &retire_path, retire_body)
+            .await
+            .0,
         StatusCode::OK
     );
     let rejected = management

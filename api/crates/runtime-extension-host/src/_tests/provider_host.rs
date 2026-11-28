@@ -651,7 +651,7 @@ fn normalize_models_rejects_legacy_provider_descriptor_shape() {
 }
 
 #[test]
-fn load_if_needed_skips_reloading_matching_loaded_provider_source() {
+fn load_if_needed_rejects_changed_manifest_even_when_source_key_matches() {
     let package = TempProviderPackage::new();
     let mut host = ProviderHost::default();
     let summary = host
@@ -660,12 +660,18 @@ fn load_if_needed_skips_reloading_matching_loaded_provider_source() {
     assert!(host.is_loaded(&summary.plugin_id));
 
     package.write_provider_package("Mutated Provider");
-    host.load_if_needed(
-        &summary.plugin_id,
-        package.path().to_str().unwrap(),
-        Some("gen-1"),
-    )
-    .unwrap();
+    let error = host
+        .load_if_needed(
+            &summary.plugin_id,
+            package.path().to_str().unwrap(),
+            Some("gen-1"),
+            Some(&summary.identity.manifest_fingerprint),
+            None,
+        )
+        .unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("runtime manifest fingerprint does not match"));
 
     let loaded = host.loaded_packages.get(&summary.plugin_id).unwrap();
     assert_eq!(loaded.package.manifest.display_name, "Fixture Provider");
@@ -685,6 +691,8 @@ fn load_if_needed_reloads_when_provider_source_identity_changes() {
         &summary.plugin_id,
         package.path().to_str().unwrap(),
         Some("gen-2"),
+        None,
+        None,
     )
     .unwrap();
 

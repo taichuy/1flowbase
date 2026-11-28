@@ -1,7 +1,7 @@
 use control_plane_contracts::ports::{
-    CreateDataSourceInstanceInput, CreateDataSourcePreviewSessionInput, DataSourceRepository,
-    RotateDataSourceSecretInput, UpsertDataSourceCatalogCacheInput, UpsertDataSourceSecretInput,
-    UpsertPluginInstallationInput,
+    CreateDataSourceInstanceInput, CreateDataSourcePreviewSessionInput,
+    CreatePluginAssignmentInput, DataSourceRepository, RotateDataSourceSecretInput,
+    UpsertDataSourceCatalogCacheInput, UpsertDataSourceSecretInput, UpsertPluginInstallationInput,
 };
 use domain::{
     DataModelStatus, DataSourceCatalogRefreshStatus, DataSourceDefaults, DataSourceInstanceStatus,
@@ -92,6 +92,18 @@ async fn seed_store() -> (
             signing_key_id: None,
             metadata_json: json!({}),
             is_system_reserved: false,
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+
+    control_plane_contracts::ports::PluginRepository::create_assignment(
+        &store,
+        &CreatePluginAssignmentInput {
+            installation_id,
+            workspace_id: workspace.id,
+            provider_code: "acme_hubspot_source".into(),
             actor_user_id: actor.id,
         },
     )

@@ -1,3 +1,4 @@
+use control_plane_contracts::ports::ActivatePluginArtifactOutcome;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
@@ -767,14 +768,41 @@ where
         &self,
         installation: &domain::LocalPluginInstallationRecord,
     ) -> Result<()> {
+        let runtime_lock = self.node_artifact_context().map(|ctx| {
+            crate::plugin_management::node_installation_runtime_lock(ctx.node_id, installation.id)
+        });
+        let _lifecycle_guard = match runtime_lock.as_ref() {
+            Some(lock) => Some(lock.lock().await),
+            None => None,
+        };
+        if domain::has_local_artifact_warning(installation.artifact.last_error.as_deref()) {
+            return Err(ControlPlaneError::PluginUnavailable.into());
+        }
         match self.runtime.ensure_loaded(installation).await {
-            Ok(()) => {
-                self.mark_current_node_runtime_status(
-                    installation,
-                    domain::PluginRuntimeStatus::Active,
-                    None,
-                )
-                .await?;
+            Ok(loaded) => {
+                if let Some(context) = self.node_artifact_context() {
+                    let error =
+                        match crate::plugin_management::try_mark_current_node_plugin_runtime_active(
+                            &self.repository,
+                            context.node_id,
+                            installation,
+                            loaded.as_ref(),
+                        )
+                        .await?
+                        {
+                            ActivatePluginArtifactOutcome::Activated(_) => None,
+                            ActivatePluginArtifactOutcome::Disabled => {
+                                Some(ControlPlaneError::Conflict("plugin_installation_disabled"))
+                            }
+                            ActivatePluginArtifactOutcome::ArtifactInvalidated => {
+                                Some(ControlPlaneError::PluginUnavailable)
+                            }
+                        };
+                    if let Some(error) = error {
+                        self.runtime.deactivate_plugin(installation).await?;
+                        return Err(error.into());
+                    }
+                }
                 Ok(())
             }
             Err(error) => {

@@ -280,6 +280,44 @@ test('keeps root topbar namespace demand strictly scoped to SHELL_TOPBAR_NAMESPA
   );
 });
 
+test('demandPrimary loads only active locale for dynamically mounted features and retains them across language switches', async () => {
+  const instance = coldInstance();
+  const loader = createApplicationResourceLoader(
+    instance,
+    applicationTranslationLoaders
+  );
+  await loader.activatePrimary(
+    'zh_Hans',
+    applicationNamespacesForPath('/route')
+  );
+  expect(instance.hasResourceBundle('zh_Hans', 'applications')).toBe(false);
+  expect(instance.t('auto.past_seven_days', { ns: 'applications' })).toBe(
+    'auto.past_seven_days'
+  );
+
+  await loader.demandPrimary('zh_Hans', [
+    'applications',
+    'agentFlow',
+    'workflow'
+  ]);
+  expect(instance.hasResourceBundle('zh_Hans', 'applications')).toBe(true);
+  expect(instance.hasResourceBundle('en_US', 'applications')).toBe(false);
+  expect(instance.t('auto.past_seven_days', { ns: 'applications' })).toBe(
+    '过去 7 天'
+  );
+  expect(instance.t('auto.sort_by_prefix', { ns: 'applications' })).toBe(
+    '排序：'
+  );
+
+  await loader.activatePrimary('en_US');
+  expect(instance.language).toBe('en_US');
+  expect(instance.hasResourceBundle('en_US', 'applications')).toBe(true);
+  expect(instance.hasResourceBundle('en_US', 'agentFlow')).toBe(true);
+  expect(instance.t('auto.past_seven_days', { ns: 'applications' })).toBe(
+    'past 7 days'
+  );
+});
+
 async function waitForBundle(promise: Promise<unknown>) {
   await promise;
   await Promise.resolve();

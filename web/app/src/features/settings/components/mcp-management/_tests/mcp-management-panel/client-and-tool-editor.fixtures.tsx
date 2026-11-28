@@ -1,4 +1,5 @@
 import { installDirectorySnapshotApi } from './fixtures/directory-snapshot';
+import { installProgressiveMcpApi } from './fixtures/progressive-api';
 import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
 import {
   act,
@@ -13,6 +14,54 @@ import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 
 const mcpManagementApi = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
+  settingsMcpInstancesQueryKey: ['settings', 'mcp-management', 'instances'],
+  settingsMcpToolsQueryKey: ['settings', 'mcp-management', 'tools'],
+  settingsMcpToolDetailQueryKey: (toolId: string) => [
+    'settings',
+    'mcp-management',
+    'tools',
+    'detail',
+    toolId
+  ],
+  settingsMcpInstanceDiscoveryPolicyQueryKey: (instanceId: string) => [
+    'settings',
+    'mcp-management',
+    'discovery-policy',
+    instanceId
+  ],
+  settingsMcpInterfaceCapabilitiesQueryKey: [
+    'settings',
+    'mcp-management',
+    'interface-capabilities'
+  ],
+  settingsMcpInterfaceCapabilitiesPageQueryKey: (query: unknown) => [
+    'settings',
+    'mcp-management',
+    'interface-capabilities',
+    'page',
+    query
+  ],
+  settingsMcpInterfaceCapabilityDetailQueryKey: (interfaceId: string) => [
+    'settings',
+    'mcp-management',
+    'interface-capabilities',
+    'detail',
+    interfaceId
+  ],
+  invalidateSettingsMcpInstancesAndTools: (queryClient: {
+    invalidateQueries: (arg: { queryKey: readonly unknown[] }) => Promise<void>;
+  }) =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['settings', 'mcp-management', 'instances']
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['settings', 'mcp-management', 'tools']
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['settings', 'mcp-management', 'catalog']
+      })
+    ]),
   settingsOfficialMcpBundlesQueryKey: [
     'settings',
     'mcp-management',
@@ -33,6 +82,15 @@ const mcpManagementApi = vi.hoisted(() => ({
     'mcp-management',
     'upstream-connections'
   ],
+  fetchSettingsMcpCatalog: vi.fn(),
+  fetchSettingsMcpInstances: vi.fn(),
+  fetchSettingsMcpInstancesPage: vi.fn(),
+  fetchSettingsMcpToolsPage: vi.fn(),
+  fetchSettingsMcpTool: vi.fn(),
+  fetchSettingsMcpInstanceDiscoveryPolicy: vi.fn(),
+  fetchSettingsMcpInterfaceCapabilities: vi.fn(),
+  fetchSettingsMcpInterfaceCapabilitiesPage: vi.fn(),
+  fetchSettingsMcpInterfaceCapability: vi.fn(),
   createSettingsMcpUpstreamConnection: vi.fn(),
   createSettingsMcpInstance: vi.fn(),
   copySettingsMcpInstance: vi.fn(),
@@ -193,6 +251,7 @@ vi.mock('@monaco-editor/react', () => ({
 }));
 
 import { AppProviders } from '../../../../../../app/AppProviders';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   resetAuthStore,
   useAuthStore
@@ -278,30 +337,31 @@ function authenticate() {
 async function renderPanel(
   capabilities: ConsoleMcpInterfaceCapability[] = interfaceCapabilities
 ) {
+  const emptyCatalog: ConsoleMcpCatalog = {
+    instances: [],
+    groups: [],
+    tools: [],
+    bindings: [],
+    discovery_policies: []
+  };
+  installProgressiveMcpApi(mcpManagementApi, emptyCatalog, capabilities);
   return await renderSettled(
     <AppProviders>
-      <McpManagementPanel
-        canManage
-        catalog={{
-          instances: [],
-          groups: [],
-          tools: [],
-          bindings: [],
-          discovery_policies: []
-        }}
-        interfaceCapabilities={capabilities}
-      />
+      <ObservePanelQueries />
+      <McpManagementPanel canManage />
     </AppProviders>
   );
 }
 
 async function renderPanelWithMountedTool({
+  queryClient,
   includeBinding = true,
   includeGroup = false,
   operation = 'POST /api/console/apps',
   proxy = false,
   fullDescription = 'Search customer'
 }: {
+  queryClient?: QueryClient;
   includeBinding?: boolean;
   includeGroup?: boolean;
   operation?: string;
@@ -434,13 +494,11 @@ async function renderPanelWithMountedTool({
     ]
   };
   installDirectorySnapshotApi(mcpManagementApi, catalog);
+  installProgressiveMcpApi(mcpManagementApi, catalog, interfaceCapabilities);
   return await renderSettled(
-    <AppProviders>
-      <McpManagementPanel
-        canManage
-        catalog={catalog}
-        interfaceCapabilities={interfaceCapabilities}
-      />
+    <AppProviders queryClient={queryClient}>
+      <ObservePanelQueries />
+      <McpManagementPanel canManage />
     </AppProviders>
   );
 }
@@ -677,6 +735,21 @@ async function dispatch<T>(event: () => T) {
 
 // Explicit render owners for this fixture; other test roots remain RTL-owned.
 const mountedViews = new Set<ReturnType<typeof render>>();
+const panelClients = new Set<QueryClient>();
+
+function ObservePanelQueries() {
+  panelClients.add(useQueryClient());
+  return null;
+}
+
+async function waitForRequests() {
+  await waitFor(() => {
+    for (const client of panelClients) {
+      expect(client.isFetching()).toBe(0);
+      expect(client.isMutating()).toBe(0);
+    }
+  });
+}
 
 async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
@@ -684,6 +757,7 @@ async function renderSettled(...args: Parameters<typeof render>) {
     view = render(...args);
     mountedViews.add(view);
   });
+  await waitForRequests();
   return view;
 }
 
@@ -700,6 +774,8 @@ afterEach(() => {
   // Release only the render owners created by this fixture before its resource teardown.
   for (const view of mountedViews) view.unmount();
   mountedViews.clear();
+  for (const client of panelClients) client.clear();
+  panelClients.clear();
   for (const editor of vditorMock.instances)
     expect(editor.destroy).toHaveBeenCalledOnce();
 });

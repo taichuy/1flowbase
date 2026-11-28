@@ -56,11 +56,12 @@ fn limits() -> PluginRuntimeLimits {
     }
 }
 
-fn assert_primary(error: PluginFrameworkError) {
+#[track_caller]
+fn assert_primary(case: &str, error: PluginFrameworkError) {
     let PluginFrameworkError::RuntimeContract { error } = error else {
-        panic!("expected original typed provider error");
+        panic!("{case}: expected original typed provider error, got {error:?}");
     };
-    assert_eq!(error.kind, ProviderRuntimeErrorKind::RateLimited);
+    assert_eq!(error.kind, ProviderRuntimeErrorKind::RateLimited, "{case}");
     assert_eq!(error.message, "primary-provider-error");
     assert_eq!(
         error.provider_summary.as_deref(),
@@ -87,6 +88,7 @@ async fn managed_first_error_drains_terminal_and_reuses_same_worker_without_resi
         .unwrap()
         .plugin_id;
     assert_primary(
+        FAILED_RESULT,
         host.invoke_stream(&plugin_id, invocation_input("fixture-model"))
             .await
             .unwrap_err(),
@@ -127,6 +129,7 @@ async fn managed_first_error_survives_eof_parse_io_timeout_and_closed_lane() {
         let path = error_script(&package, tail);
         let mut worker = ProviderWorker::new(path, limits());
         assert_primary(
+            tail,
             worker
                 .call_streaming(&request(), None, None, None)
                 .await
@@ -155,6 +158,7 @@ done
     let (sender, receiver) = tokio::sync::mpsc::channel(1);
     drop(receiver);
     assert_primary(
+        "managed closed lane",
         worker
             .call_streaming(&request(), Some(sender), None, None)
             .await
@@ -176,6 +180,7 @@ async fn standalone_first_error_survives_result_eof_parse_io_exit_and_closed_lan
         let package = TempProviderPackage::new();
         let path = error_script(&package, tail);
         assert_primary(
+            tail,
             call_executable_streaming(&path, &request(), &limits(), stream_context(None), None)
                 .await
                 .unwrap_err(),
@@ -186,6 +191,7 @@ async fn standalone_first_error_survives_result_eof_parse_io_exit_and_closed_lan
     let (sender, receiver) = tokio::sync::mpsc::channel(1);
     drop(receiver);
     assert_primary(
+        "standalone closed lane",
         call_executable_streaming(
             &path,
             &request(),

@@ -9,13 +9,14 @@ use extension_contracts::{
     PluginDataBinding, PluginDataError, PluginDataErrorKind, PluginDataPort, PluginDataRequest,
 };
 use runtime_core::runtime_backend::{
-    CapabilityRuntimePort, DataSourceRuntimePort, NetworkEgressRuntimePort, ProviderRuntimePort,
-    RuntimeArtifactReference, RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSnapshot,
-    RuntimeCancelOutcome, RuntimeCapabilityExecutionOutcome, RuntimeExecutionOutcome,
-    RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeLegacyManifestEligibility,
-    RuntimeManagedActivation, RuntimeManagedCapabilityRequest, RuntimeNetworkEgressActivation,
-    RuntimeObservationPort, RuntimePackageActivation, RuntimeProviderDistributionRequest,
-    RuntimeRegistrySnapshot, RuntimeRequestId, RuntimeStreamEventSink, RuntimeStreamSinks,
+    CapabilityRuntimePort, DataSourceRuntimePort, LoadedRuntimeArtifactIdentity,
+    NetworkEgressRuntimePort, ProviderRuntimePort, RuntimeArtifactReference, RuntimeBackendError,
+    RuntimeBackendLifecycle, RuntimeBackendSnapshot, RuntimeCancelOutcome,
+    RuntimeCapabilityExecutionOutcome, RuntimeExecutionOutcome, RuntimeExecutionPort,
+    RuntimeExecutionRequest, RuntimeLegacyManifestEligibility, RuntimeManagedActivation,
+    RuntimeManagedCapabilityRequest, RuntimeNetworkEgressActivation, RuntimeObservationPort,
+    RuntimePackageActivation, RuntimeProviderDistributionRequest, RuntimeRegistrySnapshot,
+    RuntimeRequestId, RuntimeStreamEventSink, RuntimeStreamSinks,
 };
 
 #[async_trait]
@@ -472,25 +473,21 @@ impl ProviderRuntimePort for RuntimeExtensionHost {
     async fn activate_provider(
         &self,
         request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError> {
         self.ensure_activating()?;
         let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
-        let package_root = package_root.to_string_lossy();
-        let mut host = self.provider_host.write().await;
-        match request.legacy_eligibility {
-            Some(eligibility) => host.load_legacy_installed_if_needed(
+        let eligibility = request.legacy_eligibility.map(legacy_eligibility);
+        self.provider_host
+            .write()
+            .await
+            .load_if_needed(
                 &request.plugin_id,
-                &package_root,
+                &package_root.to_string_lossy(),
                 request.source_identity.as_deref(),
-                &legacy_eligibility(eligibility),
-            ),
-            None => host.load_if_needed(
-                &request.plugin_id,
-                &package_root,
-                request.source_identity.as_deref(),
-            ),
-        }
-        .map_err(RuntimeBackendError::from)
+                request.expected_manifest_fingerprint.as_deref(),
+                eligibility.as_ref(),
+            )
+            .map_err(Into::into)
     }
 
     async fn deactivate_provider(&self, plugin_id: &str) -> Result<(), RuntimeBackendError> {
@@ -754,6 +751,7 @@ impl NetworkEgressRuntimePort for RuntimeExtensionHost {
             &request.runtime_id,
             &request.plugin_id,
             &package_root,
+            request.expected_manifest_fingerprint.as_deref(),
             crate::network_egress_host::NetworkEgressWorkerConfig::from_secret_json(
                 request.secret_json,
             ),
@@ -766,7 +764,7 @@ impl NetworkEgressRuntimePort for RuntimeExtensionHost {
     async fn network_egress_activate(
         &self,
         request: RuntimeNetworkEgressActivation,
-    ) -> Result<(), RuntimeBackendError> {
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError> {
         self.ensure_activating()?;
         let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
         let package_root = package_root.to_string_lossy();
@@ -778,6 +776,7 @@ impl NetworkEgressRuntimePort for RuntimeExtensionHost {
                 &request.plugin_id,
                 &package_root,
                 &request.source_identity,
+                request.expected_manifest_fingerprint.as_deref(),
                 crate::network_egress_host::NetworkEgressWorkerConfig::from_secret_json(
                     request.secret_json,
                 ),
@@ -852,13 +851,17 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
     async fn activate_provider_distribution_rule(
         &self,
         request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
+    ) -> Result<LoadedRuntimeArtifactIdentity, RuntimeBackendError> {
         self.ensure_activating()?;
         let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
         self.provider_distribution_host
             .write()
             .await
-            .load(&package_root.to_string_lossy(), &request.plugin_id)
+            .load(
+                &package_root.to_string_lossy(),
+                &request.plugin_id,
+                request.expected_manifest_fingerprint.as_deref(),
+            )
             .map_err(RuntimeBackendError::from)
     }
 

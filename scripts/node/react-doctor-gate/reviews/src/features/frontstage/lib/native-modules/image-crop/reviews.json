@@ -1,21 +1,21 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/antd-locale-modules.test.ts","sha256":"b69a4da07b375a3228ace2fa28bd543cb7a7ff7b289272a2f81ca189f797de72"},{"file":"web/app/src/features/frontstage/lib/native-modules/image-crop/antd-img-crop-runtime.tsx","sha256":"3aa1f908e9e5aaf8b4d6553bd52dad4eb03553eda2d1ef2b73511f31bb674b0b"},{"file":"web/app/src/features/frontstage/lib/native-modules/modal/_tests/runtime.test.tsx","sha256":"fde485261c8bf8fb039e01692c835c29dd79bac895f0a04e29293a00cdac4cda"},{"file":"web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts","sha256":"16e5c2a29fa0b368686dda26e03be813c82b6d1aa60ae9bf3d4adc9ded0f599b"},{"file":"web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx","sha256":"4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"},{"file":"web/app/src/features/frontstage/lib/native-modules/registry.ts","sha256":"af350af32974efce930a05e10ccb523bed61d02445688f73530c43ab6e2092e9"},{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/image-crop-loading.test.ts","sha256":"5e6686842a8b8ab4a5982892a806f35c55dde8706fca7698c9cf0dda50faebb3"}]
+    [{"file":"web/app/src/features/frontstage/lib/native-modules/registry.ts","sha256":"5d95f61bedb8815cab86304251ccc1a37aa0cfcff13f54b92581cb4409557dd8"},{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/image-crop-loading.test.ts","sha256":"5e6686842a8b8ab4a5982892a806f35c55dde8706fca7698c9cf0dda50faebb3"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-runtime-factory.test.tsx","sha256":"9af4d6d58059f5c566bfbc5fcead4f20bdce67bb641a66cbcaedcbcaf6c86518"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/lib/native-modules/image-crop/antd-img-crop-runtime.tsx",
       "rule": "react-doctor/no-react19-deprecated-apis",
       "sourceSha256": "3aa1f908e9e5aaf8b4d6553bd52dad4eb03553eda2d1ef2b73511f31bb674b0b",
-      "reason": "useContext remains a supported React API; forwardRef remains supported and this owner forwards a typed imperative ref to an Antd/native control. The flagged import alone does not prove a removed API or broken React 19 behavior. The lazy inline CSS import changes asset loading only; it does not change component exports, hooks or ref forwarding. The isolated loader test exercises the registration and its shadow-style result.",
+      "reason": "The factory uses forwardRef to pass the package component ref through its surface-aware wrapper. The registry fixture requires a stable object default from concurrent loads. A bare function is not the same runtime export; the current import is not evidence of a broken API.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/lib/native-modules/image-crop/antd-img-crop-runtime.tsx",
       "rule": "react-doctor/only-export-components",
       "sourceSha256": "3aa1f908e9e5aaf8b4d6553bd52dad4eb03553eda2d1ef2b73511f31bb674b0b",
-      "reason": "The public export is loadAntdImgCropModule, the native registry factory registered for antd-img-crop. It returns { module: { default: NativeImgCrop }, styles }, collects/removes package-global CSS and forwards ref and native surface modal ownership in a private wrapper. This factory ABI requires a loader export; it is not a component-only Fast Refresh entry. This owner does not use Object.assign or promise static-member preservation. The lazy inline CSS import changes asset loading only; it does not change component exports, hooks or ref forwarding. The isolated loader test exercises the registration and its shadow-style result.",
+      "reason": "The public ES export is the lazy module loader, not the private NativeImgCrop wrapper. Consumers receive the default component and isolated stylesheet together through the registry; the loader and factory tests assert deferred style loading and stable default-module identity.",
       "evidenceSet": 0
     }
   ]

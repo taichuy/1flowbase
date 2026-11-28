@@ -274,8 +274,8 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
     async fn ensure_loaded(
         &self,
         _installation: &domain::LocalPluginInstallationRecord,
-    ) -> Result<()> {
-        Ok(())
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
+        Ok(None)
     }
 
     async fn validate_provider(

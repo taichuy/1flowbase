@@ -62,6 +62,8 @@ impl ManagedExtensionComposition {
         drop(previous);
         let mut packages = self.prepare_packages(workspace_id).await?;
         let input = ManagedInstallationSwitch {
+            validate_manifest:
+                control_plane::plugin_management::validate_installed_managed_manifest,
             workspace_id,
             current_installation_id: current,
             target_installation_id: target,
@@ -147,6 +149,8 @@ impl ManagedExtensionComposition {
                 .map(|(_, prepared)| prepared.permission_catalog.clone());
             let lease = self.store.lock_managed_installation_switch(&input).await?;
             Self::validate_candidate(&expected, lease.authority())?;
+            Self::validate_loaded_artifacts(&packages, lease.authority())?;
+            Self::validate_package_files(&packages).await?;
             let compatible_types =
                 control_plane::notifications::compatible_notification_migration_types(
                     &lease
@@ -179,7 +183,7 @@ impl ManagedExtensionComposition {
                 publisher.publish(prepared);
             }
             drop(visible);
-            self.refresh_lifecycle_source_observations().await;
+            self.reclaim_unreferenced_retained_locked().await;
             self.notify_reclamation();
             Ok::<_, anyhow::Error>(migrated)
         }

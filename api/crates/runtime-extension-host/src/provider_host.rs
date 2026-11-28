@@ -46,12 +46,15 @@ use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 #[cfg(test)]
 use extension_package_runtime::provider_contract::ProviderCountTokensMethod;
 
-use crate::package_loader::{LoadedProviderPackage, PackageLoader};
+use crate::package_loader::{
+    cached_identity_matches, verify_package_activation, LoadedProviderPackage, PackageLoader,
+};
 use crate::stdio_runtime::{
     call_executable, call_executable_streaming, ProviderCallCancellation, ProviderHostCallContext,
     ProviderWorkerCleanupReason, ProviderWorkerCleanupReceipt, ProviderWorkerLifecycleState,
     StreamingCallContext, DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
 };
+use runtime_core::runtime_backend::LoadedRuntimeArtifactIdentity;
 
 use self::supervisor::ProviderWorkerSupervisor;
 #[cfg(test)]
@@ -91,6 +94,8 @@ pub struct LoadedProviderSummary {
     pub plugin_version: String,
     pub protocol: String,
     pub model_discovery_mode: ModelDiscoveryMode,
+    #[serde(skip)]
+    pub identity: LoadedRuntimeArtifactIdentity,
 }
 
 impl LoadedProviderSummary {
@@ -101,6 +106,7 @@ impl LoadedProviderSummary {
             plugin_version: loaded.package.manifest.version.clone(),
             protocol: loaded.package.provider.protocol.clone(),
             model_discovery_mode: loaded.package.provider.model_discovery_mode,
+            identity: loaded.identity.clone(),
         }
     }
 }
@@ -364,13 +370,14 @@ impl ProviderHost {
         source_identity: Option<&str>,
     ) -> FrameworkResult<LoadedProviderSummary> {
         let source = LoadedProviderSource::resolve(package_root, source_identity)?;
-        self.load_source(source, None, None)
+        self.load_source(source, None, None, None)
     }
 
     fn load_source(
         &mut self,
         source: LoadedProviderSource,
         expected_plugin_id: Option<&str>,
+        expected_fingerprint: Option<&str>,
         legacy_eligibility: Option<&extension_package_runtime::LegacyInstalledManifestEligibility>,
     ) -> FrameworkResult<LoadedProviderSummary> {
         let loaded = match legacy_eligibility {
@@ -380,14 +387,12 @@ impl ProviderHost {
             None => PackageLoader::load(&source.package_root)?,
         };
         let summary = LoadedProviderSummary::from_loaded(&loaded);
-        if let Some(expected_plugin_id) = expected_plugin_id {
-            if summary.plugin_id != expected_plugin_id {
-                return Err(PluginFrameworkError::invalid_provider_package(format!(
-                    "loaded provider package id {} does not match requested {expected_plugin_id}",
-                    summary.plugin_id
-                )));
-            }
-        }
+        verify_package_activation(
+            &summary.plugin_id,
+            expected_plugin_id.unwrap_or(&summary.plugin_id),
+            &summary.identity,
+            expected_fingerprint,
+        )?;
         self.retire_provider_worker_in_background(&summary.plugin_id)?;
         self.loaded_packages
             .insert(summary.plugin_id.clone(), loaded);
@@ -416,36 +421,31 @@ impl ProviderHost {
         plugin_id: &str,
         package_root: &str,
         source_identity: Option<&str>,
-    ) -> FrameworkResult<()> {
-        let requested_source = LoadedProviderSource::resolve(package_root, source_identity)?;
-        if self
-            .loaded_sources
-            .get(plugin_id)
-            .is_some_and(|loaded_source| loaded_source.can_skip_reload(&requested_source))
-        {
-            return Ok(());
+        expected_fingerprint: Option<&str>,
+        legacy_eligibility: Option<&extension_package_runtime::LegacyInstalledManifestEligibility>,
+    ) -> FrameworkResult<LoadedRuntimeArtifactIdentity> {
+        let requested = LoadedProviderSource::resolve(package_root, source_identity)?;
+        if let (Some(source), Some(package)) = (
+            self.loaded_sources.get(plugin_id),
+            self.loaded_packages.get(plugin_id),
+        ) {
+            if source.can_skip_reload(&requested)
+                && cached_identity_matches(
+                    &requested.package_root,
+                    &package.identity,
+                    expected_fingerprint,
+                )?
+            {
+                return Ok(package.identity.clone());
+            }
         }
-        self.load_source(requested_source, Some(plugin_id), None)
-            .map(|_| ())
-    }
-
-    pub fn load_legacy_installed_if_needed(
-        &mut self,
-        plugin_id: &str,
-        package_root: &str,
-        source_identity: Option<&str>,
-        eligibility: &extension_package_runtime::LegacyInstalledManifestEligibility,
-    ) -> FrameworkResult<()> {
-        let requested_source = LoadedProviderSource::resolve(package_root, source_identity)?;
-        if self
-            .loaded_sources
-            .get(plugin_id)
-            .is_some_and(|loaded_source| loaded_source.can_skip_reload(&requested_source))
-        {
-            return Ok(());
-        }
-        self.load_source(requested_source, Some(plugin_id), Some(eligibility))
-            .map(|_| ())
+        self.load_source(
+            requested,
+            Some(plugin_id),
+            expected_fingerprint,
+            legacy_eligibility,
+        )
+        .map(|summary| summary.identity)
     }
 
     #[cfg(test)]
@@ -476,7 +476,7 @@ impl ProviderHost {
         }
         let legacy_eligibility = self.legacy_manifest_eligibilities.get(plugin_id).cloned();
         self.quiesce_provider_worker(plugin_id).await?;
-        self.load_source(source, Some(plugin_id), legacy_eligibility.as_ref())
+        self.load_source(source, Some(plugin_id), None, legacy_eligibility.as_ref())
     }
 
     pub async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {

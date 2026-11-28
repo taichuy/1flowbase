@@ -188,7 +188,10 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
         Ok(())
     }
 
-    async fn activate_plugin(&self, installation: &LocalPluginInstallationRecord) -> Result<()> {
+    async fn activate_plugin(
+        &self,
+        installation: &LocalPluginInstallationRecord,
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         if let Some(failure) = self.activation_failure.write().await.take() {
             if let Some((repository, desired_state)) = failure.concurrent_update {
                 repository
@@ -215,7 +218,10 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
         Ok(())
     }
 
-    async fn ensure_loaded(&self, installation: &LocalPluginInstallationRecord) -> Result<()> {
+    async fn ensure_loaded(
+        &self,
+        installation: &LocalPluginInstallationRecord,
+    ) -> Result<Option<domain::LoadedRuntimeArtifactIdentity>> {
         if !installation
             .local_path()
             .is_some_and(|path| Path::new(path).is_dir())
@@ -226,7 +232,7 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
             .write()
             .await
             .push(installation.id);
-        Ok(())
+        Ok(None)
     }
 
     async fn validate_provider(

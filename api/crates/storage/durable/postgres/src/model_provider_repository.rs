@@ -6,10 +6,9 @@ use control_plane_contracts::{
         CreateModelFailoverQueueSnapshotInput, CreateModelFailoverQueueTemplateInput,
         CreateModelProviderCatalogSourceInput, CreateModelProviderInstanceInput,
         CreateModelProviderPreviewSessionInput, ModelProviderRepository,
-        PatchModelProviderSecretInput, ReassignModelProviderInstancesInput,
-        UpdateModelProviderInstanceInput, UpsertModelProviderCatalogCacheInput,
-        UpsertModelProviderCatalogEntryInput, UpsertModelProviderMainInstanceInput,
-        UpsertModelProviderSecretInput,
+        PatchModelProviderSecretInput, UpdateModelProviderInstanceInput,
+        UpsertModelProviderCatalogCacheInput, UpsertModelProviderCatalogEntryInput,
+        UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
     },
     ControlPlaneContractError as ControlPlaneError,
 };
@@ -103,6 +102,13 @@ impl ModelProviderRepository for PgControlPlaneStore {
         &self,
         input: &CreateModelProviderInstanceInput,
     ) -> Result<domain::ModelProviderInstanceRecord> {
+        let mut transaction = self.pool().begin().await?;
+        crate::plugin_repository::lock_assigned_active_plugin_reference_target(
+            &mut transaction,
+            input.workspace_id,
+            input.installation_id,
+        )
+        .await?;
         let row = sqlx::query(
             r#"
             insert into model_provider_instances (
@@ -174,10 +180,11 @@ impl ModelProviderRepository for PgControlPlaneStore {
         .bind(input.included_in_main)
         .bind(domain::DEFAULT_AUTO_INCLUDE_NEW_PROVIDER_INSTANCES)
         .bind(input.created_by)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
-
-        map_instance(row)
+        let instance = map_instance(row)?;
+        transaction.commit().await?;
+        Ok(instance)
     }
 
     async fn update_instance(
@@ -332,49 +339,6 @@ impl ModelProviderRepository for PgControlPlaneStore {
             "#,
         )
         .bind(provider_code)
-        .fetch_all(self.pool())
-        .await?;
-
-        rows.into_iter().map(map_instance).collect()
-    }
-
-    async fn reassign_instances_to_installation(
-        &self,
-        input: &ReassignModelProviderInstancesInput,
-    ) -> Result<Vec<domain::ModelProviderInstanceRecord>> {
-        let rows = sqlx::query(
-            r#"
-            update model_provider_instances
-            set
-                installation_id = $3,
-                protocol = $4,
-                updated_by = $5,
-                updated_at = now()
-            where workspace_id = $1
-              and provider_code = $2
-            returning
-                id,
-                workspace_id,
-                installation_id,
-                provider_code,
-                protocol,
-                display_name,
-                status,
-                config_json,
-                configured_models_json,
-                enabled_model_ids,
-                included_in_main,
-                created_by,
-                updated_by,
-                created_at,
-                updated_at
-            "#,
-        )
-        .bind(input.workspace_id)
-        .bind(&input.provider_code)
-        .bind(input.target_installation_id)
-        .bind(&input.target_protocol)
-        .bind(input.updated_by)
         .fetch_all(self.pool())
         .await?;
 
@@ -728,6 +692,36 @@ impl ModelProviderRepository for PgControlPlaneStore {
         &self,
         input: &CreateModelProviderPreviewSessionInput,
     ) -> Result<domain::ModelProviderPreviewSessionRecord> {
+        let mut transaction = self.pool().begin().await?;
+        if let Some(installation_id) = input.installation_id {
+            let assigned = crate::plugin_repository::lock_active_plugin_workspace_assignment(
+                &mut transaction,
+                input.workspace_id,
+                installation_id,
+            )
+            .await?;
+            if let Some(instance_id) = input.instance_id {
+                let matches_instance: bool = sqlx::query_scalar(
+                    "select exists(select 1 from model_provider_instances where workspace_id=$1 and id=$2 and installation_id=$3 for share)",
+                )
+                .bind(input.workspace_id)
+                .bind(instance_id)
+                .bind(installation_id)
+                .fetch_one(&mut *transaction)
+                .await?;
+                if !matches_instance {
+                    return Err(
+                        control_plane_contracts::ControlPlaneContractError::Conflict(
+                            "model_provider_instance_installation_changed",
+                        )
+                        .into(),
+                    );
+                }
+            }
+            if !assigned {
+                return Err(ControlPlaneError::Conflict("plugin_assignment_required").into());
+            }
+        }
         let row = sqlx::query(
             r#"
             insert into model_provider_preview_sessions (
@@ -760,10 +754,11 @@ impl ModelProviderRepository for PgControlPlaneStore {
         .bind(&input.config_fingerprint)
         .bind(&input.models_json)
         .bind(input.expires_at)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
-
-        map_preview_session(row)
+        let session = map_preview_session(row)?;
+        transaction.commit().await?;
+        Ok(session)
     }
 
     async fn get_preview_session(

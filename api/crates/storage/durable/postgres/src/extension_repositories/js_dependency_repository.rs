@@ -200,6 +200,26 @@ impl ApplicationJsDependencySelectionRepository for PgControlPlaneStore {
         input: &ReplaceApplicationJsDependencySelectionInput,
     ) -> Result<domain::ApplicationJsDependencySelection> {
         let mut tx = self.pool().begin().await?;
+        crate::plugin_repository::lock_active_plugin_reference_target(
+            &mut tx,
+            input.installation_id,
+        )
+        .await?;
+        let assigned: bool = sqlx::query_scalar(
+            "select exists(select 1 from plugin_assignments where workspace_id = $1 and installation_id = $2 for share)",
+        )
+        .bind(input.workspace_id)
+        .bind(input.installation_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !assigned {
+            return Err(
+                control_plane_contracts::ControlPlaneContractError::Conflict(
+                    "plugin_assignment_required",
+                )
+                .into(),
+            );
+        }
         sqlx::query(
             r#"
             delete from application_js_dependency_selections

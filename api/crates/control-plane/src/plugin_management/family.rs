@@ -1,3 +1,23 @@
+use control_plane_contracts::ports::ActivatePluginArtifactOutcome;
+pub(crate) fn node_installation_runtime_lock(
+    node_id: &str,
+    installation_id: Uuid,
+) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    use std::{
+        collections::HashMap,
+        sync::{Arc, LazyLock, Mutex},
+    };
+    type RuntimeLifecycleLocks = HashMap<(String, Uuid), Arc<tokio::sync::Mutex<()>>>;
+    static LOCKS: LazyLock<Mutex<RuntimeLifecycleLocks>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    LOCKS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .entry((node_id.to_string(), installation_id))
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
 use super::*;
 use super::{
     catalog_projection::refresh_provider_package_catalog_projection,
@@ -133,6 +153,16 @@ where
         command: EnablePluginCommand,
         task_kind: domain::PluginTaskKind,
     ) -> Result<domain::PluginTaskRecord> {
+        self.request_plugin_enable_with_lock_mode(command, task_kind, false)
+            .await
+    }
+
+    async fn request_plugin_enable_with_lock_mode(
+        &self,
+        command: EnablePluginCommand,
+        task_kind: domain::PluginTaskKind,
+        caller_holds_runtime_lock: bool,
+    ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
             .await?;
@@ -161,9 +191,6 @@ where
             }
         }
         let requires_restart = is_host_extension_installation(&installation);
-        let local_installation = self
-            .ready_current_node_installation(command.installation_id)
-            .await?;
 
         let task_id = Uuid::now_v7();
         let task = self
@@ -189,7 +216,18 @@ where
             )
             .await?;
 
+        let runtime_lock = node_installation_runtime_lock(&self.node_id, command.installation_id);
         let enable_result = async {
+            let _lifecycle_guard = if caller_holds_runtime_lock {
+                None
+            } else {
+                Some(runtime_lock.lock().await)
+            };
+            let was_active_on_node = !requires_restart
+                && self.current_node_runtime_is_active(command.installation_id).await?;
+            let local_installation = self
+            .ready_current_node_installation(command.installation_id)
+            .await?;
             self.prepare_managed_activation(&actor, &installation).await?;
             let updated = self
                 .repository
@@ -211,13 +249,16 @@ where
                 runtime_installation.installation.clone()
             } else {
                 match self.runtime.activate_plugin(&runtime_installation).await {
-                    Ok(()) => {
-                        self.mark_current_node_runtime_status(
-                            &runtime_installation,
-                            domain::PluginRuntimeStatus::Active,
-                            None,
-                        )
-                        .await?;
+                    Ok(loaded) => {
+                        let error = match self.try_mark_current_node_runtime_active(&runtime_installation, loaded.as_ref()).await? {
+                            ActivatePluginArtifactOutcome::Activated(_) => None,
+                            ActivatePluginArtifactOutcome::Disabled => Some(ControlPlaneError::Conflict("plugin_installation_disabled")),
+                            ActivatePluginArtifactOutcome::ArtifactInvalidated => Some(ControlPlaneError::PluginUnavailable),
+                        };
+                        if let Some(error) = error {
+                            self.deactivate_rejected_activation(&runtime_installation.installation, was_active_on_node).await?;
+                            return Err(error.into());
+                        }
                         runtime_installation.installation.clone()
                     }
                     Err(error) => {
@@ -361,7 +402,9 @@ where
                 json!({}),
             )
             .await?;
+        let runtime_lock = node_installation_runtime_lock(&self.node_id, command.installation_id);
         let disabled = async {
+            let _lifecycle_guard = runtime_lock.lock().await;
             let updated = self
                 .repository
                 .update_desired_state(&UpdatePluginDesiredStateInput {
@@ -757,6 +800,25 @@ where
         }
     }
 
+    /// Unload a retired version only while it has not been concurrently re-enabled by a rollback.
+    pub async fn deactivate_retired_installation_if_still_disabled(
+        &self,
+        installation_id: Uuid,
+    ) -> Result<bool> {
+        let runtime_lock = node_installation_runtime_lock(&self.node_id, installation_id);
+        let _lifecycle_guard = runtime_lock.lock().await;
+        let Some(latest) = self.repository.get_installation(installation_id).await? else {
+            return Ok(false);
+        };
+        if latest.desired_state != domain::PluginDesiredState::Disabled {
+            return Ok(false);
+        }
+        self.runtime.deactivate_plugin(&latest).await?;
+        self.mark_current_node_runtime_status(&latest, domain::PluginRuntimeStatus::Inactive, None)
+            .await?;
+        Ok(true)
+    }
+
     pub(super) async fn switch_family_installation(
         &self,
         actor: &domain::ActorContext,
@@ -855,63 +917,111 @@ where
                     json!({"previous_installation_id":current.id,"target_installation_id":target.id,"provider_code":provider_code})), running_task).await;
         }
         let switch_result = async {
-            let mut local_artifact = self.refresh_current_node_artifact_snapshot(target).await?;
-            if !local_artifact.artifact_status.is_ready() {
-                local_artifact = self
-                    .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
-                        actor_user_id,
-                        installation_id: target.id,
-                    })
+            let (first_id, second_id) = if current.id < target.id {
+                (current.id, target.id)
+            } else {
+                (target.id, current.id)
+            };
+            let first_lock = node_installation_runtime_lock(&self.node_id, first_id);
+            let second_lock = node_installation_runtime_lock(&self.node_id, second_id);
+            let _first_lifecycle_guard = first_lock.lock().await;
+            let _second_lifecycle_guard = second_lock.lock().await;
+            let live_target = self.repository.get_installation(target.id).await?
+                .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
+            let target_was_active_on_node = self.current_node_runtime_is_active(live_target.id).await?;
+            let mut activation_attempted = false;
+            let commit = async {
+                let local_artifact = self.refresh_current_node_artifact_snapshot(&live_target).await?;
+                if !local_artifact.artifact_status.is_ready() {
+                    self
+                        .install_current_node_artifact_locked(InstallCurrentNodePluginArtifactCommand {
+                            actor_user_id,
+                            installation_id: live_target.id,
+                        })
+                        .await?;
+                }
+                if live_target.desired_state == domain::PluginDesiredState::Disabled {
+                    self.request_plugin_enable_with_lock_mode(
+                        EnablePluginCommand {
+                            actor_user_id,
+                            installation_id: live_target.id,
+                        },
+                        domain::PluginTaskKind::Enable,
+                        true,
+                    )
                     .await?;
-            }
-            if matches!(target.desired_state, domain::PluginDesiredState::Disabled)
-                || local_artifact.runtime_status != domain::PluginRuntimeStatus::Active
-            {
-                self.enable_plugin(EnablePluginCommand {
-                    actor_user_id,
-                    installation_id: target.id,
-                })
-                .await?;
-            }
-            let local_target = self.ready_current_node_installation(target.id).await?;
-            let package =
-                crate::installed_provider_package::load_installed_provider_package(&local_target)?;
-            refresh_provider_package_catalog_projection(&self.repository, &local_target, &package)
-                .await?;
-            let migrated_instances = self
-                .repository
-                .reassign_instances_to_installation(&ReassignModelProviderInstancesInput {
-                    workspace_id: actor.current_workspace_id,
-                    provider_code: provider_code.to_string(),
-                    target_installation_id: local_target.id,
-                    target_protocol: local_target.protocol.clone(),
-                    updated_by: actor_user_id,
-                })
-                .await?;
-
-            for instance in &migrated_instances {
-                self.repository
-                    .upsert_catalog_cache(&UpsertModelProviderCatalogCacheInput {
-                        provider_instance_id: instance.id,
-                        model_discovery_mode: map_model_discovery_mode(
-                            package.provider.model_discovery_mode,
-                        ),
-                        refresh_status: domain::ModelProviderCatalogRefreshStatus::Idle,
-                        source: map_catalog_source(package.provider.model_discovery_mode),
-                        models_json: json!([]),
-                        last_error_message: None,
-                        refreshed_at: None,
-                    })
+                }
+                let local_target = self.ready_current_node_installation(live_target.id).await?;
+                let package =
+                    crate::installed_provider_package::load_installed_provider_package(&local_target)?;
+                refresh_provider_package_catalog_projection(&self.repository, &local_target, &package)
                     .await?;
+                activation_attempted = true;
+                let loaded = self.runtime.activate_plugin(&local_target).await?;
+                let verified_artifact = match self.try_mark_current_node_runtime_active(&local_target, loaded.as_ref()).await? {
+                    ActivatePluginArtifactOutcome::Activated(artifact) => artifact,
+                    rejected => {
+                        return Err(match rejected {
+                            ActivatePluginArtifactOutcome::Disabled => ControlPlaneError::Conflict("plugin_installation_disabled"),
+                            _ => ControlPlaneError::PluginUnavailable,
+                        }.into());
+                    }
+                };
+                let outcome = self
+                    .repository
+                    .commit_provider_version_switch(
+                        &control_plane_contracts::ports::CommitProviderVersionSwitchInput {
+                            validate_manifest: super::validate_installed_artifact_manifest,
+                            node_id: self.node_id.clone(),
+                            workspace_id: actor.current_workspace_id,
+                            provider_code: provider_code.to_string(),
+                            current_installation_id: current.id,
+                            target_installation_id: local_target.id,
+                            target_local_version: verified_artifact.local_version,
+                            target_local_checksum: verified_artifact.local_checksum,
+                            target_local_path: verified_artifact.local_path.ok_or(ControlPlaneError::PluginUnavailable)?,
+                            target_manifest_fingerprint: verified_artifact.manifest_fingerprint,
+                            target_protocol: local_target.protocol.clone(),
+                            model_discovery_mode: map_model_discovery_mode(
+                                package.provider.model_discovery_mode,
+                            ),
+                            catalog_source: map_catalog_source(package.provider.model_discovery_mode),
+                            actor_user_id,
+                        },
+                    )
+                    .await?;
+                Ok::<_, anyhow::Error>((local_target, outcome))
+            }.await;
+            let (local_target, switch_outcome) = match commit {
+                Ok(committed) => committed,
+                Err(error) => {
+                    let cleanup = async {
+                        if let Some(retired_target) = self.repository.rollback_unreferenced_installation(&UpdatePluginDesiredStateInput {
+                            installation_id: live_target.id,
+                            desired_state: domain::PluginDesiredState::Disabled,
+                            actor_user_id,
+                        }).await? {
+                            self.runtime.deactivate_plugin(&retired_target).await?;
+                            self.mark_current_node_runtime_status(
+                                &retired_target,
+                                domain::PluginRuntimeStatus::Inactive,
+                                None,
+                            ).await?;
+                        } else if activation_attempted && !self.current_node_runtime_is_active(live_target.id).await? {
+                            self.deactivate_rejected_activation(&live_target, target_was_active_on_node).await?;
+                        }
+                        Ok::<(), anyhow::Error>(())
+                    }.await;
+                    if let Err(cleanup_error) = cleanup {
+                        tracing::error!(installation_id = %live_target.id, %cleanup_error, "failed to roll back unreferenced target after version switch failure");
+                    }
+                    return Err(error);
+                }
+            };
+            let migrated_instance_count = switch_outcome.migrated_instance_count;
+            if let Some(disabled_current) = switch_outcome.retired_previous {
+                self.runtime.deactivate_plugin(&disabled_current).await?;
             }
-            self.repository
-                .create_assignment(&CreatePluginAssignmentInput {
-                    installation_id: local_target.id,
-                    workspace_id: actor.current_workspace_id,
-                    provider_code: provider_code.to_string(),
-                    actor_user_id,
-                })
-                .await?;
             let mut switch_audit_detail = json!({
                 "provider_code": provider_code,
                 "previous_installation_id": current.id,
@@ -941,14 +1051,14 @@ where
                     "provider.instances_migrated_after_plugin_switch",
                     json!({
                         "provider_code": provider_code,
-                        "migrated_instance_count": migrated_instances.len(),
+                        "migrated_instance_count": migrated_instance_count,
                     }),
                 ))
                 .await?;
             self.invalidate_model_routing_catalog(actor.current_workspace_id)
                 .await;
             self.reconcile_family_worker_demand(current, target).await;
-            Ok::<usize, anyhow::Error>(migrated_instances.len())
+            Ok::<usize, anyhow::Error>(migrated_instance_count)
         }
         .await;
 
@@ -997,24 +1107,7 @@ pub(super) fn supports_workspace_assignment(
 ) -> bool {
     // A mixed system service may expose declarative workspace UI, but assignment
     // remains explicit and frontend resolution separately verifies its exact grant.
-    let workspace_ui = installation.contract_version == "1flowbase.extension-bus/v1"
-        && installation
-            .metadata_json
-            .get("managed")
-            .and_then(|value| {
-                serde_json::from_value::<plugin_framework::ManagedManifest>(value.clone()).ok()
-            })
-            .is_some_and(|managed| {
-                managed.execution_bindings.iter().any(|binding| {
-                    binding.execution_mode == plugin_framework::PluginExecutionMode::DeclarativeOnly
-                        && matches!(
-                            binding.payload,
-                            Some(
-                                plugin_framework::ManagedContributionPayload::FrontendBlock { .. }
-                            )
-                        )
-                })
-            });
+    let workspace_ui = control_plane_contracts::ports::has_managed_workspace_ui(installation);
     (domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
         != domain::SYSTEM_SCOPE_ID
         || workspace_ui)

@@ -20,6 +20,17 @@ where
     control_plane::bootstrap::upsert_builtin_roles(repository, workspace_id).await
 }
 
+// Share the production parser with storage fixtures without introducing a storage-to-business dependency.
+pub use control_plane::plugin_management::{
+    validate_installed_artifact_manifest, validate_installed_managed_manifest,
+};
+
+pub fn managed_manifest_fixture(plugin_code: &str, version: &str) -> String {
+    include_str!("../../extension-package-runtime/src/_tests/managed_manifest.yaml")
+        .replace("managed_fixture", plugin_code)
+        .replace("version: 0.1.0", &format!("version: {version}"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;

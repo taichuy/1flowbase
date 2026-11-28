@@ -15,9 +15,14 @@ import {
   holdNextDirectoryReplace,
   installDirectorySnapshotApi
 } from './mcp-management-panel/fixtures/directory-snapshot';
+import { installProgressiveMcpApi } from './mcp-management-panel/fixtures/progressive-api';
 
 const api = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
+  settingsMcpInstancesQueryKey: ['settings', 'mcp-management', 'instances'],
+  settingsMcpToolsQueryKey: ['settings', 'mcp-management', 'tools'],
+  fetchSettingsMcpInstances: vi.fn(),
+  fetchSettingsMcpToolsPage: vi.fn(),
   fetchSettingsMcpInstanceDirectory: vi.fn(),
   replaceSettingsMcpInstanceDirectory: vi.fn(),
   createSettingsMcpToolBinding: vi.fn(),
@@ -132,14 +137,14 @@ function grant(permissions: string[]) {
 }
 
 const clients: QueryClient[] = [];
-function renderEditor(initialCatalog: ConsoleMcpCatalog = catalog) {
+function renderEditor() {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } }
   });
   clients.push(client);
   let current: ReturnType<typeof useMcpDirectoryEditor>;
   function Harness() {
-    current = useMcpDirectoryEditor(initialCatalog);
+    current = useMcpDirectoryEditor();
     return (
       <>
         <Form form={current.groupForm} />
@@ -196,6 +201,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetAuthStore();
   installDirectorySnapshotApi(api, catalog);
+  installProgressiveMcpApi(api, catalog);
 });
 afterEach(() => {
   act(() => {
@@ -205,7 +211,7 @@ afterEach(() => {
 });
 
 async function openEditor(initialCatalog: ConsoleMcpCatalog = catalog) {
-  const view = renderEditor(initialCatalog);
+  const view = renderEditor();
   await act(async () => {
     await view.editor.openDirectory(initialCatalog.instances[0]!);
   });
@@ -348,15 +354,17 @@ describe('MCP directory draft drag', () => {
   });
 
   test('a new mount moved during PUT keeps its unconfirmed visible flag and saves through the returned server identity', async () => {
-    grant(['mcp.directory.view', 'mcp.directory.replace']);
+    grant(['mcp.directory.view', 'mcp.directory.replace', 'list_mcp_tools_page']);
     const newCatalog: ConsoleMcpCatalog = {
       ...catalog,
       tools: [newMountTool],
       bindings: []
     };
     installDirectorySnapshotApi(api, newCatalog);
+    installProgressiveMcpApi(api, newCatalog);
     const view = await openEditor(newCatalog);
     act(() => view.editor.startToolMount('/origin'));
+    act(() => view.editor.setPickedTool(newMountTool));
     act(() => {
       view.editor.bindingForm.setFieldsValue({
         instance_id: 'ops',
