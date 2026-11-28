@@ -974,12 +974,11 @@ async fn execute_callback(
                         extension_contracts::HostServiceError::new("host_service_request_invalid")
                     })?;
                 request.validate()?;
-                let (binding, port) =
-                    context
-                        .and_then(|context| context.privacy_masking)
-                        .ok_or_else(|| {
-                            extension_contracts::HostServiceError::new("host_service_not_granted")
-                        })?;
+                let (binding, port) = context
+                    .and_then(|context| context.privacy_masking)
+                    .ok_or_else(|| {
+                        extension_contracts::HostServiceError::new("host_service_not_granted")
+                    })?;
                 let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
                 if remaining <= 0 {
                     return Err(extension_contracts::HostServiceError::new(

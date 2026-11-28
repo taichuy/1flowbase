@@ -67,10 +67,7 @@ impl PrivacyMaskingClient {
         Self(emitter)
     }
 
-    pub async fn execute(
-        &self,
-        request: PrivacyMaskingRequest,
-    ) -> Result<PrivacyMaskingResponse> {
+    pub async fn execute(&self, request: PrivacyMaskingRequest) -> Result<PrivacyMaskingResponse> {
         let request = serde_json::to_value(request)
             .map_err(|_| PrivacyMaskingClientError::InvalidResponse)?;
         let envelope = self
@@ -169,7 +166,10 @@ impl PrivacyMaskingClient {
         }
     }
 
-    pub async fn list_logs(&self, query: PrivacyMaskingLogsQuery) -> Result<PrivacyMaskingLogsPage> {
+    pub async fn list_logs(
+        &self,
+        query: PrivacyMaskingLogsQuery,
+    ) -> Result<PrivacyMaskingLogsPage> {
         match self
             .execute(PrivacyMaskingRequest::ListLogs {
                 subject_kind: query.subject_kind,
