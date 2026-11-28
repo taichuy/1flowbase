@@ -3,7 +3,6 @@ use domain::DataModelScopeKind;
 use storage_durable::{model_metadata::ModelMetadata, resource_descriptor::ResourceDescriptor};
 use uuid::Uuid;
 
-use crate::ordered_tree::rank::{between, rebalance, FractionalRank};
 use crate::{run_migrations, PgControlPlaneStore};
 
 mod commands;
@@ -12,6 +11,7 @@ mod pagination;
 mod paths;
 mod prefix_indexes;
 mod queries;
+mod rank;
 
 fn runtime_metadata(model: &domain::ModelDefinitionRecord) -> ModelMetadata {
     ModelMetadata {
@@ -38,64 +38,6 @@ fn runtime_metadata(model: &domain::ModelDefinitionRecord) -> ModelMetadata {
         record_capabilities: domain::data_model_capabilities(model).record,
         resource: ResourceDescriptor::runtime_model(&model.code, model.scope_kind),
     }
-}
-
-fn rank(value: &str) -> FractionalRank {
-    FractionalRank::parse(value).expect("fixture rank should be canonical")
-}
-
-// AC-007: normal allocation remains strictly between its supplied neighbors.
-#[test]
-fn fractional_rank_between_prepend_and_append_preserve_byte_order() {
-    let left = rank("F");
-    let right = rank("k");
-    let middle = between(Some(&left), Some(&right)).unwrap().rank;
-    let prepended = between(None, Some(&left)).unwrap().rank;
-    let appended = between(Some(&right), None).unwrap().rank;
-
-    assert!(prepended < left);
-    assert!(left < middle);
-    assert!(middle < right);
-    assert!(right < appended);
-    assert_eq!(
-        middle.cmp(&right),
-        middle.as_str().as_bytes().cmp(right.as_str().as_bytes())
-    );
-}
-
-// AC-007: insertion order can repeatedly target any neighboring pair without renumbering.
-#[test]
-fn fractional_rank_random_insertion_matrix_stays_strict_and_canonical() {
-    let mut seed = 0x6a09_e667_f3bc_c909_u64;
-    let mut ranks = Vec::<FractionalRank>::new();
-    for _ in 0..512 {
-        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
-        let insertion = (seed as usize) % (ranks.len() + 1);
-        let allocation = between(
-            insertion.checked_sub(1).and_then(|index| ranks.get(index)),
-            ranks.get(insertion),
-        )
-        .unwrap();
-        assert!(!allocation.rank.as_str().ends_with('0'));
-        ranks.insert(insertion, allocation.rank);
-    }
-
-    assert!(ranks.windows(2).all(|pair| pair[0] < pair[1]));
-    assert!(ranks
-        .windows(2)
-        .all(|pair| { pair[0].as_str().as_bytes() < pair[1].as_str().as_bytes() }));
-}
-
-// AC-007: rebalance is deterministic and emits a compact strictly increasing replacement batch.
-#[test]
-fn fractional_rank_rebalance_is_deterministic_strict_and_canonical() {
-    let first = rebalance(1_024).unwrap();
-    let second = rebalance(1_024).unwrap();
-
-    assert_eq!(first, second);
-    assert_eq!(first.len(), 1_024);
-    assert!(first.windows(2).all(|pair| pair[0] < pair[1]));
-    assert!(first.iter().all(|value| !value.as_str().ends_with('0')));
 }
 
 fn base_database_url() -> String {

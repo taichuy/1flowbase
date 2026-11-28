@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, error::Error, fmt};
+use std::{error::Error, fmt};
 
 const ALPHABET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const MID_DIGIT: u8 = b'U';
@@ -129,16 +129,16 @@ fn between_encoded(left: &str, right: &str) -> Result<String, RankError> {
 }
 
 fn before(right: &str) -> Result<String, RankError> {
-    let first = *right.as_bytes().first().ok_or(RankError::InvalidBounds)?;
-    let right_digit = digit_index(first)?;
-    if right_digit == 0 {
-        let mut rank = String::from("0");
-        rank.push_str(&before(&right[1..])?);
-        return Ok(rank);
-    }
+    let (zeros, digit) = right
+        .bytes()
+        .enumerate()
+        .find(|&(_, digit)| digit != ALPHABET[0])
+        .ok_or(RankError::InvalidBounds)?;
+    let midpoint = digit_index(digit)? / 2;
 
-    let midpoint = right_digit / 2;
-    let mut rank = String::from(ALPHABET[midpoint] as char);
+    let mut rank = String::with_capacity(zeros + if midpoint == 0 { 2 } else { 1 });
+    rank.push_str(&right[..zeros]); // The prefix is entirely ASCII zeros.
+    rank.push(ALPHABET[midpoint] as char);
     if midpoint == 0 {
         rank.push(MID_DIGIT as char);
     }
@@ -147,15 +147,7 @@ fn before(right: &str) -> Result<String, RankError> {
 
 fn digit_index(digit: u8) -> Result<usize, RankError> {
     ALPHABET
-        .binary_search_by(|candidate| {
-            if *candidate < digit {
-                Ordering::Less
-            } else if *candidate > digit {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
-        })
+        .binary_search(&digit)
         .map_err(|_| RankError::InvalidEncoding)
 }
 
